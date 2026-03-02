@@ -291,8 +291,36 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script type="module">
-        import { getCart, removeFromCart, clearCart, getCartTotal, getUser } from '/src/store/store.ts';
+
+    <!-- AVA Widget — must be at bottom of <body> so document.body exists on init -->
+    <script>
+      window.__AVA_CONFIG__ = {
+        websocketUrl: "ws://localhost:8081",
+        sessionId: "demo-" + Math.random().toString(36).slice(2),
+        assistantName: "AVA",
+        position: "bottom-right",
+        brandColor: "#1A1A2E",
+        accentColor: "#35d3a1",
+      };
+    </script>
+    <script src="/ava-widget.iife.js"></script>
+
+    <script>
+        // Cart utilities — reads from the same sessionStorage key as index.html
+        const STORAGE = sessionStorage;
+        const KEY_CART = 'techspace_cart';
+        function getCart() { try { return JSON.parse(STORAGE.getItem(KEY_CART) || '[]'); } catch { return []; } }
+        function removeFromCart(productId) {
+            let cart = getCart();
+            const existing = cart.find(i => i.id === productId);
+            if (existing) {
+                if (existing.quantity > 1) { existing.quantity--; } else { cart = cart.filter(i => i.id !== productId); }
+            }
+            STORAGE.setItem(KEY_CART, JSON.stringify(cart));
+        }
+        function clearCart() { STORAGE.removeItem(KEY_CART); }
+        function getCartTotal() { return getCart().reduce((s, i) => s + i.price * i.quantity, 0); }
+        function getUser() { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } }
 
         const cartContainer = document.getElementById('cart-items');
         const emptyMsg = document.getElementById('empty-cart-msg');
@@ -346,7 +374,8 @@
 
             // Bind Remove
             document.querySelectorAll('.remove-btn').forEach(btn => {
-                btn.onclick = () => {
+                btn.onclick = (e) => {
+                    e.stopPropagation(); // prevent widget's generic click handler from firing "Clicked: ×"
                     const itemId = btn.dataset.id;
                     const cartItem = getCart().find(i => i.id === itemId);
                     removeFromCart(itemId);
@@ -357,27 +386,30 @@
             });
         }
 
-        // Send tracking event
-        async function sendEvent(eventType, payload = {}) {
+        // Send tracking event via AVA widget FISMBridge
+        const _checkoutPageEnterTime = Date.now();
+        function sendEvent(eventType, payload = {}) {
             try {
-                const sessionId = window.sessionStorage.getItem('analyst_session_id') || Date.now().toString();
-                window.sessionStorage.setItem('analyst_session_id', sessionId);
-
-                const event = {
-                    session_id: sessionId,
+                const bridge = window.__AVA_BRIDGE__;
+                if (!bridge) return;
+                bridge.sendTrackEvent({
+                    event_id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    friction_id: null,
+                    category: 'checkout',
                     event_type: eventType,
-                    url: window.location.href,
-                    timestamp: new Date().toISOString(),
-                    payload
-                };
-
-                await fetch('http://localhost:3000/api/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(event)
+                    raw_signals: payload,
+                    page_context: {
+                        page_type: 'checkout',
+                        page_url: window.location.href,
+                        time_on_page_ms: Date.now() - _checkoutPageEnterTime,
+                        scroll_depth_pct: 0,
+                        viewport: { width: window.innerWidth, height: window.innerHeight },
+                        device: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+                    },
+                    timestamp: Date.now(),
                 });
             } catch (e) {
-                console.error('Tracking error:', e);
+                // silent — never break checkout flow
             }
         }
 

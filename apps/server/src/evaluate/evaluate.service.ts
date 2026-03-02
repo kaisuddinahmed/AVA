@@ -23,6 +23,7 @@ export interface EvaluationResult {
   reasoning: string;
   recommendedAction: string;
   engine: "llm" | "fast";
+  gateOverride?: string | null;
 }
 
 // ── Tier helpers ──────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ export async function evaluateEventBatch(
     _experimentConfigOverrides.set(sessionId, overrides.scoringConfigId);
   }
 
+  console.log(`[Evaluate] Starting evaluation for session ${sessionId}, engine=${engine}, events=${eventIds.length}`);
   try {
     if (engine === "fast") {
       return await evaluateFast(sessionId, eventIds);
@@ -80,6 +82,9 @@ export async function evaluateEventBatch(
 
     // Default: "llm"
     return await evaluateLLM(sessionId, eventIds);
+  } catch (err) {
+    console.error(`[Evaluate] ❌ Engine error (${engine}) for session ${sessionId}:`, err);
+    throw err;
   } finally {
     // Clean up per-session override
     _experimentConfigOverrides.delete(sessionId);
@@ -150,6 +155,7 @@ async function evaluateFast(
     reasoning,
     recommendedAction: "monitor",
     engine: "fast",
+    gateOverride: mswimResult.gate_override?.toString() ?? null,
   };
 }
 
@@ -212,6 +218,7 @@ async function evaluateAuto(
     reasoning,
     recommendedAction: "monitor",
     engine: "fast",
+    gateOverride: mswimResult.gate_override?.toString() ?? null,
   };
 }
 
@@ -222,14 +229,18 @@ async function evaluateLLM(
   eventIds: string[]
 ): Promise<EvaluationResult | null> {
   // 1. Build context
+  console.log(`[Evaluate:llm] Building context for session ${sessionId}`);
   const context = await buildContext(sessionId, eventIds);
   if (!context) {
-    console.error(`[Evaluate] Session ${sessionId} not found`);
+    console.error(`[Evaluate:llm] Session ${sessionId} not found — buildContext returned null`);
     return null;
   }
+  console.log(`[Evaluate:llm] Context built — ${context.newEvents.length} new events, ${context.eventHistory.length} history events`);
 
   // 2. Call LLM
+  console.log(`[Evaluate:llm] Calling Groq LLM for session ${sessionId}...`);
   const llmOutput = await evaluateWithLLM(context);
+  console.log(`[Evaluate:llm] LLM response received — tier signals: I=${llmOutput.signals.intent} F=${llmOutput.signals.friction}`);
 
   // 3. Build session context for MSWIM
   const session = await SessionRepo.getSession(sessionId);
@@ -276,6 +287,7 @@ async function evaluateLLM(
     ),
     hasCheckoutTimeout: llmOutput.detected_frictions.includes("F112"),
     hasHelpSearch: llmOutput.detected_frictions.includes("F036"),
+    scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
   // 4. Run MSWIM engine
@@ -359,6 +371,7 @@ async function evaluateLLM(
     reasoning: mswimResult.reasoning,
     recommendedAction: llmOutput.recommended_action,
     engine: "llm",
+    gateOverride: mswimResult.gate_override?.toString() ?? null,
   };
 }
 
@@ -437,6 +450,7 @@ async function buildSessionAndFrictions(
     ),
     hasCheckoutTimeout: frictionIds.includes("F112"),
     hasHelpSearch: frictionIds.includes("F036"),
+    scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
   return { sessionCtx, frictionIds, context };

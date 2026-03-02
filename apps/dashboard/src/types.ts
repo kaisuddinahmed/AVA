@@ -141,4 +141,4 @@ export interface OverviewAnalytics {
 }
 
 // ── Tab Type ─────────────────────────────────────────────────
-export type TabId = "track" | "evaluate" | "operate";
+export type TabId = "track" | "evaluate" | "intervene";

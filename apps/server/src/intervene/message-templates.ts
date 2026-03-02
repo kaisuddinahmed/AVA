@@ -1,10 +1,12 @@
 interface MessageTemplate {
   message: string;
   bubbleText?: string;
+  ctaLabel?: string;
+  ctaAction?: string;
   uiAdjustments?: Array<{
-    type: string;
-    selector?: string;
-    content?: string;
+    adjustment_type: string;
+    target_selector?: string;
+    params: Record<string, unknown>;
   }>;
 }
 
@@ -32,8 +34,10 @@ const CATEGORY_TEMPLATES: Record<string, MessageTemplate> = {
   checkout: {
     message: "I'm here to help you complete your purchase smoothly.",
     bubbleText: "Need help checking out?",
+    ctaLabel: "Secure checkout",
+    ctaAction: "checkout_help",
     uiAdjustments: [
-      { type: "highlight", selector: ".checkout-btn", content: "secure-checkout" },
+      { adjustment_type: "highlight", target_selector: ".checkout-btn", params: { content: "secure-checkout" } },
     ],
   },
   pricing: {
@@ -44,7 +48,7 @@ const CATEGORY_TEMPLATES: Record<string, MessageTemplate> = {
     message: "Your security matters to us. Let me share some reassurances.",
     bubbleText: "Questions about security?",
     uiAdjustments: [
-      { type: "badge", content: "trust-badge" },
+      { adjustment_type: "badge", params: { content: "trust-badge" } },
     ],
   },
   payment: {

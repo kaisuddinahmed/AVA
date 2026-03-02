@@ -37,6 +37,7 @@ export class AVAWidget {
   // External callbacks (wired by index.ts)
   onDismiss: (id: string) => void = () => {};
   onConvert: (id: string, action: string) => void = () => {};
+  onIgnored: (id: string) => void = () => {};
   onUserMessage: (text: string) => void = () => {};
   onUserAction: (action: string, data?: Record<string, unknown>) => void =
     () => {};
@@ -75,6 +76,9 @@ export class AVAWidget {
     this.render();
   }
 
+  // Track intervention IDs that have already reported a terminal outcome
+  private reportedOutcomes = new Set<string>();
+
   // ---- PUBLIC: called by bridge ----
 
   handleIntervention(payload: InterventionPayload): void {
@@ -82,7 +86,15 @@ export class AVAWidget {
       case "passive":
         // Passive adjustments operate on the host page, not shadow DOM
         if (payload.ui_adjustment) {
-          PassiveExecutor.execute(payload.ui_adjustment);
+          try {
+            PassiveExecutor.execute(payload.ui_adjustment);
+            this.onIgnored(payload.intervention_id);
+          } catch {
+            this.onIgnored(payload.intervention_id);
+          }
+        } else {
+          // No UI adjustment to apply — report as ignored
+          this.onIgnored(payload.intervention_id);
         }
         break;
 
@@ -95,6 +107,7 @@ export class AVAWidget {
           if (
             this.currentNudge?.intervention_id === payload.intervention_id
           ) {
+            this.onIgnored(payload.intervention_id);
             this.currentNudge = null;
             this.render();
           }
@@ -132,6 +145,24 @@ export class AVAWidget {
         this.render();
         this.scrollMessages();
         break;
+    }
+  }
+
+  /**
+   * Report "dismissed" for any active/escalate interventions shown in the panel
+   * that haven't already reported a terminal outcome.
+   * Called when user minimizes or closes the expanded panel.
+   */
+  private dismissActiveInterventions(): void {
+    for (const msg of this.messages) {
+      if (
+        msg.payload &&
+        (msg.type === "assistant" || msg.type === "system") &&
+        !this.reportedOutcomes.has(msg.payload.intervention_id)
+      ) {
+        this.reportedOutcomes.add(msg.payload.intervention_id);
+        this.onDismiss(msg.payload.intervention_id);
+      }
     }
   }
 
@@ -231,6 +262,7 @@ export class AVAWidget {
     minimizeBtn.textContent = "\u2193";
     minimizeBtn.setAttribute("aria-label", "Minimize");
     minimizeBtn.addEventListener("click", () => {
+      this.dismissActiveInterventions();
       this.state = "minimized";
       this.hasUnread = false;
       this.render();
@@ -305,6 +337,7 @@ export class AVAWidget {
           comparison: msg.payload.comparison,
           onSelect: (productId) => {
             this.handleAddToCart(productId);
+            this.reportedOutcomes.add(msg.id);
             this.onConvert(msg.id, "select_comparison");
           },
         });
@@ -325,6 +358,7 @@ export class AVAWidget {
         const payload = msg.payload;
         const msgId = msg.id;
         ctaBtn.addEventListener("click", () => {
+          this.reportedOutcomes.add(msgId);
           this.onConvert(msgId, payload.cta_action || "cta_click");
           this.onUserAction(
             payload.cta_action || "cta_click",
@@ -395,6 +429,7 @@ export class AVAWidget {
 
     btn.addEventListener("click", () => {
       if (this.state === "expanded") {
+        this.dismissActiveInterventions();
         this.state = "minimized";
       } else {
         this.state = "expanded";

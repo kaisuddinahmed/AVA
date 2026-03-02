@@ -108,6 +108,9 @@ model Evaluation {
   receptivityScore Float
   valueScore       Float
 
+  // Engine that produced this evaluation
+  engine           String @default("llm") // llm | fast
+
   // MSWIM composite + decision
   compositeScore   Float  // Weighted sum
   weightsUsed      String // JSON: weight profile applied

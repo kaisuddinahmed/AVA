@@ -39,12 +39,15 @@ function init(config: Partial<WidgetConfig>) {
     widget.handleIntervention(payload);
   });
 
-  // Wire widget outcomes back to bridge
+  // Wire widget outcomes back to bridge (flat intervention_outcome format)
   widget.onDismiss = (id: string) => {
-    bridge.send("dismiss", { intervention_id: id });
+    bridge.sendOutcome(id, "dismissed");
   };
   widget.onConvert = (id: string, action: string) => {
-    bridge.send("conversion", { intervention_id: id, action });
+    bridge.sendOutcome(id, "converted", action);
+  };
+  widget.onIgnored = (id: string) => {
+    bridge.sendOutcome(id, "ignored");
   };
   widget.onUserMessage = (text: string) => {
     bridge.send("user_message", { text });

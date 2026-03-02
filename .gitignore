@@ -44,3 +44,6 @@ docs/
 *.db-journal
 *.db-shm
 *.db-wal
+
+# Generated output (eval harness, fine-tune exports)
+data/

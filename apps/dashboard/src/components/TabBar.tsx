@@ -7,9 +7,9 @@ interface Props {
 }
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: "track", label: "Track" },
-  { id: "evaluate", label: "Evaluate" },
-  { id: "operate", label: "Operate" },
+  { id: "track",     label: "Track" },
+  { id: "evaluate",  label: "Evaluate" },
+  { id: "intervene", label: "Intervene" },
 ];
 
 export function TabBar({ active, onSelect, counts }: Props) {

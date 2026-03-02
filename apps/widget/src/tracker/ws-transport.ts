@@ -17,7 +17,7 @@ export class FISMBridge {
 
   connect(): void {
     try {
-      this.ws = new WebSocket(`${this.url}?session=${this.sessionId}`);
+      this.ws = new WebSocket(`${this.url}?channel=widget&sessionId=${this.sessionId}`);
 
       this.ws.onopen = () => {
         console.log("[AVA] Connected to server");
@@ -100,6 +100,27 @@ export class FISMBridge {
 
   private emit(event: string, data: any): void {
     this.listeners.get(event)?.forEach((cb) => cb(data));
+  }
+
+  /**
+   * Send an intervention outcome in the flat format the server expects.
+   * Server schema: { type: "intervention_outcome", intervention_id, session_id, status, timestamp, conversion_action? }
+   */
+  sendOutcome(interventionId: string, status: string, conversionAction?: string): void {
+    const msg: Record<string, unknown> = {
+      type: "intervention_outcome",
+      intervention_id: interventionId,
+      session_id: this.sessionId,
+      status,
+      timestamp: Date.now(),
+    };
+    if (conversionAction) msg.conversion_action = conversionAction;
+
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    } else {
+      this.messageQueue.push(msg);
+    }
   }
 
   disconnect(): void {

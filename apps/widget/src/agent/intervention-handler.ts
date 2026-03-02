@@ -59,11 +59,7 @@ export class InterventionHandler {
    * Report intervention outcome back to the server.
    */
   private reportOutcome(interventionId: string, status: string): void {
-    this.bridge.send("intervention_outcome", {
-      intervention_id: interventionId,
-      status,
-      timestamp: Date.now(),
-    });
+    this.bridge.sendOutcome(interventionId, status);
   }
 
   /**

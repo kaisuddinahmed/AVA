@@ -9,9 +9,11 @@ import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 
 // Event buffer → flushes to evaluation pipeline
 const buffer = new EventBuffer(async (sessionId, eventIds) => {
+  console.log(`[Track] Buffer flushed for session ${sessionId} — ${eventIds.length} events`);
   try {
     // Run evaluation
     const result = await evaluateEventBatch(sessionId, eventIds);
+    console.log(`[Track] Evaluation result for session ${sessionId}:`, result ? `tier=${result.tier} score=${result.compositeScore}` : "null");
     if (!result) return;
 
     // Broadcast evaluation to dashboard (reshape to match dashboard EvaluationData)
@@ -35,7 +37,7 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
           weights_used: {},
           composite_score: result.compositeScore,
           tier: result.tier,
-          gate_override: null,
+          gate_override: result.gateOverride ?? null,
           decision: result.decision,
           reasoning: result.reasoning,
         },
@@ -52,11 +54,18 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
       // Fire intervention
       const intervention = await handleDecision(sessionId, decision, result);
       if (intervention) {
-        // Broadcast intervention to widget
+        // Broadcast intervention to widget — flatten to match InterventionPayload interface
+        const widgetPayload = {
+          ...(intervention.payload as Record<string, unknown>),
+          intervention_id: intervention.interventionId,
+          type: intervention.type,
+          action_code: intervention.actionCode,
+          friction_id: intervention.frictionId,
+        };
         broadcastToChannel("widget", {
           type: "intervention",
           sessionId,
-          data: intervention,
+          payload: widgetPayload,
         });
 
         // Broadcast to dashboard (reshape to match dashboard InterventionData)
@@ -82,7 +91,11 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
       }
     }
   } catch (error) {
-    console.error(`[Track] Evaluation pipeline error for session ${sessionId}:`, error);
+    console.error(`[Track] ❌ Evaluation pipeline error for session ${sessionId}:`, error);
+    if (error instanceof Error) {
+      console.error(`[Track] Error name: ${error.name}, message: ${error.message}`);
+      console.error(`[Track] Stack:`, error.stack);
+    }
   }
 });
 

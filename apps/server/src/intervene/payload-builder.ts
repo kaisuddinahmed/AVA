@@ -12,10 +12,11 @@ export function buildPayload(
 ): Record<string, unknown> {
   const template = getMessageTemplate(type, frictionId);
 
+  // Keys use snake_case to match widget's InterventionPayload interface
   const base: Record<string, unknown> = {
     type,
-    actionCode,
-    frictionId,
+    action_code: actionCode,
+    friction_id: frictionId,
     message: template.message,
     tier: evaluation.tier,
     timestamp: new Date().toISOString(),
@@ -25,14 +26,15 @@ export function buildPayload(
     case "passive":
       return {
         ...base,
-        uiAdjustments: template.uiAdjustments ?? [],
+        ui_adjustment: template.uiAdjustments?.[0] ?? null,
         silent: true,
       };
 
     case "nudge":
       return {
         ...base,
-        bubbleText: template.bubbleText ?? template.message,
+        cta_label: template.ctaLabel ?? "Learn more",
+        cta_action: template.ctaAction ?? "open",
         dismissable: true,
         autoHideMs: 8000,
       };
@@ -41,7 +43,7 @@ export function buildPayload(
       return {
         ...base,
         showPanel: true,
-        products: [], // TODO: product intelligence
+        products: [],
         comparison: null,
       };
 

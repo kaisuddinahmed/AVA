@@ -78,6 +78,8 @@ function initialState(): DashboardState {
   };
 }
 
+// Note: TabId "operate" has been renamed to "intervene" — store shape unchanged.
+
 export function useDashboardStore() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
 

@@ -7,7 +7,7 @@ import { TabBar } from "./components/TabBar";
 import { SessionBar } from "./components/SessionBar";
 import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
-import { OperateTab } from "./components/OperateTab";
+import { InterventionsTab } from "./components/InterventionsTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
 import type { SessionSummary, OverviewAnalytics } from "./types";
 
@@ -65,7 +65,7 @@ export function App() {
     { pollMs: 60000 }
   );
 
-  // Poll shadow data for Evaluate tab
+  // Poll shadow data for Evaluate tab — only when Evaluate tab is active
   const isEvalTab = state.activeTab === "evaluate";
   const { data: shadowStats } = useApi<any>(
     activated && isEvalTab ? `/shadow/stats` : null,
@@ -87,9 +87,9 @@ export function App() {
             active={state.activeTab}
             onSelect={(tab) => dispatch({ type: "SET_TAB", tab })}
             counts={{
-              track: state.eventCount,
-              evaluate: state.evalCount,
-              operate: state.intervCount,
+              track:     state.eventCount,
+              evaluate:  state.evalCount,
+              intervene: state.intervCount,
             }}
           />
           <SessionBar
@@ -102,7 +102,7 @@ export function App() {
             <TrackTab
               events={state.events}
               selectedSession={state.selectedSessionId}
-              overview={overview}
+              overview={overview ?? null}
               trafficData={trafficData?.breakdown ?? null}
               deviceData={deviceData?.breakdown ?? null}
               funnelData={funnelData?.steps ?? null}
@@ -115,16 +115,20 @@ export function App() {
           {state.activeTab === "evaluate" && (
             <EvaluateTab
               evaluations={state.evaluations}
-              interventions={state.interventions}
               selectedSession={state.selectedSessionId}
-              overview={overview}
+              overview={overview ?? null}
               shadowStats={shadowStats ?? null}
               shadowDivergences={shadowDivergences?.data ?? null}
             />
           )}
 
-          {state.activeTab === "operate" && (
-            <OperateTab />
+          {state.activeTab === "intervene" && (
+            <InterventionsTab
+              interventions={state.interventions}
+              selectedSession={state.selectedSessionId}
+              overview={overview ?? null}
+              sessions={sessions}
+            />
           )}
         </>
       )}

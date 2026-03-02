@@ -55,6 +55,9 @@ export interface SessionContext {
   hasPaymentFailure: boolean;
   hasCheckoutTimeout: boolean;
   hasHelpSearch: boolean;
+
+  // Experiment override — loads a specific ScoringConfig instead of the active one
+  scoringConfigId?: string;
 }
 
 /**
@@ -65,8 +68,8 @@ export async function runMSWIM(
   llmOutput: LLMOutput,
   sessionCtx: SessionContext
 ): Promise<MSWIMResult> {
-  // 1. Load config (per-site or global, cached)
-  const config = await loadMSWIMConfig(sessionCtx.siteUrl);
+  // 1. Load config (per-site or global, cached; experiment override if set)
+  const config = await loadMSWIMConfig(sessionCtx.siteUrl, sessionCtx.scoringConfigId);
 
   // 2. Adjust each signal
   const signals: MSWIMSignals = {

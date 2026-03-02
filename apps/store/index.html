@@ -267,11 +267,11 @@
                 <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="premium" data-filter-type="price" data-price-min="200" data-price-max="9999">Designer ($200+)</button>
                 
                 <!-- NEW: Color Filter -->
-                <div class="relative group">
-                    <button class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
+                <div class="relative">
+                    <button id="color-filter-btn" onclick="toggleFilterDropdown('color-filter-dropdown', event)" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
                         Color <span class="text-[10px] text-gray-400">▼</span>
                     </button>
-                    <div class="hidden group-hover:block absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 shadow-xl z-50">
+                    <div id="color-filter-dropdown" class="hidden absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 shadow-xl z-50">
                         <div class="p-2 grid gap-1">
                             <button class="filter-btn text-left px-2 py-1 text-xs font-bold uppercase hover:bg-gray-100 w-full" data-filter="black" data-filter-type="color">Black</button>
                             <button class="filter-btn text-left px-2 py-1 text-xs font-bold uppercase hover:bg-gray-100 w-full" data-filter="white" data-filter-type="color">White</button>
@@ -283,11 +283,11 @@
                 </div>
 
                 <!-- NEW: Size Filter -->
-                <div class="relative group">
-                    <button class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
+                <div class="relative">
+                    <button id="size-filter-btn" onclick="toggleFilterDropdown('size-filter-dropdown', event)" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
                         Size <span class="text-[10px] text-gray-400">▼</span>
                     </button>
-                    <div class="hidden group-hover:block absolute top-full left-0 mt-1 w-24 bg-white border border-gray-200 shadow-xl z-50">
+                    <div id="size-filter-dropdown" class="hidden absolute top-full left-0 mt-1 w-24 bg-white border border-gray-200 shadow-xl z-50">
                         <div class="p-2 grid gap-1">
                             <button class="filter-btn text-left px-2 py-1 text-xs font-bold uppercase hover:bg-gray-100 w-full" data-filter="S" data-filter-type="size">Small</button>
                             <button class="filter-btn text-left px-2 py-1 text-xs font-bold uppercase hover:bg-gray-100 w-full" data-filter="M" data-filter-type="size">Medium</button>
@@ -733,6 +733,21 @@
       window.DemoTrigger = function() {};
       window.safeTrigger = function() {};
 
+      // Color/Size filter dropdown toggle (click-based, replaces CSS hover-only)
+      window.toggleFilterDropdown = function(dropdownId, event) {
+        if (event) event.stopPropagation();
+        var dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        // Close all other filter dropdowns before toggling
+        ['color-filter-dropdown', 'size-filter-dropdown'].forEach(function(id) {
+          if (id !== dropdownId) {
+            var d = document.getElementById(id);
+            if (d) d.classList.add('hidden');
+          }
+        });
+        dropdown.classList.toggle('hidden');
+      };
+
       // ============================================================
       // Product Catalog (inlined from src/store/products.ts)
       // ============================================================
@@ -786,9 +801,15 @@
             const noun = NOUNS[cat][Math.floor(Math.random()*NOUNS[cat].length)];
             const suffix = SUFFIXES[Math.floor(Math.random()*SUFFIXES.length)];
             const name = adj + " " + noun + " " + suffix;
-            const id = cat+"-"+adj.toLowerCase()+"-"+noun.toLowerCase()+"-"+(n++);
+            const id = cat + "-" + (n++); // deterministic — must not use random words or wishlist IDs break on reload
             const reviews = Array.from({length: Math.floor(Math.random()*5)+5}, (_,r) => genReview(id,r));
-            products.push({ id, name, category: cat, price: Math.floor(Math.random()*450)+30, image: imgs[i%imgs.length], specs: ["Premium Material","Sustainable","New Season"], reviews, description: genDesc(name), stock: 50, colors: [COLORS[Math.floor(Math.random()*COLORS.length)], COLORS[Math.floor(Math.random()*COLORS.length)]], sizes: SIZES[cat] || ["One Size"] });
+            // Deterministic price derived from the counter so cart/wishlist prices stay
+            // consistent across page reloads (random price would cause mismatches).
+            const PRICE_SEEDS = [49,79,99,119,139,159,179,199,229,249,279,299,349,399,449];
+            const price = PRICE_SEEDS[n % PRICE_SEEDS.length];
+            const COLOR_PAIRS = [["Black","White"],["Navy","Beige"],["Red","Black"],["Green","Brown"],["Gold","Silver"],["Blue","White"]];
+            const colorPair = COLOR_PAIRS[n % COLOR_PAIRS.length];
+            products.push({ id, name, category: cat, price, image: imgs[i%imgs.length], specs: ["Premium Material","Sustainable","New Season"], reviews, description: genDesc(name), stock: 50, colors: colorPair, sizes: SIZES[cat] || ["One Size"] });
           }
         });
         return products;
@@ -1650,6 +1671,23 @@
         userDropdown.classList.toggle("hidden");
       });
 
+      // Close filter dropdowns on outside click
+      document.addEventListener("click", (e) => {
+        const target = e.target;
+        if (!target.closest('#color-filter-btn') && !target.closest('#color-filter-dropdown')) {
+          const d = document.getElementById('color-filter-dropdown');
+          if (d) d.classList.add('hidden');
+        }
+        if (!target.closest('#size-filter-btn') && !target.closest('#size-filter-dropdown')) {
+          const d = document.getElementById('size-filter-dropdown');
+          if (d) d.classList.add('hidden');
+        }
+        // Also close user dropdown on outside click
+        if (!target.closest('#user-menu-btn') && !target.closest('#user-dropdown')) {
+          if (userDropdown) userDropdown.classList.add('hidden');
+        }
+      });
+
       // --- USER ACCOUNT LOGIC ---
       let currentUser = JSON.parse(localStorage.getItem('user')) || null;
 
@@ -1732,27 +1770,38 @@
         }
         const wishlistState = window.wishlistState;
 
-        // Get valid items
+        // Get valid items — only IDs that exist in ALL_PRODUCTS
         const activeIds = Array.from(wishlistState.entries())
           .filter(([id, active]) => active)
           .map(([id]) => id);
 
-        countHeader.innerText = activeIds.length;
-
-        if (activeIds.length === 0) {
-          listContainer.innerHTML = `<div class="p-8 text-center text-gray-500 text-xs italic flex flex-col items-center gap-2"><span class="text-xl opacity-20">♥</span>Your wishlist is empty.</div>`;
-          return;
-        }
-
-        // Map IDs to Products
+        // Map IDs to Products (filters out stale IDs from previous sessions)
         const items = activeIds
           .map((id) => ALL_PRODUCTS.find((p) => p.id === id))
           .filter(Boolean);
 
+        // Prune stale IDs from wishlistState + localStorage so tracker reads the clean count
+        const validIds = new Set(items.map((p) => p.id));
+        let pruned = false;
+        activeIds.forEach((id) => {
+          if (!validIds.has(id)) { wishlistState.set(id, false); pruned = true; }
+        });
+        if (pruned) {
+          localStorage.setItem('wishlist', JSON.stringify(Array.from(wishlistState.entries())));
+        }
+
+        // Count reflects only renderable products, not raw state entries
+        countHeader.innerText = items.length;
+
+        if (items.length === 0) {
+          listContainer.innerHTML = `<div class="p-8 text-center text-gray-500 text-xs italic flex flex-col items-center gap-2"><span class="text-xl opacity-20">♥</span>Your wishlist is empty.</div>`;
+          return;
+        }
+
         listContainer.innerHTML = items
           .map(
             (p) => `
-                <div class="flex gap-3 p-2 hover:bg-white/5 rounded cursor-pointer transition border border-transparent hover:border-white/10 group" onclick="openModalById('${p.id}')">
+                <div class="flex gap-3 p-2 hover:bg-white/5 rounded cursor-pointer transition border border-transparent hover:border-white/10 group items-center" onclick="openModalById('${p.id}')">
                     <div class="w-10 h-10 bg-black/20 rounded overflow-hidden flex-shrink-0">
                         <img src="${p.image}" class="w-full h-full object-cover">
                     </div>
@@ -1760,6 +1809,7 @@
                         <div class="font-bold text-xs text-white truncate font-serif group-hover:text-amber-400 transition">${p.name}</div>
                         <div class="text-[10px] text-gray-400">$${p.price.toFixed(2)}</div>
                     </div>
+                    <button onclick="event.stopPropagation(); removeFromWishlist('${p.id}')" class="text-gray-500 hover:text-red-400 transition text-xs px-1 flex-shrink-0" title="Remove from wishlist">✕</button>
                 </div>
             `,
           )
@@ -1770,6 +1820,14 @@
       window.openModalById = (id) => {
         const product = ALL_PRODUCTS.find((p) => p.id === id);
         if (product) openModal(product);
+      };
+
+      // Remove a product from wishlist (called from wishlist dropdown ✕ button)
+      window.removeFromWishlist = (id) => {
+        if (!window.wishlistState) return;
+        window.wishlistState.set(id, false);
+        localStorage.setItem('wishlist', JSON.stringify(Array.from(window.wishlistState.entries())));
+        renderWishlist();
       };
 
       const wishlistBtn = document.getElementById("wishlist-btn");
@@ -1811,6 +1869,10 @@
           }
         }
       });
+
+      // On page load: prune stale wishlist IDs immediately so localStorage is clean
+      // before the tracker's first wishlist_view event reads it.
+      renderWishlist();
 
       // Filter Click
       // Filter Logic (Multi-faceted)
@@ -1859,6 +1921,12 @@
           document.getElementById("grid-title").innerText = "Filtered Results";
 
           applyFilters();
+
+          // Close color/size filter dropdowns after selection
+          ['color-filter-dropdown', 'size-filter-dropdown'].forEach(function(id) {
+            var d = document.getElementById(id);
+            if (d) d.classList.add('hidden');
+          });
 
           // Notify Analyst
           if (window.DemoTrigger) {

@@ -20,6 +20,8 @@ export class BehaviorCollector {
   private scrollMilestones = new Set<number>();
   private lastProductModalId: string | null = null;
   private productModalOpenedAt: number = 0;
+  private sizeGuideOpenedAt: number = 0;
+  private _sizeGuideCloseFired = false;
   private sequenceNumber = 0;
 
   constructor(bridge: FISMBridge, _sessionId: string, _userId: string | null) {
@@ -30,6 +32,7 @@ export class BehaviorCollector {
     this.emitPageView();
     this.trackProductViews();
     this.trackClicks();
+    this.trackSort();
     this.trackScrollDepth();
     this.trackRageClicks();
     this.trackHoverIntent();
@@ -91,11 +94,12 @@ export class BehaviorCollector {
     // 2. Inside the product detail modal (#product-modal)
     const modal = el.closest("#product-modal") || document.getElementById("product-modal");
     if (modal && !modal.classList.contains("hidden")) {
-      const name = modal.querySelector("h2")?.textContent?.trim()
-        || modal.querySelector("[class*='product-title']")?.textContent?.trim();
-      const price = modal.querySelector("[data-analyze='price'], .price-tag")?.textContent?.trim()
-        || modal.querySelector("span.font-bold")?.textContent?.trim();
-      const category = modal.querySelector("[class*='text-amber']")?.textContent?.trim();
+      // Use specific IDs — avoids mis-matching category span as price (both are span.font-bold)
+      const name = (modal.querySelector("#modal-title") as HTMLElement)?.textContent?.trim()
+        || modal.querySelector("h2")?.textContent?.trim();
+      const price = (modal.querySelector("#modal-price") as HTMLElement)?.textContent?.trim()
+        || modal.querySelector("[data-analyze='price'], .price-tag")?.textContent?.trim();
+      const category = (modal.querySelector("#modal-category") as HTMLElement)?.textContent?.trim();
       return {
         product_name: name || null,
         product_price: price || null,
@@ -172,19 +176,112 @@ export class BehaviorCollector {
   // ── Click Tracking (rich context) ────────────────────────────
 
   private trackClicks(): void {
+    // Capture-phase listener: runs before store onclick handlers.
+    // Used for: (1) events where the store's handler mutates DOM before bubbling,
+    //           (2) filter buttons whose handler calls stopPropagation().
     document.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
 
-      // --- Add to Cart (main button in modal) ---
-      const atcButton = target.closest("[data-action='add-to-cart'], .add-to-cart") as HTMLElement | null;
+      // --- Size guide close (popup removed from DOM before bubble fires) ---
+      const sizeGuidePopup = document.getElementById("size-guide-popup");
+      if (sizeGuidePopup && target.closest("#size-guide-popup button")) {
+        const viewDuration = this.sizeGuideOpenedAt
+          ? Date.now() - this.sizeGuideOpenedAt
+          : 0;
+        this.send("product", "size_guide_close", {
+          view_duration_ms: viewDuration,
+          view_duration_s: Math.round(viewDuration / 1000),
+        });
+        this.sizeGuideOpenedAt = 0;
+        this._sizeGuideCloseFired = true; // suppress bubble-phase generic fallback
+      }
+
+      // --- Wishlist top-nav button (calls stopPropagation — must be in capture phase) ---
+      // Only emit when the dropdown is currently hidden (i.e., user is opening it).
+      // When collapsing, the dropdown is already visible — skip tracking in that case.
+      if (target.closest("#wishlist-btn")) {
+        const dropdown = document.getElementById("wishlist-dropdown");
+        const isOpening = dropdown?.classList.contains("hidden") ?? true;
+        if (isOpening) {
+          let count = 0;
+          try {
+            const wState = (window as any).wishlistState as Map<string, boolean> | undefined;
+            if (wState) {
+              count = Array.from(wState.values()).filter(Boolean).length;
+            } else {
+              const saved = localStorage.getItem("wishlist");
+              if (saved) {
+                const entries = JSON.parse(saved) as Array<[string, boolean]>;
+                count = entries.filter(([, active]) => active).length;
+              }
+            }
+          } catch { /* ignore parse errors */ }
+          this.send("engagement", "wishlist_view", { item_count: count });
+        }
+      }
+
+      // --- Wishlist dropdown remove (✕) button (calls stopPropagation — capture runs before it) ---
+      const wishlistRemoveBtn = target.closest(
+        "#wishlist-items button[title='Remove from wishlist']",
+      ) as HTMLElement | null;
+      if (wishlistRemoveBtn) {
+        const row = wishlistRemoveBtn.closest("div.flex") as HTMLElement | null;
+        const name = (row?.querySelector(".font-bold") as HTMLElement)?.textContent?.trim() || null;
+        const price = (row?.querySelector(".text-gray-400") as HTMLElement)?.textContent?.trim() || null;
+        this.send("product", "wishlist_remove", {
+          product_name: name,
+          product_price: price,
+          source: "wishlist_dropdown",
+        });
+      }
+
+      // --- Filter buttons (store's handler calls stopPropagation — capture runs before it) ---
+      const filterBtn = target.closest(".filter-btn") as HTMLElement | null;
+      if (filterBtn) {
+        const filterType = filterBtn.dataset.filterType || (filterBtn.dataset.filter === "sale" ? "sale" : "price");
+        const filterVal = filterBtn.dataset.filter;
+        const filterLabel = filterBtn.textContent?.trim();
+        if (filterVal) {
+          this.send("navigation", "filter_applied", {
+            filter_type: filterType,
+            filter_value: filterVal,
+            filter_label: filterLabel,
+          });
+        }
+      }
+    }, { capture: true });
+
+    // Bubble-phase listener: main click handler.
+    document.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+
+      // --- Suppress bubble if capture-phase already handled this event ---
+      if (this._sizeGuideCloseFired) {
+        this._sizeGuideCloseFired = false;
+        return;
+      }
+
+      // --- Color/Size filter toggle buttons (just open/close dropdown — not meaningful to track) ---
+      if (target.closest("#color-filter-btn") || target.closest("#size-filter-btn")) {
+        return;
+      }
+
+      // --- Add to Cart (by ID covers modal button whose text changes to "Added to Bag") ---
+      const atcButton = (
+        target.closest("[data-action='add-to-cart'], .add-to-cart") ||
+        target.closest("#modal-add-cart")
+      ) as HTMLElement | null;
       const isAtcByText = !atcButton && (
         target.closest("button")?.textContent?.toLowerCase().includes("add to cart")
       );
       if (atcButton || isAtcByText) {
         const product = this.extractProductContext(target);
+        const qtyEl = document.getElementById("modal-qty");
+        const qty = parseInt(qtyEl?.textContent?.trim() || "1");
         this.send("cart", "add_to_cart", {
           ...product,
-          button_text: (atcButton || target.closest("button"))?.textContent?.trim().slice(0, 50),
+          quantity: qty,
+          button_text: "Add to Cart",
         });
         return;
       }
@@ -206,6 +303,22 @@ export class BehaviorCollector {
       const productTrigger = target.closest(".product-trigger") as HTMLElement | null;
       if (productTrigger) {
         return; // let product_detail_view handle it
+      }
+
+      // --- Cart button in nav bar (check before nav_click — cart button has data-nav="internal") ---
+      const cartCountEl = document.getElementById("cart-count");
+      if (cartCountEl) {
+        const cartBtn = cartCountEl.closest("button, a");
+        if (cartBtn && (cartBtn === target || cartBtn.contains(target))) {
+          const count = cartCountEl.textContent?.trim() || "0";
+          const totalEl = document.getElementById("cart-total");
+          const total = totalEl?.textContent?.trim() || "$0.00";
+          this.send("cart", "cart_view", {
+            cart_count: count,
+            cart_total: total,
+          });
+          return;
+        }
       }
 
       // --- Category navigation ---
@@ -248,13 +361,51 @@ export class BehaviorCollector {
         return;
       }
 
-      // --- Quantity change (+/-) ---
-      if (target.tagName === "BUTTON" && (target.textContent === "+" || target.textContent === "-")) {
+      // --- Description Read More / Show Less toggle ---
+      // Store's onclick changes text before bubbling, so we read the *new* desc class
+      // state: if desc now has line-clamp-4 it was just collapsed; if not, just expanded.
+      if (target.id === "modal-read-more" || target.closest("#modal-read-more")) {
+        const desc = document.getElementById("modal-desc");
+        const justExpanded = !desc?.classList.contains("line-clamp-4");
         const product = this.extractProductContext(target);
-        const qtyEl = target.parentElement?.querySelector("span");
+        this.send("product", "description_toggle", {
+          action: justExpanded ? "expanded" : "collapsed",
+          ...product,
+        });
+        return;
+      }
+
+      // --- Wishlist button (SVG-only button, falls through generic without specific check) ---
+      if (target.closest("#modal-wishlist-btn")) {
+        const product = this.extractProductContext(target);
+        const wishlistBtn = document.getElementById("modal-wishlist-btn");
+        // After store onclick runs, bg-amber-500/10 class indicates wishlisted state
+        const justAdded = wishlistBtn?.classList.contains("bg-amber-500/10") ?? false;
+        this.send("product", justAdded ? "wishlist_add" : "wishlist_remove", {
+          ...product,
+        });
+        return;
+      }
+
+      // --- Size guide open ---
+      if (target.closest("#btn-size-guide")) {
+        this.sizeGuideOpenedAt = Date.now();
+        const product = this.extractProductContext(target);
+        this.send("product", "size_guide_open", { ...product });
+        return;
+      }
+
+      // --- Quantity change (+/-) ---
+      // Use trim() because button HTML has surrounding whitespace.
+      // Read #modal-qty AFTER store's updateModalQty updates the span.
+      const btnText = target.textContent?.trim();
+      if (target.tagName === "BUTTON" && (btnText === "+" || btnText === "-")) {
+        const product = this.extractProductContext(target);
+        const qtyEl = document.getElementById("modal-qty");
+        const newQty = parseInt(qtyEl?.textContent?.trim() || "1");
         this.send("cart", "quantity_change", {
-          direction: target.textContent === "+" ? "increase" : "decrease",
-          current_qty: qtyEl?.textContent?.trim() || "unknown",
+          direction: btnText === "+" ? "increase" : "decrease",
+          current_qty: newQty,
           ...product,
         });
         return;
@@ -272,15 +423,6 @@ export class BehaviorCollector {
           });
           return;
         }
-      }
-
-      // --- Sort/Filter ---
-      const sortEl = target.closest("[data-sort], select") as HTMLSelectElement | null;
-      if (sortEl && sortEl.tagName === "SELECT") {
-        this.send("navigation", "sort_change", {
-          sort_value: sortEl.value || sortEl.textContent?.trim(),
-        });
-        return;
       }
 
       // --- Cart icon ---
@@ -327,9 +469,25 @@ export class BehaviorCollector {
     });
   }
 
+  // ── Sort ─────────────────────────────────────────────────────
+
+  private trackSort(): void {
+    const sortSelect = document.getElementById("sort-select") as HTMLSelectElement | null;
+    if (!sortSelect) return;
+    sortSelect.addEventListener("change", () => {
+      const selectedOption = sortSelect.options[sortSelect.selectedIndex];
+      this.send("navigation", "sort_change", {
+        sort_value: sortSelect.value,
+        sort_name: selectedOption?.text || sortSelect.value,
+      });
+    });
+  }
+
   // ── Scroll Depth ─────────────────────────────────────────────
 
   private trackScrollDepth(): void {
+    if (this.detectPageType() === "checkout") return;
+
     const handler = () => {
       const docHeight = Math.max(
         document.body.scrollHeight,
@@ -339,16 +497,17 @@ export class BehaviorCollector {
       const depth = Math.round((scrolled / docHeight) * 100);
       this.scrollDepth = Math.max(this.scrollDepth, depth);
 
-      for (const m of [25, 50, 75]) {
+      for (const m of [25, 50, 75, 100]) {
         if (depth >= m && !this.scrollMilestones.has(m)) {
           this.scrollMilestones.add(m);
           this.send("navigation", "scroll_depth", { depth_pct: m });
         }
       }
 
-      if (depth >= 95) {
+      if (depth >= 95 && !this.scrollMilestones.has(95)) {
         const clicks = parseInt(sessionStorage.getItem("sa_click_count") || "0");
         if (clicks === 0) {
+          this.scrollMilestones.add(95);
           this.send("navigation", "scroll_without_click", { scroll_depth: depth, click_count: 0 }, "F015");
         }
       }
@@ -397,10 +556,12 @@ export class BehaviorCollector {
 
     document.addEventListener("mouseover", (e) => {
       const target = e.target as HTMLElement;
+      // Use exact match on direct button text (not .includes) to avoid
+      // parent containers whose aggregated textContent contains "add to cart".
       const isATC =
         target.closest("[data-action='add-to-cart']")
         || target.closest(".add-to-cart")
-        || target.textContent?.toLowerCase().includes("add to cart");
+        || (target.tagName === "BUTTON" && target.textContent?.trim().toLowerCase() === "add to cart");
 
       if (isATC) {
         hoverTimer = window.setTimeout(() => {

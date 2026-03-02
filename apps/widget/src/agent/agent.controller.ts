@@ -141,30 +141,17 @@ export class AgentController {
   }
 
   private acknowledgeIntervention(payload: InterventionPayload, status: string): void {
-    this.bridge.send("intervention_outcome", {
-      intervention_id: payload.intervention_id,
-      status,
-      timestamp: Date.now(),
-    });
+    this.bridge.sendOutcome(payload.intervention_id, status);
   }
 
   /** Called by widget when user dismisses an intervention */
   handleDismiss(interventionId: string): void {
-    this.bridge.send("intervention_outcome", {
-      intervention_id: interventionId,
-      status: "dismissed",
-      timestamp: Date.now(),
-    });
+    this.bridge.sendOutcome(interventionId, "dismissed");
   }
 
   /** Called by widget when user converts from an intervention */
   handleConvert(interventionId: string, action: string): void {
-    this.bridge.send("intervention_outcome", {
-      intervention_id: interventionId,
-      status: "converted",
-      conversion_action: action,
-      timestamp: Date.now(),
-    });
+    this.bridge.sendOutcome(interventionId, "converted", action);
   }
 
   destroy(): void {
