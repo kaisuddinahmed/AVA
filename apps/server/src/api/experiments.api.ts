@@ -54,7 +54,7 @@ export async function create(req: Request, res: Response) {
  */
 export async function get(req: Request, res: Response) {
   try {
-    const experiment = await getExperiment(req.params.id);
+    const experiment = await getExperiment(String(req.params.id));
     if (!experiment) {
       return res.status(404).json({ error: "Experiment not found" });
     }
@@ -70,7 +70,7 @@ export async function get(req: Request, res: Response) {
  */
 export async function start(req: Request, res: Response) {
   try {
-    const experiment = await startExperiment(req.params.id);
+    const experiment = await startExperiment(String(req.params.id));
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -84,7 +84,7 @@ export async function start(req: Request, res: Response) {
  */
 export async function pause(req: Request, res: Response) {
   try {
-    const experiment = await pauseExperiment(req.params.id);
+    const experiment = await pauseExperiment(String(req.params.id));
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -98,7 +98,7 @@ export async function pause(req: Request, res: Response) {
  */
 export async function end(req: Request, res: Response) {
   try {
-    const experiment = await endExperiment(req.params.id);
+    const experiment = await endExperiment(String(req.params.id));
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -112,7 +112,7 @@ export async function end(req: Request, res: Response) {
  */
 export async function results(req: Request, res: Response) {
   try {
-    const result = await getResults(req.params.id);
+    const result = await getResults(String(req.params.id));
     res.json(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

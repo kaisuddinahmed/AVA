@@ -1,8 +1,7 @@
-import { EvaluationRepo, SessionRepo } from "@ava/db";
+import { EvaluationRepo, InterventionRepo, SessionRepo } from "@ava/db";
 import { buildContext } from "./context-builder.js";
 import { evaluateWithLLM } from "./analyst.js";
 import { runMSWIM, type SessionContext } from "./mswim/mswim.engine.js";
-import type { InterventionRepo } from "@ava/db";
 import { ScoreTier } from "@ava/shared";
 import { config } from "../config.js";
 import { runShadowEvaluation } from "./shadow-evaluator.js";
@@ -27,6 +26,21 @@ export interface EvaluationResult {
 }
 
 // ── Tier helpers ──────────────────────────────────────────────────────────────
+
+function mapTierToDefaultAction(tier: string): string {
+  switch (tier) {
+    case "PASSIVE":
+      return "passive_info_adjust";
+    case "NUDGE":
+      return "nudge_suggestion";
+    case "ACTIVE":
+      return "active_comparison";
+    case "ESCALATE":
+      return "escalate_full_assist";
+    default:
+      return "none";
+  }
+}
 
 const TIER_LABELS: Record<ScoreTier, string> = {
   [ScoreTier.MONITOR]: "MONITOR",
@@ -153,7 +167,7 @@ async function evaluateFast(
     narrative,
     signals: mswimResult.signals,
     reasoning,
-    recommendedAction: "monitor",
+    recommendedAction: mapTierToDefaultAction(tierLabel),
     engine: "fast",
     gateOverride: mswimResult.gate_override?.toString() ?? null,
   };
@@ -216,7 +230,7 @@ async function evaluateAuto(
     narrative,
     signals: mswimResult.signals,
     reasoning,
-    recommendedAction: "monitor",
+    recommendedAction: mapTierToDefaultAction(tierLabel),
     engine: "fast",
     gateOverride: mswimResult.gate_override?.toString() ?? null,
   };
@@ -243,7 +257,10 @@ async function evaluateLLM(
   console.log(`[Evaluate:llm] LLM response received — tier signals: I=${llmOutput.signals.intent} F=${llmOutput.signals.friction}`);
 
   // 3. Build session context for MSWIM
-  const session = await SessionRepo.getSession(sessionId);
+  const [session, history] = await Promise.all([
+    SessionRepo.getSession(sessionId),
+    loadInterventionHistory(sessionId),
+  ]);
   if (!session) return null;
 
   const sessionAgeSec = Math.floor(
@@ -265,16 +282,16 @@ async function evaluateLLM(
     ruleBasedCorroboration: llmOutput.detected_frictions.length > 0,
     totalInterventionsFired: session.totalInterventionsFired,
     totalDismissals: session.totalDismissals,
-    totalNudges: 0,
-    totalActive: 0,
-    totalNonPassive: session.totalInterventionsFired,
-    secondsSinceLastIntervention: null,
-    secondsSinceLastActive: null,
-    secondsSinceLastNudge: null,
-    secondsSinceLastDismissal: null,
-    frictionIdsAlreadyIntervened: [],
-    widgetOpenedVoluntarily: false,
-    idleSeconds: 0,
+    totalNudges: history.totalNudges,
+    totalActive: history.totalActive,
+    totalNonPassive: history.totalNudges + history.totalActive,
+    secondsSinceLastIntervention: history.secondsSinceLastIntervention,
+    secondsSinceLastActive: history.secondsSinceLastActive,
+    secondsSinceLastNudge: history.secondsSinceLastNudge,
+    secondsSinceLastDismissal: history.secondsSinceLastDismissal,
+    frictionIdsAlreadyIntervened: history.frictionIdsAlreadyIntervened,
+    widgetOpenedVoluntarily: false, // TODO: surface from widget open events
+    idleSeconds: 0, // TODO: surface from idle_time events
     hasTechnicalError: llmOutput.detected_frictions.some(
       (id) => id >= "F161" && id <= "F177"
     ),
@@ -377,6 +394,48 @@ async function evaluateLLM(
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
+interface InterventionHistory {
+  totalNudges: number;
+  totalActive: number;
+  secondsSinceLastIntervention: number | null;
+  secondsSinceLastActive: number | null;
+  secondsSinceLastNudge: number | null;
+  secondsSinceLastDismissal: number | null;
+  frictionIdsAlreadyIntervened: string[];
+}
+
+async function loadInterventionHistory(sessionId: string): Promise<InterventionHistory> {
+  const all = await InterventionRepo.getInterventionsBySession(sessionId);
+  const now = Date.now();
+
+  const totalNudges = all.filter((i) => i.type === "nudge").length;
+  const totalActive = all.filter(
+    (i) => i.type === "active" || i.type === "escalate"
+  ).length;
+
+  const lastAny = all[0]; // already desc by timestamp
+  const lastActive = all.find((i) => i.type === "active" || i.type === "escalate");
+  const lastNudge = all.find((i) => i.type === "nudge");
+  const lastDismissed = all.find((i) => i.status === "dismissed");
+
+  const secsSince = (i: { timestamp: Date } | undefined): number | null =>
+    i ? Math.floor((now - i.timestamp.getTime()) / 1000) : null;
+
+  const frictionIdsAlreadyIntervened = [
+    ...new Set(all.map((i) => i.frictionId).filter((id): id is string => !!id)),
+  ];
+
+  return {
+    totalNudges,
+    totalActive,
+    secondsSinceLastIntervention: secsSince(lastAny),
+    secondsSinceLastActive: secsSince(lastActive),
+    secondsSinceLastNudge: secsSince(lastNudge),
+    secondsSinceLastDismissal: secsSince(lastDismissed),
+    frictionIdsAlreadyIntervened,
+  };
+}
+
 import type { EvaluationContext } from "./context-builder.js";
 
 /**
@@ -391,13 +450,16 @@ async function buildSessionAndFrictions(
   frictionIds: string[];
   context: EvaluationContext | null;
 }> {
-  const context = await buildContext(sessionId, eventIds);
+  const [context, session, history] = await Promise.all([
+    buildContext(sessionId, eventIds),
+    SessionRepo.getSession(sessionId),
+    loadInterventionHistory(sessionId),
+  ]);
+
   if (!context) {
     console.error(`[Evaluate] Session ${sessionId} not found`);
     return { sessionCtx: null, frictionIds: [], context: null };
   }
-
-  const session = await SessionRepo.getSession(sessionId);
   if (!session) return { sessionCtx: null, frictionIds: [], context: null };
 
   // Extract friction IDs from events (client-reported)
@@ -428,16 +490,16 @@ async function buildSessionAndFrictions(
     ruleBasedCorroboration: frictionIds.length > 0,
     totalInterventionsFired: session.totalInterventionsFired,
     totalDismissals: session.totalDismissals,
-    totalNudges: 0,
-    totalActive: 0,
-    totalNonPassive: session.totalInterventionsFired,
-    secondsSinceLastIntervention: null,
-    secondsSinceLastActive: null,
-    secondsSinceLastNudge: null,
-    secondsSinceLastDismissal: null,
-    frictionIdsAlreadyIntervened: [],
-    widgetOpenedVoluntarily: false,
-    idleSeconds: 0,
+    totalNudges: history.totalNudges,
+    totalActive: history.totalActive,
+    totalNonPassive: history.totalNudges + history.totalActive,
+    secondsSinceLastIntervention: history.secondsSinceLastIntervention,
+    secondsSinceLastActive: history.secondsSinceLastActive,
+    secondsSinceLastNudge: history.secondsSinceLastNudge,
+    secondsSinceLastDismissal: history.secondsSinceLastDismissal,
+    frictionIdsAlreadyIntervened: history.frictionIdsAlreadyIntervened,
+    widgetOpenedVoluntarily: false, // TODO: surface from widget open events
+    idleSeconds: 0, // TODO: surface from idle_time events
     hasTechnicalError: frictionIds.some(
       (id) => id >= "F161" && id <= "F177"
     ),

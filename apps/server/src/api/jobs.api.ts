@@ -39,7 +39,7 @@ export async function listJobRuns(req: Request, res: Response) {
  */
 export async function getJobRun(req: Request, res: Response) {
   try {
-    const run = await JobRunRepo.getJobRun(req.params.id);
+    const run = await JobRunRepo.getJobRun(String(req.params.id));
     if (!run) {
       return res.status(404).json({ error: "Job run not found" });
     }

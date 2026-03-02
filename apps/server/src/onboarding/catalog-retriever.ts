@@ -1,6 +1,6 @@
-import { access, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import {
+  BEHAVIOR_PATTERN_CATALOG,
+  type BehaviorPattern,
   FRICTION_CATALOG,
   type FrictionScenario,
   SEVERITY_SCORES,
@@ -9,11 +9,7 @@ import {
 export const BEHAVIOR_TARGET_COUNT = 614;
 export const FRICTION_TARGET_COUNT = 325;
 
-export interface BehaviorCatalogItem {
-  id: string; // B001..B614
-  order: number;
-  category: string;
-  description: string;
+export interface BehaviorCatalogItem extends BehaviorPattern {
   keywords: string[];
 }
 
@@ -48,42 +44,18 @@ const STOPWORDS = new Set([
 let behaviorCache: BehaviorCatalogItem[] | null = null;
 let frictionCache: FrictionCatalogItem[] | null = null;
 
-export async function getBehaviorCatalog(): Promise<BehaviorCatalogItem[]> {
+export function getBehaviorCatalog(): BehaviorCatalogItem[] {
   if (behaviorCache) return behaviorCache;
 
-  const filePath = await resolveBehaviorDocPath();
-  const markdown = await readFile(filePath, "utf8");
-  const lines = markdown.split(/\r?\n/);
+  const patterns: BehaviorCatalogItem[] = Array.from(
+    BEHAVIOR_PATTERN_CATALOG.values()
+  )
+    .map((item) => ({
+      ...item,
+      keywords: extractKeywords(`${item.category} ${item.description}`),
+    }))
+    .sort((a, b) => a.order - b.order);
 
-  let activeCategory = "general";
-  const patterns: BehaviorCatalogItem[] = [];
-
-  for (const line of lines) {
-    const heading = line.match(/^##\s+\d+\.\s+(.+)$/);
-    if (heading) {
-      activeCategory = normalizeCategory(heading[1]);
-      continue;
-    }
-
-    const item = line.match(/^(\d+)\.\s+(.+)$/);
-    if (!item) continue;
-
-    const order = Number(item[1]);
-    if (!Number.isFinite(order) || order <= 0) continue;
-
-    const description = item[2].trim();
-    const id = `B${String(order).padStart(3, "0")}`;
-
-    patterns.push({
-      id,
-      order,
-      category: activeCategory,
-      description,
-      keywords: extractKeywords(`${activeCategory} ${description}`),
-    });
-  }
-
-  patterns.sort((a, b) => a.order - b.order);
   behaviorCache = patterns;
   return patterns;
 }
@@ -105,13 +77,6 @@ export function getFrictionCatalog(): FrictionCatalogItem[] {
   return catalog;
 }
 
-function normalizeCategory(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
 function extractKeywords(text: string): string[] {
   const tokens = text
     .toLowerCase()
@@ -123,24 +88,3 @@ function extractKeywords(text: string): string[] {
 
   return Array.from(new Set(tokens));
 }
-
-async function resolveBehaviorDocPath(): Promise<string> {
-  const candidates = [
-    resolve(process.cwd(), "docs", "shopper_behavior_patterns.md"),
-    resolve(process.cwd(), "..", "docs", "shopper_behavior_patterns.md"),
-    resolve(process.cwd(), "..", "..", "docs", "shopper_behavior_patterns.md"),
-    resolve(process.cwd(), "..", "..", "..", "docs", "shopper_behavior_patterns.md"),
-  ];
-
-  for (const path of candidates) {
-    try {
-      await access(path);
-      return path;
-    } catch {
-      // Try next path.
-    }
-  }
-
-  throw new Error("Could not locate docs/shopper_behavior_patterns.md");
-}
-

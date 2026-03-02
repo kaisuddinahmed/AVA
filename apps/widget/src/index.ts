@@ -49,6 +49,10 @@ function init(config: Partial<WidgetConfig>) {
   widget.onIgnored = (id: string) => {
     bridge.sendOutcome(id, "ignored");
   };
+  // Micro-outcomes: route as user_action so the server can feed them into training data
+  widget.onMicroOutcome = (id: string, outcome: string) => {
+    bridge.send("user_action", { action: "micro_outcome", outcome, intervention_id: id });
+  };
   widget.onUserMessage = (text: string) => {
     bridge.send("user_message", { text });
   };

@@ -55,7 +55,7 @@ export async function create(req: Request, res: Response) {
  */
 export async function get(req: Request, res: Response) {
   try {
-    const rollout = await getRollout(req.params.id);
+    const rollout = await getRollout(String(req.params.id));
     if (!rollout) {
       return res.status(404).json({ error: "Rollout not found" });
     }
@@ -64,7 +64,7 @@ export async function get(req: Request, res: Response) {
     let health = null;
     if (rollout.status === "rolling") {
       try {
-        health = await evaluateRolloutHealth(req.params.id);
+        health = await evaluateRolloutHealth(String(req.params.id));
       } catch {
         // Health check may fail if no data yet
       }
@@ -82,7 +82,7 @@ export async function get(req: Request, res: Response) {
  */
 export async function start(req: Request, res: Response) {
   try {
-    const rollout = await startRollout(req.params.id);
+    const rollout = await startRollout(String(req.params.id));
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -96,7 +96,7 @@ export async function start(req: Request, res: Response) {
  */
 export async function promote(req: Request, res: Response) {
   try {
-    const rollout = await promoteStage(req.params.id);
+    const rollout = await promoteStage(String(req.params.id));
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -111,7 +111,7 @@ export async function promote(req: Request, res: Response) {
 export async function rollback(req: Request, res: Response) {
   try {
     const { reason = "Manual rollback" } = req.body as { reason?: string };
-    const rollout = await rollbackRollout(req.params.id, reason);
+    const rollout = await rollbackRollout(String(req.params.id), reason);
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -125,7 +125,7 @@ export async function rollback(req: Request, res: Response) {
  */
 export async function pauseRolloutEndpoint(req: Request, res: Response) {
   try {
-    const rollout = await pauseRollout(req.params.id);
+    const rollout = await pauseRollout(String(req.params.id));
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

@@ -12,6 +12,12 @@ export interface WidgetConfig {
   maxCardsToShow: number;
   animationDuration: number;
   avatarUrl?: string;
+  // CSS custom property overrides for host-site theming
+  cssVars?: {
+    primaryColor?: string;
+    fontFamily?: string;
+    borderRadius?: string;
+  };
 }
 
 export const DEFAULT_CONFIG: WidgetConfig = {
@@ -20,7 +26,7 @@ export const DEFAULT_CONFIG: WidgetConfig = {
   brandColorLight: "#16213E",
   accentColor: "#E94560",
   fontFamily: "'DM Sans', 'Segoe UI', system-ui, sans-serif",
-  websocketUrl: "wss://ava-server.localhost/ws/assistant", // Default, will be overridden
+  websocketUrl: "wss://ava-server.localhost/ws/assistant",
   sessionId: "",
   userId: null,
   zIndex: 99999,
@@ -29,7 +35,6 @@ export const DEFAULT_CONFIG: WidgetConfig = {
   animationDuration: 300,
 };
 
-// Re-export shared types if needed, or define widget-specific ones here
 export interface ProductCard {
   product_id: string;
   title: string;
@@ -58,6 +63,8 @@ export interface InterventionPayload {
   type: "passive" | "nudge" | "active" | "escalate";
   intervention_id: string;
   action_code: string;
+  // friction_id that triggered this intervention (e.g. "F068", "F400")
+  friction_id?: string;
   message?: string;
   products?: ProductCard[];
   comparison?: ComparisonCard;
@@ -75,4 +82,16 @@ export interface WidgetMessage {
   timestamp: number;
 }
 
-export type WidgetState = "minimized" | "bubble" | "expanded" | "hidden";
+// --- Widget state machine ---
+// minimized : toggle button only, invisible unless signaling
+// signal    : button has expanded label strip, nudge is live — brief invite
+// expanded  : full decision-cockpit panel is open
+// hidden    : completely removed from view (passive-only mode)
+export type WidgetState = "minimized" | "signal" | "expanded" | "hidden";
+
+// --- Outcome micro-signal types ---
+export type MicroOutcome =
+  | "not_helpful"       // explicit negative feedback on intervention
+  | "more_like_this"    // preference signal on a product card
+  | "soft_dismiss"      // swipe/gesture away = "not now"
+  | "hard_dismiss";     // explicit × = "stop showing these"

@@ -34,7 +34,7 @@ export async function listSessions(req: Request, res: Response) {
 
 export async function getSession(req: Request, res: Response) {
   try {
-    const session = await SessionRepo.getSessionFull(req.params.id);
+    const session = await SessionRepo.getSessionFull(String(req.params.id));
     if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
@@ -48,7 +48,7 @@ export async function getSession(req: Request, res: Response) {
 
 export async function endSession(req: Request, res: Response) {
   try {
-    await SessionRepo.endSession(req.params.id);
+    await SessionRepo.endSession(String(req.params.id));
     res.json({ ok: true });
   } catch (error) {
     console.error("[API] End session error:", error);

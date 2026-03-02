@@ -3,17 +3,56 @@ import type {
   InterventionPayload,
   WidgetMessage,
   WidgetState,
+  MicroOutcome,
 } from "./config.js";
 import { injectGlobalStyles } from "./ui/styles/global-styles.js";
 import { PassiveExecutor } from "./tracker/passive-executor.js";
 import { renderNudgeBubble } from "./ui/components/nudge-bubble.js";
 import { renderProductCard } from "./ui/components/product-card.js";
 import { renderComparisonCard } from "./ui/components/comparison-card.js";
-import { renderTypingIndicator } from "./ui/components/typing-indicator.js";
+import {
+  renderPanel,
+  renderLeadCard,
+  renderLeadSkeleton,
+  renderEmptyState,
+} from "./ui/components/panel.js";
+import {
+  renderToggleButton,
+  updateToggleButton,
+} from "./ui/components/toggle-button.js";
+
+/**
+ * Derive a short contextual label for the toggle button's signal-mode strip.
+ * Friction-specific when available, generic fallback otherwise.
+ */
+function deriveLabelText(payload: InterventionPayload): string {
+  const FRICTION_LABELS: Record<string, string> = {
+    F015: "Tip while you browse \u2192",
+    F023: "Something not working? \u2192",
+    F058: "Help deciding? \u2192",
+    F060: "Found a better price? \u2192",
+    F068: "Before you go \u2192",
+    F069: "Still there? \u2192",
+    F091: "Form help \u2192",
+    F094: "Payment question? \u2192",
+    F400: "Let me help \u2192",
+  };
+  if (payload.friction_id && FRICTION_LABELS[payload.friction_id]) {
+    return FRICTION_LABELS[payload.friction_id];
+  }
+  if (payload.type === "escalate") return "Support available \u2192";
+  return "Quick tip \u2192";
+}
 
 /**
  * AVA Widget — Pure vanilla TypeScript, Shadow DOM isolated.
  * Zero external dependencies.
+ *
+ * State machine:
+ *   minimized \u2192 signal   (nudge received — label strip shown, card visible)
+ *   signal    \u2192 expanded (user clicks toggle or CTA)
+ *   signal    \u2192 minimized (soft/hard dismiss or auto-collapse after 4s)
+ *   expanded  \u2192 minimized (user minimizes)
  */
 export class AVAWidget {
   private shadow: ShadowRoot;
@@ -24,6 +63,7 @@ export class AVAWidget {
   private isTyping = false;
   private hasUnread = false;
   private inputValue = "";
+  private isMobile = false;
 
   // Root containers
   private root!: HTMLDivElement;
@@ -32,90 +72,114 @@ export class AVAWidget {
   private messagesContainer!: HTMLDivElement;
   private inputEl!: HTMLInputElement;
   private toggleBtn!: HTMLButtonElement;
-  private unreadDot: HTMLDivElement | null = null;
 
   // External callbacks (wired by index.ts)
   onDismiss: (id: string) => void = () => {};
   onConvert: (id: string, action: string) => void = () => {};
   onIgnored: (id: string) => void = () => {};
   onUserMessage: (text: string) => void = () => {};
-  onUserAction: (action: string, data?: Record<string, unknown>) => void =
-    () => {};
+  onUserAction: (action: string, data?: Record<string, unknown>) => void = () => {};
+  /** Micro-outcome callback — fine-grained training signal */
+  onMicroOutcome: (id: string, outcome: MicroOutcome) => void = () => {};
 
   private nudgeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private signalCollapseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Track intervention IDs that have already reported a terminal outcome
+  private reportedOutcomes = new Set<string>();
 
   constructor(shadow: ShadowRoot, config: WidgetConfig) {
     this.shadow = shadow;
     this.config = config;
+    this.isMobile = window.matchMedia("(max-width: 640px)").matches;
+    window.matchMedia("(max-width: 640px)").addEventListener("change", (e) => {
+      this.isMobile = e.matches;
+    });
   }
 
   mount(): void {
-    // Inject styles into shadow root
+    this.applyCSSVars();
     injectGlobalStyles(this.shadow);
 
-    // Build DOM structure
     this.root = this.el("div", {
       id: "shopassist-widget",
-      style: `position:fixed;bottom:20px;${this.config.position === "bottom-right" ? "right" : "left"}:20px;z-index:${this.config.zIndex};font-family:${this.config.fontFamily};`,
+      style: this.isMobile
+        ? `font-family:${this.config.fontFamily};`
+        : `position:fixed;bottom:20px;${this.config.position === "bottom-right" ? "right" : "left"}:20px;z-index:${this.config.zIndex};font-family:${this.config.fontFamily};`,
     });
 
-    // Nudge container
     this.nudgeContainer = this.el("div", { id: "ava-nudge" });
     this.root.appendChild(this.nudgeContainer);
 
-    // Expanded panel container
-    this.panelContainer = this.el("div", { id: "ava-panel" });
+    this.panelContainer = this.el("div", { id: "ava-panel-wrap" });
     this.panelContainer.style.display = "none";
     this.root.appendChild(this.panelContainer);
 
-    // Toggle button
-    this.toggleBtn = this.buildToggleButton();
-    this.root.appendChild(this.toggleBtn);
+    if (!this.isMobile) {
+      this.toggleBtn = renderToggleButton({
+        config: this.config,
+        onClick: () => this.handleToggleClick(),
+      });
+      this.root.appendChild(this.toggleBtn);
+    } else {
+      // Mobile FAB outside shadow DOM for fixed positioning
+      this.toggleBtn = document.createElement("button");
+      this.toggleBtn.setAttribute(
+        "style",
+        `position:fixed;bottom:20px;right:20px;width:52px;height:52px;
+         border-radius:50%;background:linear-gradient(135deg,${this.config.brandColor},${this.config.brandColorLight});
+         color:#fff;border:none;cursor:pointer;
+         display:flex;align-items:center;justify-content:center;font-size:22px;
+         box-shadow:0 4px 20px rgba(0,0,0,0.2);z-index:${this.config.zIndex};`,
+      );
+      this.toggleBtn.textContent = "\uD83D\uDECD\uFE0F";
+      this.toggleBtn.addEventListener("click", () => this.handleToggleClick());
+      document.body.appendChild(this.toggleBtn);
+    }
 
     this.shadow.appendChild(this.root);
     this.render();
   }
-
-  // Track intervention IDs that have already reported a terminal outcome
-  private reportedOutcomes = new Set<string>();
 
   // ---- PUBLIC: called by bridge ----
 
   handleIntervention(payload: InterventionPayload): void {
     switch (payload.type) {
       case "passive":
-        // Passive adjustments operate on the host page, not shadow DOM
         if (payload.ui_adjustment) {
-          try {
-            PassiveExecutor.execute(payload.ui_adjustment);
-            this.onIgnored(payload.intervention_id);
-          } catch {
-            this.onIgnored(payload.intervention_id);
-          }
-        } else {
-          // No UI adjustment to apply — report as ignored
-          this.onIgnored(payload.intervention_id);
+          try { PassiveExecutor.execute(payload.ui_adjustment); } catch { /* silent */ }
         }
+        this.onIgnored(payload.intervention_id);
         break;
 
       case "nudge":
         this.currentNudge = payload;
         this.hasUnread = true;
+        if (this.state === "minimized") {
+          this.state = "signal";
+          if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
+          this.signalCollapseTimeout = setTimeout(() => {
+            if (this.state === "signal") {
+              this.state = "minimized";
+              this.renderToggle();
+            }
+          }, 4000);
+        }
         this.render();
         if (this.nudgeTimeout) clearTimeout(this.nudgeTimeout);
         this.nudgeTimeout = setTimeout(() => {
-          if (
-            this.currentNudge?.intervention_id === payload.intervention_id
-          ) {
+          if (this.currentNudge?.intervention_id === payload.intervention_id) {
             this.onIgnored(payload.intervention_id);
             this.currentNudge = null;
+            if (this.state === "signal") this.state = "minimized";
             this.render();
           }
-        }, 10000);
+        }, 12000);
         break;
 
       case "active":
         this.currentNudge = null;
+        if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
         this.state = "expanded";
         this.isTyping = true;
         this.render();
@@ -130,10 +194,12 @@ export class AVAWidget {
           });
           this.render();
           this.scrollMessages();
-        }, 800);
+        }, 500);
         break;
 
       case "escalate":
+        this.currentNudge = null;
+        if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
         this.state = "expanded";
         this.messages.push({
           id: payload.intervention_id,
@@ -148,246 +214,238 @@ export class AVAWidget {
     }
   }
 
-  /**
-   * Report "dismissed" for any active/escalate interventions shown in the panel
-   * that haven't already reported a terminal outcome.
-   * Called when user minimizes or closes the expanded panel.
-   */
-  private dismissActiveInterventions(): void {
-    for (const msg of this.messages) {
-      if (
-        msg.payload &&
-        (msg.type === "assistant" || msg.type === "system") &&
-        !this.reportedOutcomes.has(msg.payload.intervention_id)
-      ) {
-        this.reportedOutcomes.add(msg.payload.intervention_id);
-        this.onDismiss(msg.payload.intervention_id);
-      }
-    }
-  }
-
-  // ---- RENDER ----
+  // ---- RENDER ORCHESTRATOR ----
 
   private render(): void {
-    // --- Nudge ---
+    this.renderNudge();
+    this.renderPanelView();
+    this.renderToggle();
+  }
+
+  private renderToggle(): void {
+    updateToggleButton(
+      this.toggleBtn,
+      this.state,
+      this.hasUnread,
+      this.config,
+      this.currentNudge ? deriveLabelText(this.currentNudge) : undefined,
+    );
+  }
+
+  private renderNudge(): void {
     this.nudgeContainer.innerHTML = "";
-    if (this.state === "minimized" && this.currentNudge) {
+    if (
+      (this.state === "minimized" || this.state === "signal") &&
+      this.currentNudge
+    ) {
+      const payload = this.currentNudge;
       const nudge = renderNudgeBubble({
         config: this.config,
-        message: this.currentNudge.message || "",
-        ctaLabel: this.currentNudge.cta_label,
+        message: payload.message || "",
+        frictionId: payload.friction_id,
+        ctaLabel: payload.cta_label,
         onCtaClick: () => this.handleNudgeCtaClick(),
-        onDismiss: () => {
-          if (this.currentNudge) {
-            this.onDismiss(this.currentNudge.intervention_id);
-            this.currentNudge = null;
-            this.render();
-          }
+        onSoftDismiss: () => {
+          this.onMicroOutcome(payload.intervention_id, "soft_dismiss");
+          this.onDismiss(payload.intervention_id);
+          this.currentNudge = null;
+          this.state = "minimized";
+          this.hasUnread = false;
+          this.render();
+        },
+        onHardDismiss: () => {
+          this.onMicroOutcome(payload.intervention_id, "hard_dismiss");
+          this.onDismiss(payload.intervention_id);
+          this.currentNudge = null;
+          this.state = "minimized";
+          this.hasUnread = false;
+          this.render();
+        },
+        onNotHelpful: () => {
+          this.onMicroOutcome(payload.intervention_id, "not_helpful");
+          this.onIgnored(payload.intervention_id);
+          this.currentNudge = null;
+          this.state = "minimized";
+          this.hasUnread = false;
+          this.render();
         },
       });
       this.nudgeContainer.appendChild(nudge);
     }
-
-    // --- Panel ---
-    if (this.state === "expanded") {
-      this.panelContainer.style.display = "block";
-      this.buildPanel();
-    } else {
-      this.panelContainer.style.display = "none";
-    }
-
-    // --- Toggle button ---
-    this.toggleBtn.textContent =
-      this.state === "expanded" ? "\u00d7" : "\uD83D\uDECD\uFE0F";
-    this.toggleBtn.setAttribute(
-      "aria-label",
-      this.state === "expanded" ? "Close assistant" : "Open assistant",
-    );
-    this.toggleBtn.style.animation =
-      this.hasUnread && this.state !== "expanded"
-        ? "sa-breathe 2s ease-in-out infinite"
-        : "none";
-
-    // Unread dot
-    if (this.unreadDot) {
-      this.unreadDot.remove();
-      this.unreadDot = null;
-    }
-    if (this.hasUnread && this.state !== "expanded") {
-      this.unreadDot = this.el("div", {
-        style: `position:absolute;top:-2px;right:-2px;width:14px;height:14px;border-radius:50%;background:${this.config.accentColor};border:2px solid #fff;animation:sa-scaleIn 0.3s ease-out;`,
-      });
-      this.toggleBtn.appendChild(this.unreadDot);
-    }
   }
 
-  private buildPanel(): void {
+  private renderPanelView(): void {
+    if (this.state !== "expanded") {
+      this.panelContainer.style.display = "none";
+      return;
+    }
+    this.panelContainer.style.display = "block";
     this.panelContainer.innerHTML = "";
-    const isRight = this.config.position === "bottom-right";
 
-    const panel = this.el("div", {
-      style: `position:absolute;bottom:72px;${isRight ? "right" : "left"}:0;width:370px;max-height:520px;background:#fff;border-radius:20px;box-shadow:0 12px 60px rgba(0,0,0,0.15),0 2px 8px rgba(0,0,0,0.06);display:flex;flex-direction:column;overflow:hidden;animation:sa-slideUp 0.3s ease-out;`,
+    const panel = renderPanel({
+      config: this.config,
+      isMobile: this.isMobile,
+      onMinimize: () => {
+        this.dismissActiveInterventions();
+        this.state = "minimized";
+        this.hasUnread = false;
+        this.render();
+      },
     });
 
-    // --- Header ---
-    const header = this.el("div", {
-      style: `background:linear-gradient(135deg,${this.config.brandColor},${this.config.brandColorLight});padding:16px 20px;display:flex;align-items:center;justify-content:space-between;`,
-    });
-
-    const headerLeft = this.el("div", {
-      style: "display:flex;align-items:center;gap:10px;",
-    });
-    const icon = this.el("div", {
-      style: "width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;",
-    });
-    icon.textContent = "\uD83D\uDECD\uFE0F";
-
-    const nameWrap = this.el("div");
-    const nameEl = this.el("div", {
-      style: "font-size:15px;font-weight:700;color:#fff;",
-    });
-    nameEl.textContent = this.config.assistantName;
-    const subEl = this.el("div", {
-      style: "font-size:11px;color:rgba(255,255,255,0.7);",
-    });
-    subEl.textContent = "Your shopping assistant";
-    nameWrap.appendChild(nameEl);
-    nameWrap.appendChild(subEl);
-    headerLeft.appendChild(icon);
-    headerLeft.appendChild(nameWrap);
-
-    const minimizeBtn = this.el("button", {
-      style: "background:rgba(255,255,255,0.15);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background 0.2s ease;",
-    }) as HTMLButtonElement;
-    minimizeBtn.textContent = "\u2193";
-    minimizeBtn.setAttribute("aria-label", "Minimize");
-    minimizeBtn.addEventListener("click", () => {
-      this.dismissActiveInterventions();
-      this.state = "minimized";
-      this.hasUnread = false;
-      this.render();
-    });
-    minimizeBtn.addEventListener("mouseenter", () => {
-      minimizeBtn.style.background = "rgba(255,255,255,0.25)";
-    });
-    minimizeBtn.addEventListener("mouseleave", () => {
-      minimizeBtn.style.background = "rgba(255,255,255,0.15)";
-    });
-
-    header.appendChild(headerLeft);
-    header.appendChild(minimizeBtn);
-    panel.appendChild(header);
-
-    // --- Messages ---
-    this.messagesContainer = this.el("div", {
-      style: "flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#fafafa;min-height:200px;max-height:340px;",
-    });
-
-    if (this.messages.length === 0 && !this.isTyping) {
-      const empty = this.el("div", {
-        style: "text-align:center;padding:40px 20px;color:#9ca3af;font-size:13px;",
-      });
-      const wave = this.el("div", { style: "font-size:28px;margin-bottom:8px;" });
-      wave.textContent = "\uD83D\uDC4B";
-      empty.appendChild(wave);
-      empty.appendChild(document.createTextNode("I'm here if you need anything"));
-      this.messagesContainer.appendChild(empty);
-    }
-
-    for (const msg of this.messages) {
-      const wrapper = this.el("div");
-
-      // Text bubble
-      if (msg.content) {
-        const isUser = msg.type === "user";
-        const isSystem = msg.type === "system";
-        const bubble = this.el("div", {
-          style: `max-width:85%;margin-left:${isUser ? "auto" : "0"};margin-right:${isUser ? "0" : "auto"};background:${isUser ? this.config.brandColor : isSystem ? "#f0fdf4" : "#fff"};color:${isUser ? "#fff" : isSystem ? "#166534" : "#1a1a2e"};padding:${isSystem ? "8px 14px" : "10px 16px"};border-radius:${isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px"};font-size:${isSystem ? "12px" : "14px"};line-height:1.5;font-weight:${isSystem ? "500" : "400"};box-shadow:${msg.type === "assistant" ? "0 1px 4px rgba(0,0,0,0.04)" : "none"};border:${msg.type === "assistant" ? "1px solid #f0f0f0" : isSystem ? "1px solid #bbf7d0" : "none"};animation:sa-fadeIn 0.2s ease-out;`,
-        });
-        bubble.textContent = msg.content;
-        wrapper.appendChild(bubble);
-      }
-
-      // Product cards
-      if (msg.payload?.products && msg.payload.products.length > 0) {
-        const cardsWrap = this.el("div", {
-          style: "display:flex;flex-direction:column;gap:8px;margin-top:8px;max-width:95%;",
-        });
-        msg.payload.products
-          .slice(0, this.config.maxCardsToShow)
-          .forEach((card, idx) => {
-            const cardEl = renderProductCard({
-              config: this.config,
-              card,
-              index: idx,
-              onAddToCart: (productId) => this.handleAddToCart(productId),
-            });
-            cardsWrap.appendChild(cardEl);
-          });
-        wrapper.appendChild(cardsWrap);
-      }
-
-      // Comparison card
-      if (msg.payload?.comparison) {
-        const compWrap = this.el("div", {
-          style: "margin-top:8px;max-width:95%;",
-        });
-        const compEl = renderComparisonCard({
-          config: this.config,
-          comparison: msg.payload.comparison,
-          onSelect: (productId) => {
-            this.handleAddToCart(productId);
-            this.reportedOutcomes.add(msg.id);
-            this.onConvert(msg.id, "select_comparison");
-          },
-        });
-        compWrap.appendChild(compEl);
-        wrapper.appendChild(compWrap);
-      }
-
-      // CTA button
-      if (
-        msg.payload?.cta_label &&
-        !msg.payload.products?.length &&
-        !msg.payload.comparison
-      ) {
-        const ctaBtn = this.el("button", {
-          style: `margin-top:8px;background:${this.config.accentColor};color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:${this.config.fontFamily};animation:sa-fadeIn 0.3s ease-out 0.2s both;transition:opacity 0.2s ease;`,
-        }) as HTMLButtonElement;
-        ctaBtn.textContent = msg.payload.cta_label;
-        const payload = msg.payload;
-        const msgId = msg.id;
-        ctaBtn.addEventListener("click", () => {
-          this.reportedOutcomes.add(msgId);
-          this.onConvert(msgId, payload.cta_action || "cta_click");
-          this.onUserAction(
-            payload.cta_action || "cta_click",
-            payload.meta,
-          );
-        });
-        wrapper.appendChild(ctaBtn);
-      }
-
-      this.messagesContainer.appendChild(wrapper);
-    }
+    // --- Lead area ---
+    const leadArea = panel.querySelector("#ava-lead-area") as HTMLElement;
 
     if (this.isTyping) {
-      this.messagesContainer.appendChild(renderTypingIndicator());
+      leadArea.appendChild(renderLeadSkeleton());
+    } else {
+      const lead = [...this.messages]
+        .reverse()
+        .find((m) => m.type === "assistant" || m.type === "system");
+
+      if (lead && lead.content) {
+        const leadCard = renderLeadCard({
+          config: this.config,
+          frictionId: lead.payload?.friction_id,
+          message: lead.content,
+          ctaLabel:
+            lead.payload?.cta_label &&
+            !lead.payload?.products?.length &&
+            !lead.payload?.comparison
+              ? lead.payload.cta_label
+              : undefined,
+          onCtaClick: lead.payload?.cta_label
+            ? () => {
+                if (!lead.payload) return;
+                this.reportedOutcomes.add(lead.id);
+                this.onConvert(lead.id, lead.payload.cta_action || "cta_click");
+                this.onUserAction(lead.payload.cta_action || "cta_click", lead.payload.meta);
+              }
+            : undefined,
+          onNotHelpful: lead.payload
+            ? () => {
+                if (!lead.payload) return;
+                this.onMicroOutcome(lead.payload.intervention_id, "not_helpful");
+                this.onIgnored(lead.payload.intervention_id);
+                this.reportedOutcomes.add(lead.id);
+              }
+            : undefined,
+        });
+        leadArea.appendChild(leadCard);
+      }
     }
 
-    panel.appendChild(this.messagesContainer);
+    // --- Supporting content ---
+    const contentEl = panel.querySelector("#ava-panel-content") as HTMLDivElement;
+    this.messagesContainer = contentEl;
 
-    // --- Input area ---
-    const inputArea = this.el("div", {
-      style: "padding:12px 16px;border-top:1px solid #f0f0f0;background:#fff;display:flex;gap:8px;align-items:center;",
+    const hasSupporting = this.messages.some(
+      (m) =>
+        m.type === "user" ||
+        (m.type === "system" && m.id.startsWith("msg_")) ||
+        (m.payload?.products && m.payload.products.length > 0) ||
+        m.payload?.comparison,
+    );
+
+    if (!hasSupporting && !this.isTyping) {
+      contentEl.appendChild(renderEmptyState(this.config));
+    } else {
+      for (const msg of this.messages) {
+        const wrapper = this.el("div");
+
+        // User messages and system confirmations (e.g. "✓ Added to cart")
+        if (
+          msg.content &&
+          (msg.type === "user" ||
+            (msg.type === "system" && msg.id.startsWith("msg_")))
+        ) {
+          const isUser = msg.type === "user";
+          const bubble = this.el("div", {
+            style: `max-width:85%;
+              margin-left:${isUser ? "auto" : "0"};
+              margin-right:${isUser ? "0" : "auto"};
+              background:${isUser ? this.config.brandColor : "#f0fdf4"};
+              color:${isUser ? "#fff" : "#166534"};
+              padding:${isUser ? "9px 13px" : "6px 12px"};
+              border-radius:${isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px"};
+              font-size:13px;line-height:1.5;
+              border:${isUser ? "none" : "1px solid #bbf7d0"};
+              animation:sa-fadeIn 0.2s ease-out;word-wrap:break-word;`,
+          });
+          bubble.textContent = msg.content;
+          wrapper.appendChild(bubble);
+        }
+
+        // Product cards
+        if (msg.payload?.products && msg.payload.products.length > 0) {
+          const cardsWrap = this.el("div", {
+            style: "display:flex;flex-direction:column;gap:8px;",
+          });
+          msg.payload.products
+            .slice(0, this.config.maxCardsToShow)
+            .forEach((card, idx) => {
+              const cardEl = renderProductCard({
+                config: this.config,
+                card,
+                index: idx,
+                onAddToCart: (productId) => this.handleAddToCart(productId),
+                onMoreLikeThis: (productId) => {
+                  if (msg.payload) {
+                    this.onMicroOutcome(msg.payload.intervention_id, "more_like_this");
+                    this.onUserAction("more_like_this", { product_id: productId });
+                  }
+                },
+              });
+              cardsWrap.appendChild(cardEl);
+            });
+          wrapper.appendChild(cardsWrap);
+        }
+
+        // Comparison card
+        if (msg.payload?.comparison) {
+          const compEl = renderComparisonCard({
+            config: this.config,
+            comparison: msg.payload.comparison,
+            onSelect: (productId) => {
+              this.handleAddToCart(productId);
+              this.reportedOutcomes.add(msg.id);
+              if (msg.payload) {
+                this.onConvert(msg.payload.intervention_id, "select_comparison");
+              }
+            },
+          });
+          wrapper.appendChild(compEl);
+        }
+
+        if (wrapper.hasChildNodes()) contentEl.appendChild(wrapper);
+      }
+    }
+
+    // --- Footer input ---
+    const footerEl = panel.querySelector("#ava-panel-footer") as HTMLDivElement;
+    this.buildInputBar(footerEl);
+
+    this.panelContainer.appendChild(panel);
+  }
+
+  // ---- HELPERS ----
+
+  private buildInputBar(container: HTMLDivElement): void {
+    const wrap = this.el("div", {
+      style: "display:flex;gap:8px;align-items:center;",
     });
 
     this.inputEl = this.el("input", {
-      style: `flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;font-size:14px;font-family:${this.config.fontFamily};outline:none;transition:border-color 0.2s ease;background:#fafafa;`,
+      style: `flex:1;border:1px solid #e5e7eb;border-radius:10px;
+              padding:9px 13px;font-size:13px;
+              font-family:${this.config.fontFamily};
+              outline:none;transition:border-color 0.2s ease;
+              background:#fafafa;color:#111827;`,
     }) as HTMLInputElement;
     this.inputEl.type = "text";
     this.inputEl.placeholder = "Ask anything...";
     this.inputEl.value = this.inputValue;
+
     this.inputEl.addEventListener("input", (e) => {
       this.inputValue = (e.target as HTMLInputElement).value;
       this.updateSendButton();
@@ -406,72 +464,49 @@ export class AVAWidget {
 
     const sendBtn = this.el("button", {
       id: "ava-send-btn",
-      style: `background:${this.inputValue.trim() ? this.config.brandColor : "#e5e7eb"};color:${this.inputValue.trim() ? "#fff" : "#9ca3af"};border:none;border-radius:10px;width:40px;height:40px;cursor:${this.inputValue.trim() ? "pointer" : "default"};display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.2s ease;flex-shrink:0;`,
+      style: `background:${this.inputValue.trim() ? this.config.brandColor : "#e5e7eb"};
+              color:${this.inputValue.trim() ? "#fff" : "#9ca3af"};
+              border:none;border-radius:10px;width:38px;height:38px;
+              cursor:${this.inputValue.trim() ? "pointer" : "default"};
+              display:flex;align-items:center;justify-content:center;
+              font-size:16px;transition:all 0.2s ease;flex-shrink:0;`,
     }) as HTMLButtonElement;
     sendBtn.textContent = "\u2191";
     sendBtn.addEventListener("click", () => this.handleSendMessage());
 
-    inputArea.appendChild(this.inputEl);
-    inputArea.appendChild(sendBtn);
-    panel.appendChild(inputArea);
-
-    this.panelContainer.appendChild(panel);
+    wrap.appendChild(this.inputEl);
+    wrap.appendChild(sendBtn);
+    container.appendChild(wrap);
   }
 
-  // ---- TOGGLE BUTTON ----
-
-  private buildToggleButton(): HTMLButtonElement {
-    const btn = this.el("button", {
-      style: `width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,${this.config.brandColor},${this.config.brandColorLight});color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 20px rgba(0,0,0,0.15);transition:transform 0.2s ease,box-shadow 0.2s ease;position:relative;`,
-    }) as HTMLButtonElement;
-    btn.textContent = "\uD83D\uDECD\uFE0F";
-    btn.setAttribute("aria-label", "Open assistant");
-
-    btn.addEventListener("click", () => {
-      if (this.state === "expanded") {
-        this.dismissActiveInterventions();
-        this.state = "minimized";
-      } else {
-        this.state = "expanded";
-        this.currentNudge = null;
-        this.hasUnread = false;
-      }
-      this.render();
-    });
-
-    btn.addEventListener("mouseenter", () => {
-      btn.style.transform = "scale(1.05)";
-      btn.style.boxShadow = "0 6px 28px rgba(0,0,0,0.2)";
-    });
-    btn.addEventListener("mouseleave", () => {
-      btn.style.transform = "scale(1)";
-      btn.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)";
-    });
-
-    return btn;
+  private handleToggleClick(): void {
+    if (this.state === "expanded") {
+      this.dismissActiveInterventions();
+      this.state = "minimized";
+      this.hasUnread = false;
+    } else {
+      this.state = "expanded";
+      this.currentNudge = null;
+      this.hasUnread = false;
+      if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
+    }
+    this.render();
   }
-
-  // ---- HANDLERS ----
 
   private handleNudgeCtaClick(): void {
     if (!this.currentNudge) return;
-    this.onConvert(
-      this.currentNudge.intervention_id,
-      this.currentNudge.cta_action || "open",
-    );
-
+    const payload = this.currentNudge;
+    this.onConvert(payload.intervention_id, payload.cta_action || "open");
+    this.onUserAction(payload.cta_action || "open", payload.meta);
     if (
-      this.currentNudge.cta_action === "open_assistant" ||
-      this.currentNudge.cta_action === "open_guided_search"
+      payload.cta_action === "open_assistant" ||
+      payload.cta_action === "open_guided_search" ||
+      !payload.cta_action
     ) {
       this.state = "expanded";
     }
-
-    this.onUserAction(
-      this.currentNudge.cta_action || "open",
-      this.currentNudge.meta,
-    );
     this.currentNudge = null;
+    if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
     this.render();
   }
 
@@ -502,14 +537,25 @@ export class AVAWidget {
     this.scrollMessages();
   }
 
+  private dismissActiveInterventions(): void {
+    for (const msg of this.messages) {
+      if (
+        msg.payload &&
+        (msg.type === "assistant" || msg.type === "system") &&
+        !this.reportedOutcomes.has(msg.payload.intervention_id)
+      ) {
+        this.reportedOutcomes.add(msg.payload.intervention_id);
+        this.onDismiss(msg.payload.intervention_id);
+      }
+    }
+  }
+
   private updateSendButton(): void {
     const sendBtn = this.shadow.getElementById(
       "ava-send-btn",
     ) as HTMLButtonElement | null;
     if (sendBtn) {
-      sendBtn.style.background = this.inputValue.trim()
-        ? this.config.brandColor
-        : "#e5e7eb";
+      sendBtn.style.background = this.inputValue.trim() ? this.config.brandColor : "#e5e7eb";
       sendBtn.style.color = this.inputValue.trim() ? "#fff" : "#9ca3af";
       sendBtn.style.cursor = this.inputValue.trim() ? "pointer" : "default";
     }
@@ -521,6 +567,19 @@ export class AVAWidget {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
       });
     }
+  }
+
+  /**
+   * Apply CSS custom property overrides to the shadow host.
+   * Host sites can pass cssVars in config to theme AVA without touching brand colors.
+   */
+  private applyCSSVars(): void {
+    const vars = this.config.cssVars;
+    if (!vars) return;
+    const host = this.shadow.host as HTMLElement;
+    if (vars.primaryColor) host.style.setProperty("--ava-primary", vars.primaryColor);
+    if (vars.fontFamily) host.style.setProperty("--ava-font", vars.fontFamily);
+    if (vars.borderRadius) host.style.setProperty("--ava-radius", vars.borderRadius);
   }
 
   // ---- DOM HELPER ----

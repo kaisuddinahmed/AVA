@@ -22,7 +22,7 @@ function parseSiteUrl(req: Request): string | undefined {
  */
 export async function getSessionAnalytics(req: Request, res: Response): Promise<void> {
   try {
-    const { sessionId } = req.params;
+    const sessionId = String(req.params.sessionId);
 
     const [evaluations, interventions, events] = await Promise.all([
       EvaluationRepo.getEvaluationsBySession(sessionId),

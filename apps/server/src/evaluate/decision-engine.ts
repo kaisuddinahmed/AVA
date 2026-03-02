@@ -46,6 +46,6 @@ function mapTierToDefaultAction(tier: string): string {
     case "ESCALATE":
       return "escalate_full_assist";
     default:
-      return "monitor";
+      return "none";
   }
 }

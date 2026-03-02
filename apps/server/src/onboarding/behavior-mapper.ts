@@ -32,7 +32,7 @@ export async function mapBehaviorsForRun(input: {
   platform: string;
   trackingHooks: TrackingHooks;
 }): Promise<BehaviorMappingResult> {
-  const catalog = await getBehaviorCatalog();
+  const catalog = getBehaviorCatalog();
   await BehaviorMappingRepo.deleteBehaviorMappingsBySite(input.siteConfigId);
   const siteFunctions = buildSiteFunctionContext(input.trackingHooks);
 

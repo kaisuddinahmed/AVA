@@ -1,4 +1,4 @@
-import { InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
+import { EventRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
 import type { DecisionOutput } from "../evaluate/decision-engine.js";
 import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
@@ -31,16 +31,31 @@ export async function handleDecision(
 ): Promise<InterventionOutput | null> {
   if (decision.decision !== "fire" || !decision.type) return null;
 
-  const runtimeMode = await resolveRuntimeMode(sessionId);
+  const [runtimeMode, recentEvents] = await Promise.all([
+    resolveRuntimeMode(sessionId),
+    EventRepo.getEventsBySession(sessionId, { limit: 20 }),
+  ]);
   const guardResult = applyRevenueFirstGuard(decision, runtimeMode);
   const effectiveDecision = guardResult.decision;
 
-  // Build the intervention payload
-  const payload = buildPayload(
+  // Map DB events to the shape product-intelligence expects
+  const sessionEvents = recentEvents.map((e) => {
+    let signals: Record<string, unknown> = {};
+    try {
+      signals = JSON.parse(e.rawSignals) as Record<string, unknown>;
+    } catch {
+      // keep empty
+    }
+    return { eventType: e.eventType, frictionId: e.frictionId, signals };
+  });
+
+  // Build the intervention payload (async: may derive product suggestions)
+  const payload = await buildPayload(
     effectiveDecision.type ?? "passive",
     effectiveDecision.actionCode,
     effectiveDecision.frictionId,
-    evaluation
+    evaluation,
+    sessionEvents
   );
 
   // Persist intervention
@@ -77,26 +92,40 @@ export async function handleDecision(
 
 /**
  * Record the outcome of an intervention (delivered, dismissed, converted, ignored).
+ *
+ * Passive interventions are silent UI tweaks with no user interaction.
+ * The widget reports them as "ignored" immediately after execution, but
+ * semantically they were "delivered" — remap server-side to keep training
+ * labels accurate without touching the widget code.
  */
 export async function recordInterventionOutcome(
   interventionId: string,
   status: "delivered" | "dismissed" | "converted" | "ignored",
   conversionAction?: string
 ) {
+  // Remap passive "ignored" → "delivered" for accurate training labels
+  let effectiveStatus = status;
+  if (status === "ignored") {
+    const existing = await InterventionRepo.getIntervention(interventionId);
+    if (existing?.type === "passive") {
+      effectiveStatus = "delivered";
+    }
+  }
+
   const intervention = await InterventionRepo.recordOutcome(interventionId, {
-    status,
+    status: effectiveStatus,
     conversionAction,
   });
 
   // Update session counters
-  if (status === "dismissed") {
+  if (effectiveStatus === "dismissed") {
     await SessionRepo.incrementDismissals(intervention.sessionId);
-  } else if (status === "converted") {
+  } else if (effectiveStatus === "converted") {
     await SessionRepo.incrementConversions(intervention.sessionId);
   }
 
   // Capture training datapoint on terminal outcomes (non-blocking)
-  captureTrainingDatapoint(interventionId, status).catch((error) => {
+  captureTrainingDatapoint(interventionId, effectiveStatus).catch((error) => {
     console.error("[Intervene] Training datapoint capture failed:", error);
   });
 

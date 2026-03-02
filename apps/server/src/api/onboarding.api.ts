@@ -45,7 +45,7 @@ export async function startOnboarding(req: Request, res: Response) {
  */
 export async function getOnboardingStatus(req: Request, res: Response) {
   try {
-    const { runId } = req.params;
+    const runId = String(req.params.runId);
     const run = await AnalyzerRunRepo.getAnalyzerRun(runId);
 
     if (!run) {
@@ -108,7 +108,7 @@ export async function getOnboardingStatus(req: Request, res: Response) {
  */
 export async function getOnboardingResults(req: Request, res: Response) {
   try {
-    const { runId } = req.params;
+    const runId = String(req.params.runId);
     const parsed = OnboardingResultsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({

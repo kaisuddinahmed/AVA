@@ -13,7 +13,7 @@ export async function getEvents(req: Request, res: Response) {
       return;
     }
 
-    const { sessionId } = req.params;
+    const sessionId = String(req.params.sessionId);
     const { limit, since } = parsed.data;
 
     const events = await EventRepo.getEventsBySession(sessionId, {

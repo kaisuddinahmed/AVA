@@ -88,7 +88,7 @@ export async function listAlerts(req: Request, res: Response) {
  */
 export async function acknowledgeAlert(req: Request, res: Response) {
   try {
-    const alert = await DriftAlertRepo.acknowledgeAlert(req.params.id);
+    const alert = await DriftAlertRepo.acknowledgeAlert(String(req.params.id));
     res.json(alert);
   } catch (error) {
     console.error("[Drift API] acknowledgeAlert error:", error);
