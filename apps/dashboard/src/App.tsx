@@ -128,6 +128,7 @@ export function App() {
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
               sessions={sessions}
+              analyticsParams={analyticsParams}
             />
           )}
         </>

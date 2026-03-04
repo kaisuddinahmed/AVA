@@ -18,6 +18,14 @@ export interface WidgetConfig {
     fontFamily?: string;
     borderRadius?: string;
   };
+  // Voice settings (Phase 1 Deepgram TTS — server sends voice_script, widget plays it)
+  voiceEnabled?: boolean;        // merchant-level toggle (default: false)
+  voiceMaxPerSession?: number;   // session budget ceiling (default: 3, enforced server-side)
+  serverUrl?: string;            // AVA server base URL for voice proxy (e.g. "http://localhost:8080")
+  /** @deprecated Use serverUrl — widget now routes TTS/STT through the AVA server proxy */
+  deepgramApiKey?: string;
+  deepgramModel?: string;        // Deepgram voice model (default: "aura-asteria-en")
+  voiceAutoPlay?: boolean;       // autoplay on intervention or require tap (default: true)
 }
 
 export const DEFAULT_CONFIG: WidgetConfig = {
@@ -33,6 +41,10 @@ export const DEFAULT_CONFIG: WidgetConfig = {
   assistantName: "AVA",
   maxCardsToShow: 3,
   animationDuration: 300,
+  voiceEnabled: false,
+  voiceMaxPerSession: 3,
+  deepgramModel: "aura-asteria-en",
+  voiceAutoPlay: true,
 };
 
 export interface ProductCard {
@@ -72,6 +84,9 @@ export interface InterventionPayload {
   cta_label?: string;
   cta_action?: string;
   meta?: Record<string, any>;
+  // Voice fields (server sets these; Phase 1 widget plays via Deepgram TTS)
+  voice_enabled?: boolean;
+  voice_script?: string;
 }
 
 export interface WidgetMessage {

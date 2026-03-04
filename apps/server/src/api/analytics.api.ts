@@ -320,6 +320,99 @@ export async function getRetention(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * GET /api/analytics/voice
+ * Voice intervention performance: conversion/dismissal rates vs text, mute rate.
+ */
+export async function getVoiceAnalytics(req: Request, res: Response): Promise<void> {
+  try {
+    const sinceParam = req.query.since as string | undefined;
+    const sinceDate = sinceParam ? new Date(sinceParam) : undefined;
+    const sinceFilter = sinceDate ? { gte: sinceDate } : undefined;
+    const siteUrl = parseSiteUrl(req);
+
+    // Session-level where clause (for voiceMuted / totalVoiceInterventionsFired counts)
+    const sessionWhere: Record<string, unknown> = {};
+    if (sinceFilter) sessionWhere.startedAt = sinceFilter;
+    if (siteUrl) sessionWhere.siteUrl = siteUrl;
+
+    const [allInterventions, mutedSessions, voiceActiveSessions] = await Promise.all([
+      InterventionRepo.listInterventions({ limit: 5000, since: sinceDate, siteUrl }),
+      prisma.session.count({ where: { ...sessionWhere, voiceMuted: true } }),
+      prisma.session.count({ where: { ...sessionWhere, totalVoiceInterventionsFired: { gt: 0 } } }),
+    ]);
+
+    // Partition interventions into three buckets:
+    //   voice  — voice_enabled: true (nudge/active/escalate with TTS)
+    //   text   — non-voice, non-passive (nudge/active/escalate text-only)
+    //   passive — excluded from comparison (passive always has voice_enabled: false
+    //             and converts on page actions, not on AVA interaction)
+    let voiceFired = 0, voiceConverted = 0, voiceDismissed = 0, voiceIgnored = 0;
+    let textFired = 0, textConverted = 0, textDismissed = 0, textIgnored = 0;
+
+    for (const iv of allInterventions) {
+      // Skip passive interventions — they are never voice-enabled and have
+      // fundamentally different conversion semantics (page action, not AVA CTA).
+      if (iv.type === "passive") continue;
+
+      let isVoice = false;
+      try {
+        const p = JSON.parse(iv.payload) as Record<string, unknown>;
+        isVoice = p.voice_enabled === true;
+      } catch {
+        // ignore malformed JSON
+      }
+
+      if (isVoice) {
+        voiceFired++;
+        if (iv.status === "converted") voiceConverted++;
+        else if (iv.status === "dismissed") voiceDismissed++;
+        else if (iv.status === "ignored") voiceIgnored++;
+      } else {
+        textFired++;
+        if (iv.status === "converted") textConverted++;
+        else if (iv.status === "dismissed") textDismissed++;
+        else if (iv.status === "ignored") textIgnored++;
+      }
+    }
+
+    const voiceConversionRate = voiceFired > 0 ? Math.round((voiceConverted / voiceFired) * 10000) / 10000 : 0;
+    const voiceDismissalRate  = voiceFired > 0 ? Math.round((voiceDismissed / voiceFired) * 10000) / 10000 : 0;
+    const textConversionRate  = textFired > 0  ? Math.round((textConverted / textFired) * 10000) / 10000  : 0;
+    const textDismissalRate   = textFired > 0  ? Math.round((textDismissed / textFired) * 10000) / 10000  : 0;
+    const muteRate = voiceActiveSessions > 0
+      ? Math.round((mutedSessions / voiceActiveSessions) * 10000) / 10000
+      : 0;
+
+    res.json({
+      voice: {
+        fired: voiceFired,
+        converted: voiceConverted,
+        dismissed: voiceDismissed,
+        ignored: voiceIgnored,
+        conversionRate: voiceConversionRate,
+        dismissalRate: voiceDismissalRate,
+      },
+      text: {
+        fired: textFired,
+        converted: textConverted,
+        dismissed: textDismissed,
+        ignored: textIgnored,
+        conversionRate: textConversionRate,
+        dismissalRate: textDismissalRate,
+      },
+      sessions: {
+        voiceActive: voiceActiveSessions,
+        muted: mutedSessions,
+        muteRate,
+      },
+    });
+  } catch (error) {
+    console.error("[Analytics] Voice analytics error:", error);
+    res.status(500).json({ error: "Failed to compute voice analytics" });
+  }
+}
+
+/**
  * GET /api/analytics/clicks
  * Click coordinate data for heatmap rendering.
  */

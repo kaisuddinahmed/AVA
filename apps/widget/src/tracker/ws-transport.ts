@@ -31,7 +31,10 @@ export class FISMBridge {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          this.emit(data.type, data.payload);
+          // Prefer data.payload (intervention, track_ack) but fall back to the
+          // full message so that ack/error messages (no payload field) still
+          // carry their status/intervention_id fields to subscribers.
+          this.emit(data.type, data.payload ?? data);
         } catch (e) {
           console.error("[AVA] Failed to parse message:", e);
         }
@@ -116,6 +119,24 @@ export class FISMBridge {
     };
     if (conversionAction) msg.conversion_action = conversionAction;
 
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    } else {
+      this.messageQueue.push(msg);
+    }
+  }
+
+  /**
+   * Send a voice query (transcript from ASR) to the server.
+   * Server schema: { type: "voice_query", session_id, transcript, timestamp }
+   */
+  sendVoiceQuery(transcript: string): void {
+    const msg: Record<string, unknown> = {
+      type: "voice_query",
+      session_id: this.sessionId,
+      transcript,
+      timestamp: Date.now(),
+    };
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {

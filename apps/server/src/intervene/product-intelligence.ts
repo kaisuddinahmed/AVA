@@ -2,7 +2,12 @@
  * Product Intelligence — derives product suggestions from session browsing history.
  *
  * No vector DB required: product context is extracted from rawSignals on
- * product_detail_view and add_to_cart events that the widget already captures.
+ * product_detail_view events that the widget already captures.
+ *
+ * Widget field reference (collector.ts):
+ *   product_detail_view  → product_name, product_price (string "$29.99"), product_category
+ *   add_to_cart_click    → button_text, page_url only (no product context)
+ *   product_card clicks  → product_id, product_name, product_price, product_category
  */
 
 export interface ProductSuggestion {
@@ -32,14 +37,16 @@ interface BrowsedProduct {
   inCart: boolean;
 }
 
-// Raw signals shape from widget's product_detail_view / add_to_cart events
+// Raw signals shape from widget's product_detail_view and product card click events.
+// product_price arrives as a string (e.g. "$29.99") — must be stripped before parsing.
+// add_to_cart_click carries only button_text/page_url and is not used for product data.
 interface ProductRawSignals {
   product_id?: string;
   product_name?: string;
-  price?: number | string;
+  product_price?: string;    // e.g. "$29.99" — widget emits as string
+  product_category?: string; // widget field name (not "category")
   image_url?: string;
   product_url?: string;
-  category?: string;
   url?: string;
 }
 
@@ -52,7 +59,11 @@ interface SessionEvent {
 
 /**
  * Extract browsed products from session event history.
- * Deduplicates by product_id and tracks view count + cart status.
+ * Only product_detail_view events carry full product context from the widget.
+ * add_to_cart_click events carry only a button label — not usable for product data.
+ *
+ * Deduplicates by product_name (used as stable key when product_id is absent)
+ * and accumulates view count to rank by user interest.
  */
 export function extractProductsFromEvents(
   events: SessionEvent[]
@@ -61,38 +72,45 @@ export function extractProductsFromEvents(
 
   for (const event of events) {
     const eventType = (event.eventType ?? event.type ?? "") as string;
-    if (
-      eventType !== "product_detail_view" &&
-      eventType !== "add_to_cart"
-    ) {
-      continue;
-    }
+    // Only product_detail_view carries full product context
+    if (eventType !== "product_detail_view") continue;
 
     const signals = (event.signals ?? {}) as ProductRawSignals;
-    const productId =
+    // Use product_id when present, fall back to product_name as dedup key
+    const productKey =
       signals.product_id ?? signals.product_name ?? null;
-    if (!productId) continue;
+    if (!productKey) continue;
 
-    const name = signals.product_name ?? productId;
-    const price = parseFloat(String(signals.price ?? "0")) || 0;
+    const name = signals.product_name ?? productKey;
+    // product_price is a string like "$29.99" or "N/A" — strip non-numeric chars
+    const priceRaw = signals.product_price ?? "";
+    const price = parseFloat(priceRaw.replace(/[^0-9.]/g, "")) || 0;
     const imageUrl = signals.image_url ?? "";
     const url = signals.product_url ?? signals.url ?? "";
-    const category = signals.category ?? "general";
+    // Widget field is product_category (not "category")
+    const category =
+      signals.product_category && signals.product_category !== "unknown"
+        ? signals.product_category
+        : "general";
 
-    const existing = productMap.get(productId);
+    const existing = productMap.get(productKey);
     if (existing) {
       existing.viewCount += 1;
-      if (eventType === "add_to_cart") existing.inCart = true;
+      // Enrich fields if later event has better data
+      if (!existing.imageUrl && imageUrl) existing.imageUrl = imageUrl;
+      if (!existing.url && url) existing.url = url;
+      if (existing.category === "general" && category !== "general")
+        existing.category = category;
     } else {
-      productMap.set(productId, {
-        id: productId,
+      productMap.set(productKey, {
+        id: productKey,
         name,
         price,
         imageUrl,
         url,
         category,
         viewCount: 1,
-        inCart: eventType === "add_to_cart",
+        inCart: false, // add_to_cart_click has no product_id to correlate here
       });
     }
   }
@@ -205,16 +223,26 @@ export function findComplementary(
 
 /**
  * Build a comparison summary for the panel's comparison field.
+ * Uses real product categories from the suggestions.
  */
 export function buildComparison(
-  products: ProductSuggestion[]
+  products: ProductSuggestion[],
+  browsed?: BrowsedProduct[]
 ): ProductComparison | null {
   if (products.length === 0) return null;
 
   const prices = products.map((p) => p.price).filter((p) => p > 0);
   if (prices.length === 0) return null;
 
-  const categories = [...new Set(products.map((_, i) => String(i)))]; // placeholder
+  // Resolve real categories: match suggestions back to browsed products
+  const categorySource = browsed ?? [];
+  const categoryMap = new Map(categorySource.map((b) => [b.id, b.category]));
+  const categories = [
+    ...new Set(
+      products.map((p) => categoryMap.get(p.id) ?? "general")
+    ),
+  ];
+
   return {
     count: products.length,
     priceRange: { min: Math.min(...prices), max: Math.max(...prices) },

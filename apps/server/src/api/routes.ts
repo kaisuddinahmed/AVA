@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, raw } from "express";
 import * as sessionsApi from "./sessions.api.js";
 import * as eventsApi from "./events.api.js";
 import * as configApi from "./config.api.js";
@@ -12,6 +12,7 @@ import * as jobsApi from "./jobs.api.js";
 import * as driftApi from "./drift.api.js";
 import * as experimentsApi from "./experiments.api.js";
 import * as rolloutsApi from "./rollouts.api.js";
+import * as voiceProxyApi from "../voice/voice-proxy.api.js";
 
 export const apiRouter = Router();
 
@@ -45,6 +46,7 @@ apiRouter.get("/analytics/pages", analyticsApi.getPageStats);
 apiRouter.get("/analytics/sessions/trend", analyticsApi.getSessionsTrend);
 apiRouter.get("/analytics/retention", analyticsApi.getRetention);
 apiRouter.get("/analytics/clicks", analyticsApi.getClickHeatmap);
+apiRouter.get("/analytics/voice", analyticsApi.getVoiceAnalytics);
 
 // Onboarding
 apiRouter.post("/onboarding/start", onboardingApi.startOnboarding);
@@ -93,6 +95,11 @@ apiRouter.post("/experiments/:id/start", experimentsApi.start);
 apiRouter.post("/experiments/:id/pause", experimentsApi.pause);
 apiRouter.post("/experiments/:id/end", experimentsApi.end);
 apiRouter.get("/experiments/:id/results", experimentsApi.results);
+
+// Voice Proxy (keeps Deepgram API key server-side)
+apiRouter.post("/voice/tts", voiceProxyApi.ttsProxy);
+// express.raw() applied at route level — STT body is binary audio
+apiRouter.post("/voice/sst", raw({ type: "*/*", limit: "10mb" }), voiceProxyApi.sstProxy);
 
 // Rollouts (Gradual Config Changes)
 apiRouter.get("/rollouts", rolloutsApi.list);

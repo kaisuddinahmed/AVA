@@ -6,7 +6,7 @@ import { ScoreTier } from "@ava/shared";
 import { config } from "../config.js";
 import { runShadowEvaluation } from "./shadow-evaluator.js";
 import { logShadowComparison } from "./shadow-logger.js";
-import { runFastEvaluation, shouldEscalateToLLM } from "./fast-evaluator.js";
+import { runFastEvaluation, shouldEscalateToLLM, inferFrictionFromContext } from "./fast-evaluator.js";
 import { resolveExperimentOverrides } from "../experiment/experiment-resolver.js";
 import type { ExperimentOverrides } from "@ava/shared";
 
@@ -382,7 +382,12 @@ async function evaluateLLM(
     tier: tierLabel,
     compositeScore: mswimResult.composite_score,
     interventionType,
-    frictionIds: llmOutput.detected_frictions,
+    // Apply the same inferFrictionFromContext fallback used by fast/auto paths:
+    // when the LLM returns no frictions (parse-fail or genuinely empty), avoid
+    // propagating frictionId="unknown" through the intervene pipeline.
+    frictionIds: llmOutput.detected_frictions.length > 0
+      ? llmOutput.detected_frictions
+      : [inferFrictionFromContext(sessionCtx)],
     narrative: llmOutput.narrative,
     signals: mswimResult.signals,
     reasoning: mswimResult.reasoning,
@@ -515,5 +520,13 @@ async function buildSessionAndFrictions(
     scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
-  return { sessionCtx, frictionIds, context };
+  // If no event-level friction IDs were detected, infer the most contextually
+  // relevant one from session state (page type, cart, gate flags).
+  // This fixes frictionId="unknown" on generic browse events.
+  const effectiveFrictionIds =
+    frictionIds.length > 0
+      ? frictionIds
+      : [inferFrictionFromContext(sessionCtx)];
+
+  return { sessionCtx, frictionIds: effectiveFrictionIds, context };
 }

@@ -57,7 +57,7 @@ export function renderProductCard(opts: ProductCardOptions): HTMLDivElement {
     const badge = document.createElement("span");
     badge.setAttribute(
       "style",
-      `position:absolute;top:8px;left:8px;background:${config.accentColor};
+      `position:absolute;top:8px;left:8px;background:var(--ava-accent,${config.accentColor});
        color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;`,
     );
     badge.textContent = `-${discountPct}%`;
@@ -85,7 +85,7 @@ export function renderProductCard(opts: ProductCardOptions): HTMLDivElement {
        background:rgba(255,255,255,0.85);backdrop-filter:blur(6px);
        border:none;border-radius:8px;padding:4px 8px;
        font-size:10px;font-weight:600;color:#374151;cursor:pointer;
-       opacity:0;transition:opacity 0.2s ease;font-family:${config.fontFamily};`,
+       opacity:0;transition:opacity 0.2s ease;font-family:var(--ava-font,${config.fontFamily});`,
     );
     moreBtn.textContent = "More like this";
     moreBtn.setAttribute("aria-label", "Show more recommendations like this");
@@ -162,9 +162,9 @@ export function renderProductCard(opts: ProductCardOptions): HTMLDivElement {
   const addBtn = document.createElement("button");
   addBtn.setAttribute(
     "style",
-    `background:${config.brandColor};color:#fff;border:none;border-radius:9px;
+    `background:var(--ava-primary,${config.brandColor});color:#fff;border:none;border-radius:9px;
      padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;
-     font-family:${config.fontFamily};
+     font-family:var(--ava-font,${config.fontFamily});
      transition:background 0.15s ease,transform 0.1s ease,opacity 0.15s ease;`,
   );
   addBtn.textContent = "+ Add";
@@ -175,7 +175,7 @@ export function renderProductCard(opts: ProductCardOptions): HTMLDivElement {
     addBtn.style.transform = "scale(1)";
     setTimeout(() => {
       addBtn.textContent = "+ Add";
-      addBtn.style.background = config.brandColor;
+      addBtn.style.background = `var(--ava-primary,${config.brandColor})`;
     }, 1800);
     onAddToCart(card.product_id);
   });

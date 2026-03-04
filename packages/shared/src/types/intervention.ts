@@ -17,7 +17,8 @@ export type InterventionStatus =
   | "delivered"
   | "dismissed"
   | "converted"
-  | "ignored";
+  | "ignored"
+  | "voice_muted";   // user muted voice during this intervention
 
 /**
  * The structured command sent from server to widget via WebSocket.
@@ -41,6 +42,10 @@ export interface InterventionCommand {
   // MSWIM snapshot at fire time
   mswim_score: number;
   mswim_tier: string;
+
+  // Voice (Phase 0 — payload carries script; Phase 1 widget plays it via Deepgram TTS)
+  voice_enabled?: boolean;   // server sets false when budget exhausted or session muted
+  voice_script?: string;     // ≤12 words, direct, store-associate style
 
   meta?: Record<string, unknown>;
 }

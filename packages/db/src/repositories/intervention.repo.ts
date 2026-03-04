@@ -153,11 +153,14 @@ export async function getInterventionsByFriction(
 }
 
 /**
- * List all interventions with optional limit and time filter (for analytics).
+ * List all interventions with optional limit, time filter, and site scoping.
  */
-export async function listInterventions(options?: { limit?: number; since?: Date }) {
+export async function listInterventions(options?: { limit?: number; since?: Date; siteUrl?: string }) {
+  const where: Record<string, unknown> = {};
+  if (options?.since) where.timestamp = { gte: options.since };
+  if (options?.siteUrl) where.session = { siteUrl: options.siteUrl };
   return prisma.intervention.findMany({
-    where: options?.since ? { timestamp: { gte: options.since } } : {},
+    where,
     orderBy: { timestamp: "desc" },
     take: options?.limit ?? 100,
   });

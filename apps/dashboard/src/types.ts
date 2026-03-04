@@ -84,6 +84,7 @@ export interface InterventionData {
   mswim_score: number;
   mswim_tier: string;
   status?: InterventionStatus;
+  voice_enabled?: boolean;
 }
 
 // ── WebSocket Messages ───────────────────────────────────────
@@ -138,6 +139,31 @@ export interface OverviewAnalytics {
   bounceRate?: number;
   avgSessionDurationMs?: number;
   avgPageViewsPerSession?: number;
+}
+
+// ── Voice Analytics (from REST API) ──────────────────────────
+export interface VoiceAnalytics {
+  voice: {
+    fired: number;
+    converted: number;
+    dismissed: number;
+    ignored: number;
+    conversionRate: number;
+    dismissalRate: number;
+  };
+  text: {
+    fired: number;
+    converted: number;
+    dismissed: number;
+    ignored: number;
+    conversionRate: number;
+    dismissalRate: number;
+  };
+  sessions: {
+    voiceActive: number;
+    muted: number;
+    muteRate: number;
+  };
 }
 
 // ── Tab Type ─────────────────────────────────────────────────

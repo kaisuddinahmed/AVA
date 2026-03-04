@@ -86,6 +86,8 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
             mswim_score: intervention.mswimScore,
             mswim_tier: intervention.tier,
             status: "sent" as const,
+            // Voice fields — enable dashboard voice analytics card
+            voice_enabled: payload?.voice_enabled as boolean | undefined,
           },
         });
       }

@@ -4,6 +4,10 @@ interface PanelOptions {
   config: WidgetConfig;
   isMobile: boolean;
   onMinimize: () => void;
+  /** True when the current intervention has voice enabled and voice is not yet muted */
+  voiceEnabled?: boolean;
+  /** Called when user taps the mute button in the panel header */
+  onVoiceMute?: () => void;
 }
 
 /**
@@ -19,7 +23,7 @@ interface PanelOptions {
  *   footer         — "Ask anything..." input (secondary, always visible but visually quiet)
  */
 export function renderPanel(opts: PanelOptions): HTMLDivElement {
-  const { config, isMobile, onMinimize } = opts;
+  const { config, isMobile, onMinimize, voiceEnabled, onVoiceMute } = opts;
   const isRight = config.position === "bottom-right";
 
   const panel = document.createElement("div");
@@ -68,7 +72,7 @@ export function renderPanel(opts: PanelOptions): HTMLDivElement {
   const header = document.createElement("div");
   header.setAttribute(
     "style",
-    `background:linear-gradient(135deg,${config.brandColor} 0%,${config.brandColorLight} 100%);
+    `background:linear-gradient(135deg,var(--ava-primary,${config.brandColor}) 0%,var(--ava-primary-light,${config.brandColorLight}) 100%);
      padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
      flex-shrink:0;`,
   );
@@ -109,6 +113,39 @@ export function renderPanel(opts: PanelOptions): HTMLDivElement {
   headerLeft.appendChild(icon);
   headerLeft.appendChild(nameWrap);
 
+  // Right-side action cluster in header
+  const headerRight = document.createElement("div");
+  headerRight.setAttribute("style", "display:flex;align-items:center;gap:6px;");
+
+  // 🔊 Voice mute button — only rendered when voice is active for this intervention
+  if (voiceEnabled && onVoiceMute) {
+    const muteBtnPanel = document.createElement("button");
+    muteBtnPanel.setAttribute(
+      "style",
+      `background:rgba(255,255,255,0.15);border:none;color:#fff;
+       width:30px;height:30px;border-radius:8px;cursor:pointer;
+       font-size:14px;display:flex;align-items:center;justify-content:center;
+       transition:background 0.15s ease;`,
+    );
+    muteBtnPanel.setAttribute("aria-label", "Mute voice");
+    muteBtnPanel.setAttribute("title", "Mute voice for this session");
+    muteBtnPanel.textContent = "\uD83D\uDD0A"; // 🔊
+    muteBtnPanel.addEventListener("click", () => {
+      muteBtnPanel.textContent = "\uD83D\uDD07"; // 🔇
+      muteBtnPanel.style.opacity = "0.5";
+      muteBtnPanel.style.cursor = "default";
+      muteBtnPanel.removeEventListener("click", onVoiceMute);
+      onVoiceMute();
+    });
+    muteBtnPanel.addEventListener("mouseenter", () => {
+      muteBtnPanel.style.background = "rgba(255,255,255,0.28)";
+    });
+    muteBtnPanel.addEventListener("mouseleave", () => {
+      muteBtnPanel.style.background = "rgba(255,255,255,0.15)";
+    });
+    headerRight.appendChild(muteBtnPanel);
+  }
+
   const minimizeBtn = document.createElement("button");
   minimizeBtn.setAttribute(
     "style",
@@ -126,9 +163,10 @@ export function renderPanel(opts: PanelOptions): HTMLDivElement {
   minimizeBtn.addEventListener("mouseleave", () => {
     minimizeBtn.style.background = "rgba(255,255,255,0.15)";
   });
+  headerRight.appendChild(minimizeBtn);
 
   header.appendChild(headerLeft);
-  header.appendChild(minimizeBtn);
+  header.appendChild(headerRight);
   panel.appendChild(header);
 
   // --- Lead area (primary intervention slot — rendered by ava.ts) ---
@@ -256,10 +294,10 @@ export function renderLeadCard(opts: {
     const ctaBtn = document.createElement("button");
     ctaBtn.setAttribute(
       "style",
-      `display:block;width:100%;background:${config.brandColor};color:#fff;
+      `display:block;width:100%;background:var(--ava-primary,${config.brandColor});color:#fff;
        border:none;border-radius:10px;padding:11px 16px;
        font-size:13px;font-weight:600;cursor:pointer;
-       font-family:${config.fontFamily};
+       font-family:var(--ava-font,${config.fontFamily});
        transition:opacity 0.15s ease,transform 0.1s ease;`,
     );
     ctaBtn.textContent = ctaLabel;
@@ -279,7 +317,7 @@ export function renderLeadCard(opts: {
     notHelpfulBtn.setAttribute(
       "style",
       `background:none;border:none;cursor:pointer;
-       font-size:11px;color:#9ca3af;font-family:${config.fontFamily};
+       font-size:11px;color:#9ca3af;font-family:var(--ava-font,${config.fontFamily});
        padding:2px 4px;border-radius:4px;
        transition:color 0.15s ease;`,
     );
@@ -306,7 +344,7 @@ export function renderEmptyState(config: WidgetConfig): HTMLDivElement {
   empty.setAttribute(
     "style",
     `text-align:center;padding:32px 20px;color:#9ca3af;
-     font-size:13px;font-family:${config.fontFamily};`,
+     font-size:13px;font-family:var(--ava-font,${config.fontFamily});`,
   );
   const wave = document.createElement("div");
   wave.setAttribute("style", "font-size:26px;margin-bottom:8px;");

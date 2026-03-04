@@ -722,7 +722,14 @@
         assistantName: "AVA",
         position: "bottom-right",
         brandColor: "#1A1A2E",
+        brandColorLight: "#16213E",
         accentColor: "#35d3a1",
+        // Voice — Deepgram TTS proxied via AVA server (key never reaches browser)
+        voiceEnabled: true,
+        serverUrl: "http://localhost:8080",
+        deepgramModel: "aura-asteria-en",
+        voiceMaxPerSession: 3,
+        voiceAutoPlay: true,
       };
     </script>
     <script src="/ava-widget.iife.js"></script>

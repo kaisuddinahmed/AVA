@@ -190,3 +190,40 @@ function buildFastReasoning(
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
+
+/**
+ * Infer the most contextually relevant frictionId when no event-level
+ * friction was detected. Uses session state (page type, cart, flags) to
+ * pick the most likely friction the visitor is experiencing.
+ *
+ * Priority order: specific gate flags > page type > cart state.
+ * Returned frictionId feeds message template selection and voice scripts.
+ */
+export function inferFrictionFromContext(ctx: SessionContext): string {
+  // Specific gate-flag frictions (highest priority — these are definitive)
+  if (ctx.hasPaymentFailure)  return "F096"; // payment failure
+  if (ctx.hasTechnicalError)  return "F161"; // technical/JS error
+  if (ctx.hasOutOfStock)      return "F053"; // out of stock
+  if (ctx.hasShippingIssue)   return "F236"; // shipping concern
+  if (ctx.hasCheckoutTimeout) return "F112"; // checkout timeout
+  if (ctx.hasHelpSearch)      return "F036"; // searched for help
+
+  // Page-type based inference
+  switch (ctx.pageType) {
+    case "checkout":
+      return "F089"; // general checkout friction
+    case "cart":
+      // Idle with cart is the primary signal — visitor has value but isn't moving
+      return ctx.cartValue > 0 && ctx.sessionAgeSec > 120 ? "F069" : "F068";
+    case "pdp":
+      // No cart yet → product consideration friction; cart exists → hesitation
+      return ctx.cartValue === 0 ? "F042" : "F015";
+    case "search_results":
+      return "F028"; // search navigation friction
+    case "category":
+      return "F013"; // navigation difficulty
+    case "landing":
+    default:
+      return "F002"; // bounce risk — most conservative inference
+  }
+}

@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const base = new URL('../apps/store', import.meta.url).pathname;
 const mimeTypes = {
@@ -13,6 +14,23 @@ const mimeTypes = {
   '.json': 'application/json',
 };
 
+// Load .env values into process.env (simple parser, no extra deps)
+function loadDotEnv() {
+  const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.env');
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
+loadDotEnv();
+
 const srv = http.createServer((req, res) => {
   let p = req.url === '/' ? '/index.html' : req.url;
   p = p.split('?')[0];
@@ -23,8 +41,10 @@ const srv = http.createServer((req, res) => {
     return;
   }
   const ext = path.extname(fp);
+  const contentType = mimeTypes[ext] || 'text/plain';
+
   res.writeHead(200, {
-    'Content-Type': mimeTypes[ext] || 'text/plain',
+    'Content-Type': contentType,
     'Access-Control-Allow-Origin': '*',
   });
   fs.createReadStream(fp).pipe(res);

@@ -30,10 +30,14 @@ model Session {
   status          String   @default("active") // active | idle | ended
 
   // MSWIM session-level tracking
-  totalInterventionsFired Int     @default(0)
-  totalDismissals         Int     @default(0)
-  totalConversions        Int     @default(0)
-  suppressNonPassive      Boolean @default(false)
+  totalInterventionsFired      Int     @default(0)
+  totalDismissals              Int     @default(0)
+  totalConversions             Int     @default(0)
+  suppressNonPassive           Boolean @default(false)
+
+  // Voice intervention tracking
+  totalVoiceInterventionsFired Int     @default(0)
+  voiceMuted                   Boolean @default(false)
 
   // Analytics fields (Phase 1 — all nullable for safe migration)
   endedAt           DateTime?

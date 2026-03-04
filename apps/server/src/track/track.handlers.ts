@@ -1,8 +1,10 @@
 import type { WebSocket } from "ws";
 import { processTrackEvent } from "./track.service.js";
 import { recordInterventionOutcome } from "../intervene/intervene.service.js";
+import { handleVoiceQuery } from "../voice/voice-responder.service.js";
 import {
   WsWidgetMessageSchema,
+  WsVoiceQuerySchema,
   InterventionOutcomeSchema,
   validatePayload,
 } from "../validation/schemas.js";
@@ -19,6 +21,25 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
     const result = validatePayload(WsWidgetMessageSchema, raw);
 
     if (!result.success) {
+      // Maybe it's a voice query (Phase 2 ASR)
+      const voiceQueryResult = validatePayload(WsVoiceQuerySchema, raw);
+      if (voiceQueryResult.success) {
+        const { session_id, transcript } = voiceQueryResult.data;
+        console.log(`[Track] Voice query from session ${session_id}: "${transcript.slice(0, 60)}"`);
+
+        handleVoiceQuery(ws, session_id, transcript)
+          .catch((error) => {
+            console.error("[Track] Voice query error:", error);
+            ws.send(
+              JSON.stringify({
+                type: "voice_query_error",
+                error: "Failed to process voice query",
+              }),
+            );
+          });
+        return;
+      }
+
       // Maybe it's an intervention outcome
       const outcomeResult = validatePayload(InterventionOutcomeSchema, raw);
       if (outcomeResult.success) {

@@ -30,6 +30,10 @@ interface NudgeBubbleOptions {
   onHardDismiss: () => void;
   /** Micro-signal: user found this not helpful */
   onNotHelpful: () => void;
+  /** True when server sent voice_enabled=true for this nudge */
+  voiceEnabled?: boolean;
+  /** Called when user taps the mute button — disables voice for the session */
+  onVoiceMute?: () => void;
 }
 
 /**
@@ -59,6 +63,8 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     onSoftDismiss,
     onHardDismiss,
     onNotHelpful,
+    voiceEnabled,
+    onVoiceMute,
   } = opts;
 
   const ctx = frictionId
@@ -72,11 +78,11 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     `position:absolute;bottom:68px;right:0;width:300px;
      background:rgba(255,255,255,0.97);
      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-     border-radius:18px;
+     border-radius:var(--ava-radius,18px);
      box-shadow:0 8px 40px rgba(0,0,0,0.12),0 1px 4px rgba(0,0,0,0.06);
      overflow:hidden;
      animation:sa-slideUp 0.32s cubic-bezier(0.22,1,0.36,1);
-     font-family:${config.fontFamily};
+     font-family:var(--ava-font,${config.fontFamily});
      border:1px solid rgba(0,0,0,0.06);
      touch-action:pan-y;`,
   );
@@ -142,6 +148,39 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
   hookLeft.appendChild(hookIcon);
   hookLeft.appendChild(hookText);
 
+  // Right-side action cluster: optional mute + hard dismiss
+  const hookRight = document.createElement("div");
+  hookRight.setAttribute("style", "display:flex;align-items:center;gap:4px;");
+
+  // 🔇 Voice mute button — only rendered when voice is playing for this nudge
+  if (voiceEnabled && onVoiceMute) {
+    const muteBtn = document.createElement("button");
+    muteBtn.setAttribute(
+      "style",
+      `background:none;border:none;cursor:pointer;padding:4px;
+       color:#9ca3af;font-size:13px;line-height:1;border-radius:6px;
+       transition:background 0.15s ease,color 0.15s ease;`,
+    );
+    muteBtn.setAttribute("aria-label", "Mute voice tips");
+    muteBtn.setAttribute("title", "Mute voice for this session");
+    muteBtn.textContent = "\uD83D\uDD0A"; // 🔊
+    muteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      muteBtn.textContent = "\uD83D\uDD07"; // 🔇
+      muteBtn.style.color = "#6b7280";
+      setTimeout(onVoiceMute, 200);
+    });
+    muteBtn.addEventListener("mouseenter", () => {
+      muteBtn.style.background = "#f3f4f6";
+      muteBtn.style.color = "#374151";
+    });
+    muteBtn.addEventListener("mouseleave", () => {
+      muteBtn.style.background = "none";
+      muteBtn.style.color = "#9ca3af";
+    });
+    hookRight.appendChild(muteBtn);
+  }
+
   // Hard dismiss ×
   const closeBtn = document.createElement("button");
   closeBtn.setAttribute(
@@ -165,14 +204,22 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     closeBtn.style.background = "none";
     closeBtn.style.color = "#9ca3af";
   });
+  hookRight.appendChild(closeBtn);
 
   hookRow.appendChild(hookLeft);
-  hookRow.appendChild(closeBtn);
+  hookRow.appendChild(hookRight);
   card.appendChild(hookRow);
 
-  // --- Message body ---
+  // --- Message body — clicking anywhere on it opens the panel ---
   const body = document.createElement("div");
-  body.setAttribute("style", "padding:12px 14px 10px;");
+  body.setAttribute(
+    "style",
+    `padding:12px 14px 10px;cursor:pointer;`,
+  );
+  body.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onCtaClick();
+  });
 
   const messageEl = document.createElement("div");
   messageEl.setAttribute(
@@ -188,14 +235,14 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     ctaBtn.setAttribute(
       "style",
       `display:block;width:100%;margin-top:10px;
-       background:${config.brandColor};color:#fff;
-       border:none;border-radius:10px;padding:10px 16px;
+       background:var(--ava-primary,${config.brandColor});color:#fff;
+       border:none;border-radius:calc(var(--ava-radius,18px) - 8px);padding:10px 16px;
        font-size:13px;font-weight:600;cursor:pointer;
-       font-family:${config.fontFamily};
+       font-family:var(--ava-font,${config.fontFamily});
        transition:opacity 0.15s ease,transform 0.1s ease;`,
     );
     ctaBtn.textContent = ctaLabel;
-    ctaBtn.addEventListener("click", onCtaClick);
+    ctaBtn.addEventListener("click", (e) => { e.stopPropagation(); onCtaClick(); });
     ctaBtn.addEventListener("mouseenter", () => {
       ctaBtn.style.opacity = "0.88";
     });
@@ -226,7 +273,7 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
   notHelpfulBtn.setAttribute(
     "style",
     `background:none;border:none;cursor:pointer;padding:3px 6px;
-     font-size:11px;color:#9ca3af;font-family:${config.fontFamily};
+     font-size:11px;color:#9ca3af;font-family:var(--ava-font,${config.fontFamily});
      border-radius:6px;transition:background 0.15s ease,color 0.15s ease;`,
   );
   notHelpfulBtn.textContent = "Not helpful";
@@ -250,13 +297,16 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
   softDismissBtn.setAttribute(
     "style",
     `background:none;border:none;cursor:pointer;padding:3px 6px;
-     font-size:11px;color:#9ca3af;font-family:${config.fontFamily};
+     font-size:11px;color:#9ca3af;font-family:var(--ava-font,${config.fontFamily});
      border-radius:6px;transition:background 0.15s ease,color 0.15s ease;`,
   );
   softDismissBtn.textContent = "Not now";
   softDismissBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    onSoftDismiss();
+    // Visual feedback before callback (matches "Not helpful" pattern)
+    softDismissBtn.textContent = "Ok \u2193";
+    softDismissBtn.style.color = "#6b7280";
+    setTimeout(onSoftDismiss, 400);
   });
   softDismissBtn.addEventListener("mouseenter", () => {
     softDismissBtn.style.background = "#f3f4f6";

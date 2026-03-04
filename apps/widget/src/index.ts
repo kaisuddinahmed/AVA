@@ -49,16 +49,40 @@ function init(config: Partial<WidgetConfig>) {
   widget.onIgnored = (id: string) => {
     bridge.sendOutcome(id, "ignored");
   };
-  // Micro-outcomes: route as user_action so the server can feed them into training data
-  widget.onMicroOutcome = (id: string, outcome: string) => {
-    bridge.send("user_action", { action: "micro_outcome", outcome, intervention_id: id });
+  // Voice muted: user tapped 🔇 — server marks session as voiceMuted
+  widget.onVoiceMuted = (id: string) => {
+    bridge.sendOutcome(id, "voice_muted");
   };
+  // Micro-outcomes: sent as track events so they pass server Zod validation
+  widget.onMicroOutcome = (id: string, outcome: string) => {
+    bridge.sendTrackEvent({
+      event_type: "micro_outcome",
+      friction_id: null,
+      raw_signals: { outcome, intervention_id: id },
+    });
+  };
+  // Text chat input — routes through voice_query pipeline so server generates an LLM reply
   widget.onUserMessage = (text: string) => {
-    bridge.send("user_message", { text });
+    bridge.sendVoiceQuery(text);
   };
   widget.onUserAction = (action: string, data?: Record<string, unknown>) => {
-    bridge.send("user_action", { action, data });
+    bridge.sendTrackEvent({
+      event_type: "user_action",
+      raw_signals: { action, ...data },
+    });
   };
+  // Phase 2: ASR voice query — send transcript to server for LLM reply + voice playback
+  widget.onVoiceQuery = (transcript: string) => {
+    bridge.sendVoiceQuery(transcript);
+  };
+  // Clear typing state if voice query is rejected (disabled / error path)
+  bridge.on("voice_query_ack", (data: any) => {
+    widget.handleVoiceQueryAck(data);
+  });
+  // Clear typing state on server-side error (voice_query_error message type)
+  bridge.on("voice_query_error", () => {
+    widget.handleVoiceQueryAck({ status: "error" });
+  });
 
   // Expose for debug
   (window as any).__AVA_WIDGET__ = widget;

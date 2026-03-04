@@ -79,6 +79,13 @@ export function injectGlobalStyles(
       to { transform: translateX(110%); opacity: 0; }
     }
 
+    /* Mic button recording pulse */
+    @keyframes sa-mic-pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0.45); }
+      70%  { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);    }
+      100% { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0);    }
+    }
+
     *, *::before, *::after {
       box-sizing: border-box;
     }

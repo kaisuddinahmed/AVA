@@ -75,6 +75,18 @@ export const WsWidgetMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 // ============================================================================
+// WEBSOCKET: VOICE QUERY (from widget ASR — Phase 2)
+// ============================================================================
+
+/** Voice query message: transcript captured via Deepgram STT, sent by the widget */
+export const WsVoiceQuerySchema = z.object({
+  type: z.literal("voice_query"),
+  session_id: z.string(),
+  transcript: z.string().min(1).max(2000),
+  timestamp: z.number(),
+});
+
+// ============================================================================
 // WEBSOCKET: INTERVENTION OUTCOME (from widget)
 // ============================================================================
 
@@ -82,7 +94,7 @@ export const InterventionOutcomeSchema = z.object({
   type: z.literal("intervention_outcome"),
   intervention_id: z.string(),
   session_id: z.string(),
-  status: z.enum(["delivered", "dismissed", "converted", "ignored"]),
+  status: z.enum(["delivered", "dismissed", "converted", "ignored", "voice_muted"]),
   timestamp: z.number(),
   conversion_action: z.string().optional(),
 });

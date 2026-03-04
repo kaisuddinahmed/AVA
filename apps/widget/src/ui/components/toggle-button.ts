@@ -22,11 +22,11 @@ export function renderToggleButton(opts: ToggleButtonOptions): HTMLButtonElement
   btn.setAttribute(
     "style",
     `display:flex;align-items:center;gap:0;border:none;cursor:pointer;
-     background:linear-gradient(135deg,${config.brandColor},${config.brandColorLight});
-     color:#fff;border-radius:16px;height:52px;padding:0 14px;
+     background:linear-gradient(135deg,var(--ava-primary,${config.brandColor}),var(--ava-primary-light,${config.brandColorLight}));
+     color:#fff;border-radius:var(--ava-radius,16px);height:52px;padding:0 14px;
      box-shadow:0 4px 20px rgba(0,0,0,0.15);
-     transition:transform 0.2s ease,box-shadow 0.2s ease,padding 0.2s ease;
-     position:relative;overflow:hidden;font-family:${config.fontFamily};`,
+     transition:transform 0.2s ease,box-shadow 0.2s ease,padding 0.2s ease,opacity 0.3s ease;
+     position:relative;overflow:hidden;font-family:var(--ava-font,${config.fontFamily});`,
   );
 
   // Icon span
@@ -88,6 +88,7 @@ export function updateToggleButton(
     }
     btn.setAttribute("aria-label", "Close assistant");
     btn.style.animation = "none";
+    btn.style.opacity = "1";
 
   } else if (state === "signal" && labelText) {
     // Signal mode: show label strip
@@ -100,9 +101,10 @@ export function updateToggleButton(
     }
     btn.setAttribute("aria-label", labelText);
     btn.style.animation = "sa-breathe 2s ease-in-out infinite";
+    btn.style.opacity = "1";
 
   } else {
-    // minimized
+    // minimized: nearly invisible when idle, visible when there's something to see
     if (iconSpan) iconSpan.textContent = "\uD83D\uDECD\uFE0F";
     if (labelSpan) {
       labelSpan.style.maxWidth = "0";
@@ -111,6 +113,9 @@ export function updateToggleButton(
     }
     btn.setAttribute("aria-label", "Open assistant");
     btn.style.animation = hasUnread ? "sa-breathe 2s ease-in-out infinite" : "none";
+    // Fade to near-invisible when idle (no unread)
+    btn.style.opacity = hasUnread ? "1" : "0.18";
+    btn.style.pointerEvents = hasUnread ? "auto" : "auto"; // still clickable even faded
   }
 
   // Unread dot

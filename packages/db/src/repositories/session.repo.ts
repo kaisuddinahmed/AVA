@@ -24,6 +24,8 @@ export type UpdateSessionInput = Partial<{
   totalDismissals: number;
   totalConversions: number;
   suppressNonPassive: boolean;
+  totalVoiceInterventionsFired: number;
+  voiceMuted: boolean;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,20 @@ export async function setSuppressNonPassive(id: string, suppress: boolean) {
   return prisma.session.update({
     where: { id },
     data: { suppressNonPassive: suppress },
+  });
+}
+
+export async function incrementVoiceInterventionsFired(id: string) {
+  return prisma.session.update({
+    where: { id },
+    data: { totalVoiceInterventionsFired: { increment: 1 } },
+  });
+}
+
+export async function setVoiceMuted(id: string) {
+  return prisma.session.update({
+    where: { id },
+    data: { voiceMuted: true },
   });
 }
 

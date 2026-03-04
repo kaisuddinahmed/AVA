@@ -68,6 +68,13 @@ export const config = {
   experiments: {
     enabled: process.env.EXPERIMENTS_ENABLED !== "false",
   },
+
+  // Voice interventions (Deepgram TTS — server sends voice_script; widget synthesizes audio)
+  voice: {
+    deepgramApiKey: process.env.DEEPGRAM_API_KEY ?? "",
+    enabled: process.env.VOICE_ENABLED === "true",
+    maxPerSession: Number(process.env.VOICE_MAX_PER_SESSION ?? 3),
+  },
 } as const;
 
 export type Config = typeof config;

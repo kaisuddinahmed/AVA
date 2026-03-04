@@ -10,14 +10,15 @@ Full spec in `docs/` and `ava_project_structure.md`.
 ## Architecture
 
 - **Monorepo**: Turborepo workspaces. `packages/shared`, `packages/db`, `apps/server`, `apps/dashboard`, `apps/widget`, `apps/demo`.
-- **Backend** (`apps/server`): Express + WebSocket on ports 8080/8081. Six layers:
+- **Backend** (`apps/server`): Express + WebSocket on ports 8080/8081. Seven layers:
   - `src/onboarding/` — runs site analysis, behavior/friction mapping, verification, activation.
   - `src/track/` — receives behavioral events from widget, buffers, stores. Normalizes events with `event-normalizer.ts` (extracts analytics fields: timeOnPageMs, scrollDepthPct, sessionSequenceNumber, UTM fields). Wires outcome feedback into training data collection.
   - `src/evaluate/` — three engine modes (`EVAL_ENGINE` env var):
     - `llm` (default) — Groq LLM API (Llama 3.3 70B) + MSWIM scoring + shadow comparison.
     - `fast` — zero LLM calls, synthesizes signals from session context, runs MSWIM only.
     - `auto` — fast-first, escalates to LLM for high-stakes scenarios (composite ≥ 65, severity ≥ 75, or gate-forced escalation).
-  - `src/intervene/` — builds intervention payloads, broadcasts via WebSocket.
+  - `src/intervene/` — builds intervention payloads, broadcasts via WebSocket. All NUDGE/ACTIVE/ESCALATE payloads include `voice_enabled` + `voice_script` fields computed from 30-category message templates.
+  - `src/voice/` — voice query responder (`voice-responder.service.ts`): receives ASR transcripts from widget, calls Groq LLM for a spoken reply, broadcasts `active` intervention with `voice_enabled: true` back to widget.
   - `src/training/` — training data collection, quality grading, fine-tune export, evaluation harness.
   - `src/jobs/` — nightly batch scheduler, drift detection, eval harness (shared lib).
   - `src/experiment/` — A/B experiment framework with deterministic assignment.
@@ -36,6 +37,9 @@ Full spec in `docs/` and `ava_project_structure.md`.
   - Click events include normalized heatmap coords: `x_pct`, `y_pct` (0–1 range), plus raw `client_x`, `client_y`, `viewport_width`, `viewport_height` in `raw_signals`.
   - Every event carries `session_sequence_number` (monotonic counter per session) in `raw_signals`.
   - Product card clicks are NOT tracked separately — `product_detail_view` from the modal observer handles it to avoid duplicates.
+  - **Voice (TTS)** — `VoiceManager` (`src/voice/voice-manager.ts`): fetches Deepgram TTS REST API with `voice_script` from intervention payload → plays via `HTMLAudioElement`. Tracks per-session budget (`maxPerSession`), respects `voiceMuted` flag. Mute button shown in nudge bubble and panel header when `voice_enabled: true`.
+  - **Voice (ASR)** — `SpeechRecognizer` (`src/voice/speech-recognizer.ts`): `getUserMedia` → `MediaRecorder` → Deepgram STT REST (`nova-2`) → transcript. 🎙 mic button in panel footer (3 states: idle / recording-pulse / processing). On transcript: shows user bubble, sends `{ type: "voice_query" }` WS message, shows typing indicator, server replies with `active` intervention + TTS playback.
+  - Voice config: `voiceEnabled`, `deepgramApiKey`, `deepgramModel` (default `aura-asteria-en`), `voiceMaxPerSession` (default 3), `voiceAutoPlay` in `WidgetConfig`. All set in `window.__AVA_CONFIG__` on the host store page.
 - **Store** (`apps/store`): Static HTML served by `scripts/serve-store.mjs` on port 3001. Contains `ava-widget.iife.js` (copied from widget build output). Config via `window.__AVA_CONFIG__`.
 - **Demo** (`apps/demo`): Vite, port 4002. Three-panel collapsible layout:
   - Left panel: Integration wizard (Analyze → Map → Verify → Activate).
@@ -58,7 +62,7 @@ Full spec in `docs/` and `ava_project_structure.md`.
 
 ### Core (original)
 
-- `Session` — visitor session with MSWIM tracking fields (totalInterventionsFired, totalDismissals, suppressNonPassive) + analytics fields (entryPage, exitPage, pageViewCount, totalTimeOnSiteMs, utmSource/Medium/Campaign/Content/Term, landingReferrer)
+- `Session` — visitor session with MSWIM tracking fields (totalInterventionsFired, totalDismissals, suppressNonPassive) + voice fields (totalVoiceInterventionsFired, voiceMuted) + analytics fields (entryPage, exitPage, pageViewCount, totalTimeOnSiteMs, utmSource/Medium/Campaign/Content/Term, landingReferrer)
 - `TrackEvent` — behavioral event with category, eventType, frictionId, rawSignals (JSON) + analytics columns (siteUrl, previousPageUrl, timeOnPageMs, scrollDepthPct, sessionSequenceNumber)
 - `Evaluation` — LLM output + 5 MSWIM scores (intentScore, frictionScore, clarityScore, receptivityScore, valueScore) + compositeScore + tier + gateOverride + `engine` field ("llm" | "fast")
 - `Intervention` — payload sent to widget + outcome (status, mswimScoreAtFire)
@@ -99,6 +103,7 @@ Three modes controlled by `EVAL_ENGINE` env var:
 
 - `runFastEvaluation()` — synthesizes all 5 MSWIM signal hints from session context (page type, cart value, login state, friction IDs) and feeds them into `runMSWIM()`.
 - `shouldEscalateToLLM()` — triggers LLM path when: composite ≥ 65 (ACTIVE+), max friction severity ≥ 75, or gate forced escalation.
+- `inferFrictionFromContext()` — maps session context (pageType, gate flags, cart state) to a contextual frictionId when behavioral events yield none (fixes frictionId=unknown on generic page_view sessions).
 
 ### Shadow Mode (`src/evaluate/shadow-evaluator.ts`)
 
@@ -106,6 +111,37 @@ Three modes controlled by `EVAL_ENGINE` env var:
 - Generates synthetic signal hints from session state, compares tier/decision/composite divergence.
 - Enable via `SHADOW_MODE_ENABLED=true` in `.env`.
 - Query shadow data via `/api/shadow/*` endpoints.
+
+## Voice Intervention System
+
+Two complementary voice modes — both use Deepgram APIs via plain `fetch` (zero SDK in widget).
+
+### TTS Playback (Phase 1)
+- Server attaches `voice_enabled: boolean` + `voice_script: string` (≤12 words) to every NUDGE/ACTIVE/ESCALATE payload.
+- `VoiceManager` in widget receives these fields, calls Deepgram TTS REST endpoint, plays audio via `HTMLAudioElement`.
+- **Budget gate** (server-side): voice disabled when `!VOICE_ENABLED` OR `session.voiceMuted` OR `session.totalVoiceInterventionsFired >= VOICE_MAX_PER_SESSION`.
+- User can mute via 🔊 button in nudge bubble or panel header → widget sends `{ type: "intervention_outcome", status: "voice_muted" }` → server sets `session.voiceMuted = true`, records as "dismissed" for training consistency.
+- Message templates (`src/intervene/message-templates.ts`): 30 categories × `{ message, voiceScript }`. `getFrictionCategory()` maps F001–F325 friction IDs to one of these 30 categories.
+
+### ASR — Spoken Queries (Phase 2)
+- Widget 🎙 mic button in panel footer: `getUserMedia` → `MediaRecorder` → Deepgram STT REST (`nova-2` model) → transcript string.
+- Transcript sent as `{ type: "voice_query", session_id, transcript, timestamp }` WS message.
+- Server `voice-responder.service.ts`: calls Groq LLM for a warm 1-2 sentence reply → broadcasts `active` intervention with `voice_enabled: true` + `voice_script` (first sentence, ≤80 chars) back to widget.
+- Widget shows transcript as user bubble + typing indicator → receives `active` intervention → displays reply + plays TTS.
+- Voice queries bypass proactive budget but still respect `voiceMuted` session flag.
+
+### Environment Variables (Voice)
+`DEEPGRAM_API_KEY` — Deepgram API key (used server-side for config; widget uses key from `window.__AVA_CONFIG__.deepgramApiKey`).
+`VOICE_ENABLED=true|false` — global server toggle (default: false).
+`VOICE_MAX_PER_SESSION=3` — max proactive TTS interventions per session.
+
+### Widget Config (Voice)
+Set in `window.__AVA_CONFIG__` on host store page:
+- `voiceEnabled: true` — merchant-level voice toggle
+- `deepgramApiKey: "..."` — Deepgram key for both TTS and ASR in browser
+- `deepgramModel: "aura-asteria-en"` — TTS voice model
+- `voiceMaxPerSession: 3` — client-side budget ceiling (server also enforces)
+- `voiceAutoPlay: true` — autoplay on intervention delivery
 
 ## MSWIM Scoring
 
@@ -175,7 +211,7 @@ Signal calculators: `apps/server/src/evaluate/mswim/signals/*.signal.ts`.
 - All shared types go in `packages/shared/src/types/`. Import as `@ava/shared`.
 - All DB access through repositories in `packages/db/src/repositories/`. Import as `@ava/db`.
 - Never put business logic in API routes — routes call services, services contain logic.
-- WebSocket messages are typed. Every message has `{ type: string, payload: T, session_id: string, timestamp: number }`.
+- WebSocket messages are typed. Every message has `{ type: string, payload: T, session_id: string, timestamp: number }`. Widget → server message types: `track`, `ping`, `intervention_outcome` (statuses: delivered/dismissed/converted/ignored/voice_muted), `voice_query` (Phase 2 ASR). Server → widget message types: `intervention`, `track_ack`, `outcome_ack`, `voice_query_ack`.
 - Widget code must have ZERO external dependencies. No React, no lodash, nothing. Shadow DOM for style isolation.
 - Behavior catalog (B001-B614) lives in `packages/shared/src/constants/behavior-pattern-catalog.ts`.
 - LLM prompts live in `apps/server/src/evaluate/prompts/`. System prompt instructs LLM to return strict JSON with 5 signal scores.
@@ -194,6 +230,11 @@ Signal calculators: `apps/server/src/evaluate/mswim/signals/*.signal.ts`.
 - Dashboard analytics APIs are lazily polled — only fetch when the relevant tab is active (`isTrackTab`, `isEvalTab` guards in `App.tsx`).
 - Click heatmap data is stored in `rawSignals` JSON (no schema column needed) — query via `EventRepo.getClickCoordinates()` which extracts `x_pct`/`y_pct` from the JSON blob.
 - `apiFetch(path, init?)` in `apps/dashboard/src/hooks/use-api.ts` accepts an optional `RequestInit` second argument — use it for all mutation calls (POST/PUT with body + headers).
+- Voice fields (`voice_enabled`, `voice_script`) are computed in `payload-builder.ts` from the 30-category message templates — never hardcode voice scripts inline in services.
+- `inferFrictionFromContext()` is the canonical fallback for frictionId resolution — call it from `evaluate.service.ts` when the events array yields no frictionIds; do not add fallback logic elsewhere.
+- `voice-responder.service.ts` must always broadcast via `broadcastToSession("widget", sessionId, ...)` — never send directly on the `ws` socket for interventions (dashboard won't see them).
+- Voice budget increment (`incrementVoiceInterventionsFired`) is always fire-and-forget — never `await` it in the hot path.
+- `SpeechRecognizer.isSupported()` must be checked before instantiation — the class is only created when both `voiceEnabled && deepgramApiKey && isSupported()` are true.
 
 ## Commands
 
@@ -243,6 +284,12 @@ DB overrides env defaults via `ScoringConfig` table.
 
 `SHADOW_MODE_ENABLED=true|false` — enables dual-path shadow comparison (default: `false`).
 `SHADOW_LOG_CONSOLE=true|false` — prints shadow results to console (default: `false`).
+
+### Voice
+
+`DEEPGRAM_API_KEY` — Deepgram REST API key (used by server config; widget reads from `window.__AVA_CONFIG__`).
+`VOICE_ENABLED=true|false` — global server-side voice toggle (default: `false`).
+`VOICE_MAX_PER_SESSION=3` — max proactive TTS interventions before budget exhausted.
 
 ### Nightly Jobs
 
@@ -379,3 +426,8 @@ Write tests alongside source files as `*.test.ts`. Test MSWIM signal calculators
 - Do not await analytics side-effects in `track.service.ts` — they must be fire-and-forget to avoid blocking the event pipeline.
 - Do not `GROUP BY` on `rawSignals` JSON fields in SQLite — promote key analytics fields to typed columns via the normalizer instead.
 - Do not call `apiFetch` with only one argument when making mutations — always pass the `RequestInit` object (method, body, headers) as the second argument.
+- Do not add voice TTS or ASR logic directly to `intervene.service.ts` or `track.service.ts` — TTS fields belong in `payload-builder.ts`; ASR handling belongs in `src/voice/voice-responder.service.ts`.
+- Do not send `voice_query` WS messages from the widget without checking `SpeechRecognizer.isSupported()` first — mic APIs are not available in all browsers or secure contexts.
+- Do not use the Deepgram SDK in `apps/widget` — widget must use plain `fetch` for both TTS and STT calls (zero-dep constraint).
+- Do not expand `voice_script` beyond ~80 characters for TTS — longer scripts cause unnatural pacing and exceed the 12-word guideline for proactive interventions.
+- Do not bypass `session.voiceMuted` when building voice payloads — always check the flag even for user-initiated voice queries.

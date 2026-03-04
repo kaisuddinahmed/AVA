@@ -61,6 +61,9 @@ export interface WidgetPayload {
   cta_label?: string;
   cta_action?: string;
   meta?: Record<string, unknown>;
+  // Voice fields
+  voice_enabled?: boolean;
+  voice_script?: string;
 }
 
 export type WidgetState = "minimized" | "bubble" | "expanded" | "hidden";
@@ -79,4 +82,10 @@ export interface WidgetConfig {
   assistant_name: string;
   max_cards_to_show: number;
   animation_duration: number;
+  // Voice settings
+  voice_enabled?: boolean;
+  voice_max_per_session?: number;
+  deepgram_api_key?: string;
+  deepgram_model?: string;
+  voice_auto_play?: boolean;
 }

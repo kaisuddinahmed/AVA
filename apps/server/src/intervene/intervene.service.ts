@@ -4,6 +4,7 @@ import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
 import { buildPayload } from "./payload-builder.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
+import { config } from "../config.js";
 
 export interface InterventionOutput {
   interventionId: string;
@@ -31,12 +32,28 @@ export async function handleDecision(
 ): Promise<InterventionOutput | null> {
   if (decision.decision !== "fire" || !decision.type) return null;
 
-  const [runtimeMode, recentEvents] = await Promise.all([
+  const [{ mode: runtimeMode, session }, recentEvents] = await Promise.all([
     resolveRuntimeMode(sessionId),
     EventRepo.getEventsBySession(sessionId, { limit: 20 }),
   ]);
   const guardResult = applyRevenueFirstGuard(decision, runtimeMode);
   const effectiveDecision = guardResult.decision;
+
+  // Determine voice budget: disabled when voice is globally off, session muted, or max reached
+  const voiceDisabled =
+    !config.voice.enabled ||
+    !session ||
+    session.voiceMuted ||
+    session.totalVoiceInterventionsFired >= config.voice.maxPerSession;
+
+  if (!config.voice.enabled) {
+    // Silent — voice simply not configured for this deployment
+  } else if (voiceDisabled && session) {
+    console.log(
+      `[Intervene] Voice budget exhausted for session ${sessionId} ` +
+      `(fired=${session.totalVoiceInterventionsFired}, muted=${session.voiceMuted})`
+    );
+  }
 
   // Map DB events to the shape product-intelligence expects
   const sessionEvents = recentEvents.map((e) => {
@@ -55,7 +72,8 @@ export async function handleDecision(
     effectiveDecision.actionCode,
     effectiveDecision.frictionId,
     evaluation,
-    sessionEvents
+    sessionEvents,
+    voiceDisabled
   );
 
   // Persist intervention
@@ -72,6 +90,11 @@ export async function handleDecision(
 
   // Update session counters
   await SessionRepo.incrementInterventionsFired(sessionId);
+
+  // Increment voice counter fire-and-forget when voice is actually enabled
+  if (payload.voice_enabled === true) {
+    SessionRepo.incrementVoiceInterventionsFired(sessionId).catch(() => {});
+  }
 
   return {
     interventionId: intervention.id,
@@ -100,11 +123,22 @@ export async function handleDecision(
  */
 export async function recordInterventionOutcome(
   interventionId: string,
-  status: "delivered" | "dismissed" | "converted" | "ignored",
+  status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted",
   conversionAction?: string
 ) {
+  // voice_muted: user tapped the mute button during a voice intervention.
+  // Mark session as muted (fire-and-forget), then record as "dismissed" for
+  // training-data consistency (the user actively rejected the interaction).
+  if (status === "voice_muted") {
+    const existing = await InterventionRepo.getIntervention(interventionId);
+    if (existing) {
+      SessionRepo.setVoiceMuted(existing.sessionId).catch(() => {});
+    }
+    status = "dismissed";
+  }
+
   // Remap passive "ignored" → "delivered" for accurate training labels
-  let effectiveStatus = status;
+  let effectiveStatus: "delivered" | "dismissed" | "converted" | "ignored" = status;
   if (status === "ignored") {
     const existing = await InterventionRepo.getIntervention(interventionId);
     if (existing?.type === "passive") {
@@ -134,14 +168,20 @@ export async function recordInterventionOutcome(
 
 type RuntimeMode = "active" | "limited_active";
 
-async function resolveRuntimeMode(sessionId: string): Promise<RuntimeMode> {
+interface RuntimeResolution {
+  mode: RuntimeMode;
+  session: Awaited<ReturnType<typeof SessionRepo.getSession>>;
+}
+
+async function resolveRuntimeMode(sessionId: string): Promise<RuntimeResolution> {
   const session = await SessionRepo.getSession(sessionId);
-  if (!session) return "limited_active";
+  if (!session) return { mode: "limited_active", session: null };
 
   const siteConfig = await SiteConfigRepo.getSiteConfigByUrl(session.siteUrl);
-  if (!siteConfig) return "limited_active";
+  if (!siteConfig) return { mode: "limited_active", session };
 
-  return siteConfig.integrationStatus === "active" ? "active" : "limited_active";
+  const mode = siteConfig.integrationStatus === "active" ? "active" : "limited_active";
+  return { mode, session };
 }
 
 function applyRevenueFirstGuard(

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import type { InterventionData, OverviewAnalytics, SessionSummary } from "../types";
+import type { InterventionData, OverviewAnalytics, SessionSummary, VoiceAnalytics } from "../types";
 import { useApi, apiFetch } from "../hooks/use-api";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 
@@ -8,6 +8,8 @@ interface Props {
   selectedSession: string | null;
   overview: OverviewAnalytics | null;
   sessions: SessionSummary[];
+  /** Pre-built query string (e.g. "?siteUrl=...&since=...") matching other analytics hooks */
+  analyticsParams?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -102,7 +104,7 @@ function SystemSection({ title, badge, children, defaultOpen = false }: {
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
-export function InterventionsTab({ interventions, selectedSession, overview, sessions }: Props) {
+export function InterventionsTab({ interventions, selectedSession, overview, sessions, analyticsParams = "" }: Props) {
   const filtered = useMemo(
     () => selectedSession ? interventions.filter((i) => i.session_id === selectedSession) : interventions,
     [interventions, selectedSession]
@@ -139,6 +141,9 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
     ?? (totalOutcomes > 0 ? outcomeCounts.converted / totalOutcomes : 0);
   const dismissalRate = eff?.dismissalRate
     ?? (totalOutcomes > 0 ? outcomeCounts.dismissed / totalOutcomes : 0);
+
+  // ── Voice analytics — scoped by siteUrl + since to match other analytics cards
+  const { data: voiceData } = useApi<VoiceAnalytics>(`/analytics/voice${analyticsParams}`, { pollMs: 20000 });
 
   // ── System (Operate) data ──────────────────────────────────────────────
   const { data: trainingStats } = useApi<any>("/training/stats", { pollMs: 30000 });
@@ -288,6 +293,70 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
       </div>
 
       {/* ═══════════════════════════════════════════════════════════
+          ROW 1b — VOICE PERFORMANCE CARD
+          Voice vs text conversion lift + mute rate.
+      ═══════════════════════════════════════════════════════════ */}
+      {voiceData && voiceData.voice.fired > 0 && (
+        <div className="card" style={{ marginBottom: 12, border: "1px solid rgba(91,155,213,0.2)", background: "linear-gradient(135deg, rgba(91,155,213,0.06) 0%, rgba(8,26,34,0.95) 100%)" }}>
+          <div className="card-head">
+            <span>🔊 Voice Performance</span>
+            <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, color: "var(--info)" }}>
+              {voiceData.voice.fired} voice · {voiceData.text.fired} text
+            </span>
+          </div>
+          <div className="card-body" style={{ paddingTop: 10 }}>
+            {/* Metric row */}
+            <div className="grid-4" style={{ marginBottom: 12 }}>
+              <div className="metric-box">
+                <div className="label">Voice Conversion</div>
+                <div className="value accent">{voiceData.voice.fired > 0 ? fmtPct(voiceData.voice.conversionRate) : "—"}</div>
+                <div className="sub">{voiceData.voice.converted} / {voiceData.voice.fired} fired</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Text Conversion</div>
+                <div className="value" style={{ color: "var(--info)" }}>{voiceData.text.fired > 0 ? fmtPct(voiceData.text.conversionRate) : "—"}</div>
+                <div className="sub">{voiceData.text.converted} / {voiceData.text.fired} fired</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Voice Dismissal</div>
+                <div className="value warn">{voiceData.voice.fired > 0 ? fmtPct(voiceData.voice.dismissalRate) : "—"}</div>
+                <div className="sub">{voiceData.voice.dismissed} dismissed</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Mute Rate</div>
+                <div className="value" style={{ color: voiceData.sessions.muteRate > 0.2 ? "var(--tier-escalate)" : "var(--muted)" }}>
+                  {voiceData.sessions.voiceActive > 0 ? fmtPct(voiceData.sessions.muteRate) : "—"}
+                </div>
+                <div className="sub">{voiceData.sessions.muted} / {voiceData.sessions.voiceActive} sessions</div>
+              </div>
+            </div>
+
+            {/* Voice vs Text comparison bar */}
+            {voiceData.voice.fired > 0 && voiceData.text.fired > 0 && (() => {
+              const voiceLift = voiceData.voice.conversionRate - voiceData.text.conversionRate;
+              const liftPct = Math.round(voiceLift * 100);
+              const isPositive = liftPct >= 0;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, color: "var(--muted)" }}>
+                  <span>Conversion lift vs text:</span>
+                  <span style={{
+                    fontWeight: 700,
+                    color: isPositive ? "var(--accent)" : "var(--tier-escalate)",
+                    fontSize: 12,
+                  }}>
+                    {isPositive ? "+" : ""}{liftPct}pp
+                  </span>
+                  <span style={{ opacity: 0.5 }}>
+                    ({voiceData.sessions.voiceActive} voice-active sessions · {voiceData.sessions.muted} muted)
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
           ROW 2 — LIVE INTERVENTION FEED
           The story: what AVA did, to whom, and what happened.
       ═══════════════════════════════════════════════════════════ */}
@@ -349,6 +418,15 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
                   {/* Friction that triggered it */}
                   {iv.friction_id && (
                     <span className="friction-tag" style={{ flexShrink: 0 }}>{iv.friction_id}</span>
+                  )}
+
+                  {/* Voice badge */}
+                  {iv.voice_enabled && (
+                    <span title="Voice intervention" style={{
+                      fontSize: 10,
+                      flexShrink: 0,
+                      opacity: 0.85,
+                    }}>🔊</span>
                   )}
 
                   {/* The message shown to shopper */}

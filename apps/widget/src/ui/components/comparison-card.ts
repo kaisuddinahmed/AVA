@@ -64,7 +64,7 @@ export function renderComparisonCard(opts: ComparisonCardOptions): HTMLDivElemen
     const priceEl = document.createElement("div");
     priceEl.setAttribute(
       "style",
-      `font-size:16px;font-weight:700;color:${config.accentColor};margin-top:4px;`,
+      `font-size:16px;font-weight:700;color:var(--ava-accent,${config.accentColor});margin-top:4px;`,
     );
     priceEl.textContent = `$${product.price.toFixed(2)}`;
     cell.appendChild(priceEl);
@@ -121,7 +121,7 @@ export function renderComparisonCard(opts: ComparisonCardOptions): HTMLDivElemen
       comparison.recommendation?.product_id === product.product_id;
     btn.setAttribute(
       "style",
-      `background:${isRecommended ? config.brandColor : "#f3f4f6"};color:${isRecommended ? "#fff" : "#374151"};border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:${config.fontFamily};transition:all 0.2s ease;`,
+      `background:${isRecommended ? `var(--ava-primary,${config.brandColor})` : "#f3f4f6"};color:${isRecommended ? "#fff" : "#374151"};border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--ava-font,${config.fontFamily});transition:all 0.2s ease;`,
     );
     btn.textContent = "Choose This";
     btn.addEventListener("click", () => onSelect(product.product_id));
