@@ -314,6 +314,10 @@ button[disabled] {
   gap: 8px;
 }
 
+.metric-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .metric {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -348,6 +352,128 @@ button[disabled] {
 
 .status.is-ok {
   border-color: #39685f;
+}
+
+/* ── Scenario Control ────────────────────────────────── */
+
+.scenario-card {
+  border-color: #3f5f69;
+}
+
+.scenario-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.scenario-action-grid--secondary button {
+  background: linear-gradient(160deg, #8bb2b8, #6e9ca2);
+  border-color: #5c8f95;
+  color: #082026;
+}
+
+.scenario-results-list {
+  display: grid;
+  gap: 7px;
+}
+
+.scenario-result-row {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(8, 26, 34, 0.7);
+}
+
+.scenario-result-row strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.scenario-result-row small {
+  color: var(--muted);
+  font: 500 11px/1.3 "IBM Plex Mono", monospace;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  border: 1px solid;
+  font: 600 10px/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.02em;
+}
+
+.pill--ok {
+  color: #8ff0c5;
+  border-color: #3e8f71;
+  background: rgba(30, 98, 75, 0.35);
+}
+
+.pill--warn {
+  color: #ffe1a8;
+  border-color: #9a7a39;
+  background: rgba(116, 88, 28, 0.35);
+}
+
+.pill--error {
+  color: #ffc0c0;
+  border-color: #9a4d4d;
+  background: rgba(120, 38, 38, 0.35);
+}
+
+.scenario-log {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.scenario-log-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 26, 34, 0.65);
+  padding: 6px 8px;
+}
+
+.scenario-log-item span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font: 500 10px/1.2 "IBM Plex Mono", monospace;
+}
+
+.scenario-log-item p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.scenario-log-item.is-ok {
+  border-color: #3e8f71;
+}
+
+.scenario-log-item.is-warn {
+  border-color: #9a7a39;
+}
+
+.scenario-log-item.is-error {
+  border-color: #9a4d4d;
+}
+
+.scenario-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--muted);
+  font: 500 12px/1.3 "IBM Plex Mono", monospace;
 }
 
 /* ── Frame Cards (store + dashboard iframes) ─────────── */

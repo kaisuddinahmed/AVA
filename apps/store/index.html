@@ -159,6 +159,7 @@
           </div>
 
           <button
+            id="top-cart-btn"
             class="hover:text-white flex items-center gap-2"
             onclick="window.location.href = '/checkout.html'"
             data-nav="internal"
@@ -762,6 +763,16 @@
       // no-op: widget handles all behavioral tracking via its own observers
       window.DemoTrigger = function() {};
       window.safeTrigger = function() {};
+      window.__AVA_SCENARIO__ = window.__AVA_SCENARIO__ || {
+        activeRunId: null,
+        stopRequested: false,
+        injectors: {
+          forceZeroSearchResults: false,
+          forceLowStock: false,
+          forcePriceShock: false,
+          forceCheckoutError: false,
+        },
+      };
 
       // Color/Size filter dropdown toggle (click-based, replaces CSS hover-only)
       window.toggleFilterDropdown = function(dropdownId, event) {
@@ -945,7 +956,16 @@
 
       const ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts()));
       function getProductsByCategory(cat) { return ALL_PRODUCTS.filter(p => p.category === cat); }
-      function searchProducts(query) { const q = query.toLowerCase(); return ALL_PRODUCTS.filter(p => p.name.toLowerCase().includes(q) || p.category.includes(q)); }
+      function searchProducts(query) {
+        const q = query.toLowerCase();
+        const scenarioInjectors = window.__AVA_SCENARIO__?.injectors || {};
+        if (scenarioInjectors.forceZeroSearchResults && q.length > 0) {
+          return [];
+        }
+        return ALL_PRODUCTS.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.category.includes(q),
+        );
+      }
 
       // ============================================================
       // Cart Store (inlined from src/store/store.ts)
@@ -968,7 +988,12 @@
         if (existing) { if (existing.quantity > 1) { existing.quantity--; } else { cart = cart.filter(i => i.id !== productId); } }
         STORAGE.setItem(KEY_CART, JSON.stringify(cart)); notify();
       }
-      function getCartTotal() { return getCart().reduce((s,i) => s + i.price * i.quantity, 0); }
+      function getCartTotal() {
+        const subtotal = getCart().reduce((s, i) => s + i.price * i.quantity, 0);
+        const scenarioInjectors = window.__AVA_SCENARIO__?.injectors || {};
+        const surcharge = scenarioInjectors.forcePriceShock && subtotal > 0 ? 18.0 : 0;
+        return subtotal + surcharge;
+      }
       function getCartCount() { return getCart().reduce((s,i) => s + i.quantity, 0); }
       function subscribe(cb) { listeners.push(cb); }
       function getWishlistState() {
@@ -1622,11 +1647,16 @@
              selectedSize = "One Size"; // Default
         }
 
+        const scenarioInjectors = window.__AVA_SCENARIO__?.injectors || {};
+        const effectiveStock = scenarioInjectors.forceLowStock
+          ? Math.max(1, Math.min(Number(p.stock || 3), 2))
+          : Number(p.stock || 0);
+
         // --- STOCK LOGIC (New) ---
         const stockDisplay = document.getElementById("modal-stock-display");
-        if(p.stock && p.stock < 10) {
+        if (effectiveStock > 0 && effectiveStock < 10) {
             stockDisplay.classList.remove("hidden");
-            stockDisplay.innerHTML = `<span class="text-amber-600 font-bold text-xs animate-pulse">Only ${p.stock} left in stock!</span>`;
+            stockDisplay.innerHTML = `<span class="text-amber-600 font-bold text-xs animate-pulse">Only ${effectiveStock} left in stock!</span>`;
         } else {
             stockDisplay.classList.add("hidden");
         }
@@ -1645,8 +1675,8 @@
           }
            
           // Validation: Stock
-          if(p.stock && currentModalQty > p.stock) {
-              alert(`Sorry, we only have ${p.stock} items in stock.`);
+          if (effectiveStock && currentModalQty > effectiveStock) {
+              alert(`Sorry, we only have ${effectiveStock} items in stock.`);
               return;
           }
 
@@ -2463,6 +2493,649 @@
         document.getElementById("cart-total").innerText =
           "$" + getCartTotal().toFixed(2);
       }
+
+      // ============================================================
+      // Scenario-Control Layer (Parent <-> Store)
+      // ============================================================
+      const SCENARIO_MSG_SOURCE_IN = "ava-demo-scenario";
+      const SCENARIO_MSG_SOURCE_OUT = "ava-store-scenario";
+      const SCENARIO_DEFAULT_INJECTORS = {
+        forceZeroSearchResults: false,
+        forceLowStock: false,
+        forcePriceShock: false,
+        forceCheckoutError: false,
+      };
+      const scenarioRuntime = window.__AVA_SCENARIO__;
+      scenarioRuntime.injectors = {
+        ...SCENARIO_DEFAULT_INJECTORS,
+        ...(scenarioRuntime.injectors || {}),
+      };
+
+      function scenarioPost(type, payload = {}) {
+        if (!window.parent || window.parent === window) return;
+        window.parent.postMessage(
+          {
+            source: SCENARIO_MSG_SOURCE_OUT,
+            type,
+            payload,
+          },
+          "*",
+        );
+      }
+
+      function scenarioDelay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function cloneInjectors() {
+        return {
+          ...SCENARIO_DEFAULT_INJECTORS,
+          ...(scenarioRuntime.injectors || {}),
+        };
+      }
+
+      function applyScenarioInjectors(patch = {}) {
+        scenarioRuntime.injectors = {
+          ...cloneInjectors(),
+          ...patch,
+        };
+        syncCart();
+      }
+
+      function resetScenarioInjectors() {
+        scenarioRuntime.injectors = { ...SCENARIO_DEFAULT_INJECTORS };
+        syncCart();
+      }
+
+      function getScenarioBannerEl() {
+        let el = document.getElementById("scenario-control-banner");
+        if (el) return el;
+        el = document.createElement("div");
+        el.id = "scenario-control-banner";
+        el.className =
+          "fixed top-4 left-1/2 -translate-x-1/2 z-[140] hidden px-4 py-2 rounded-full text-xs font-bold tracking-wide uppercase shadow-lg border";
+        document.body.appendChild(el);
+        return el;
+      }
+
+      function showScenarioBanner(message, tone = "info") {
+        const el = getScenarioBannerEl();
+        const toneClass =
+          tone === "error"
+            ? "bg-red-50 text-red-700 border-red-200"
+            : tone === "warn"
+              ? "bg-amber-50 text-amber-700 border-amber-200"
+              : "bg-black text-white border-black";
+        el.className =
+          "fixed top-4 left-1/2 -translate-x-1/2 z-[140] px-4 py-2 rounded-full text-xs font-bold tracking-wide uppercase shadow-lg border " +
+          toneClass;
+        el.textContent = message;
+        el.classList.remove("hidden");
+      }
+
+      function hideScenarioBanner() {
+        const el = document.getElementById("scenario-control-banner");
+        if (!el) return;
+        el.classList.add("hidden");
+      }
+
+      function getScenarioSnapshot() {
+        const modalEl = document.getElementById("product-modal");
+        const wishlistDropdown = document.getElementById("wishlist-dropdown");
+        return {
+          gridTitle: document.getElementById("grid-title")?.innerText || "",
+          resultCount: document.getElementById("result-count")?.innerText || "",
+          cartCount: getCartCount(),
+          cartTotal: Number(getCartTotal().toFixed(2)),
+          wishlistCount:
+            Number(document.getElementById("wishlist-count-header")?.innerText || 0) ||
+            0,
+          modalOpen: modalEl ? !modalEl.classList.contains("hidden") : false,
+          wishlistOpen: wishlistDropdown
+            ? !wishlistDropdown.classList.contains("hidden")
+            : false,
+          injectors: cloneInjectors(),
+        };
+      }
+
+      function findNavLink({ gender, label, action, category }) {
+        const candidates = Array.from(
+          document.querySelectorAll(".nav-category, .nav-menu-action"),
+        );
+        const expectedLabel = (label || "").trim().toLowerCase();
+        return (
+          candidates.find((link) => {
+            const linkGender = (link.dataset.gender || "").trim().toLowerCase();
+            const linkLabel = (link.dataset.label || link.textContent || "")
+              .trim()
+              .toLowerCase();
+            const linkAction = (link.dataset.action || "").trim().toLowerCase();
+            const linkCategory = (link.dataset.cat || "").trim().toLowerCase();
+            if (gender && linkGender !== String(gender).toLowerCase()) return false;
+            if (expectedLabel && linkLabel !== expectedLabel) return false;
+            if (action && linkAction !== String(action).toLowerCase()) return false;
+            if (category && linkCategory !== String(category).toLowerCase()) return false;
+            return true;
+          }) || null
+        );
+      }
+
+      function clickEl(el) {
+        if (!el) throw new Error("Target element not found.");
+        el.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+      }
+
+      function ensureWishlist(open) {
+        const dropdown = document.getElementById("wishlist-dropdown");
+        if (!dropdown) return;
+        const isOpen = !dropdown.classList.contains("hidden");
+        if (open && !isOpen) clickEl(document.getElementById("wishlist-btn"));
+        if (!open && isOpen) clickEl(document.getElementById("wishlist-btn"));
+      }
+
+      function scenarioCheckoutAttempt() {
+        const injectors = cloneInjectors();
+        if (injectors.forceCheckoutError) {
+          showScenarioBanner("Checkout blocked: payment gateway timeout", "error");
+          if (window.DemoTrigger) {
+            window.DemoTrigger("checkout_error_injected", {
+              reason: "gateway_timeout",
+              source: "scenario_control",
+            });
+          }
+          return "checkout_error_injected";
+        }
+
+        showScenarioBanner("Checkout initiated", "info");
+        if (window.DemoTrigger) {
+          window.DemoTrigger("checkout_started", {
+            source: "scenario_control",
+          });
+        }
+        return "checkout_started";
+      }
+
+      function clearFilterSelectionsUI() {
+        document
+          .querySelectorAll(".filter-btn")
+          .forEach((btn) =>
+            btn.classList.remove(
+              "bg-black",
+              "text-white",
+              "bg-gray-100",
+              "font-black",
+              "text-black",
+            ),
+          );
+      }
+
+      async function resetScenarioEnvironment() {
+        scenarioRuntime.stopRequested = false;
+        hideScenarioBanner();
+
+        if (window.closeImageZoom) window.closeImageZoom();
+        if (window.closeModal) window.closeModal();
+
+        document.getElementById("search-dropdown")?.classList.add("hidden");
+        document.getElementById("wishlist-dropdown")?.classList.add("hidden");
+        document.getElementById("user-dropdown")?.classList.add("hidden");
+        document.getElementById("color-filter-dropdown")?.classList.add("hidden");
+        document.getElementById("size-filter-dropdown")?.classList.add("hidden");
+
+        const search = document.getElementById("store-search");
+        if (search) search.value = "";
+
+        clearFilterSelectionsUI();
+        if (typeof activeFilters !== "undefined") {
+          activeFilters.price = "all";
+          activeFilters.color = null;
+          activeFilters.size = null;
+        }
+
+        currentSort = "featured";
+        const sort = document.getElementById("sort-select");
+        if (sort) sort.value = "featured";
+
+        sessionStorage.removeItem(KEY_CART);
+        if (window.wishlistState) {
+          window.wishlistState.clear();
+        }
+        localStorage.setItem("wishlist", JSON.stringify([]));
+        syncCart();
+        renderWishlist();
+
+        showHomeTop100();
+        await scenarioDelay(120);
+      }
+
+      async function executeScenarioAction(step = {}, delayMultiplier = 1) {
+        const action = step.action;
+        if (!action) throw new Error("Scenario step missing action.");
+
+        if (scenarioRuntime.stopRequested) {
+          throw new Error("Scenario run stopped by operator.");
+        }
+
+        switch (action) {
+          case "wait": {
+            const ms = Math.max(0, Number(step.ms || 0));
+            await scenarioDelay(Math.round(ms * delayMultiplier));
+            return;
+          }
+
+          case "reset_state": {
+            await resetScenarioEnvironment();
+            return;
+          }
+
+          case "set_injector": {
+            applyScenarioInjectors(step.injectors || {});
+            return;
+          }
+
+          case "click_nav": {
+            const link = findNavLink({
+              gender: step.gender,
+              label: step.label,
+              action: step.menuAction || step.actionName,
+              category: step.category || step.cat,
+            });
+            if (!link) {
+              throw new Error(
+                `Nav link not found (gender=${step.gender || "-"}, label=${step.label || "-"})`,
+              );
+            }
+            clickEl(link);
+            return;
+          }
+
+          case "hero_slide": {
+            const idx = Number(step.index || 0);
+            if (window.goToHeroSlide) window.goToHeroSlide(idx);
+            return;
+          }
+
+          case "browse_hero": {
+            if (window.browseHeroCategory) {
+              const cat = step.category || "clothing";
+              window.browseHeroCategory(cat);
+            }
+            return;
+          }
+
+          case "search": {
+            const input = document.getElementById("store-search");
+            if (!input) throw new Error("Search input not found.");
+            input.value = String(step.query || "");
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            if (step.submit) {
+              input.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                  bubbles: true,
+                  cancelable: true,
+                  key: "Enter",
+                }),
+              );
+            }
+            return;
+          }
+
+          case "apply_filter": {
+            const filter = String(step.filter || "");
+            const target = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
+            if (!target) throw new Error(`Filter button not found: ${filter}`);
+            clickEl(target);
+            return;
+          }
+
+          case "set_sort": {
+            const sortSelectEl = document.getElementById("sort-select");
+            if (!sortSelectEl) throw new Error("Sort select not found.");
+            sortSelectEl.value = String(step.value || "featured");
+            sortSelectEl.dispatchEvent(new Event("change", { bubbles: true }));
+            return;
+          }
+
+          case "open_product": {
+            if (step.productId) {
+              window.openModalById(String(step.productId));
+              return;
+            }
+            const idx = Number(step.index || 0);
+            const cards = Array.from(document.querySelectorAll(".product-card"));
+            const card = cards[idx];
+            if (!card) throw new Error(`Product card index out of range: ${idx}`);
+            clickEl(card);
+            return;
+          }
+
+          case "modal_tab": {
+            if (!window.switchTab) throw new Error("switchTab is unavailable.");
+            window.switchTab(String(step.tab || "details"));
+            return;
+          }
+
+          case "modal_select_size": {
+            const desired = String(step.size || "").toLowerCase();
+            const options = Array.from(
+              document.querySelectorAll("#modal-size-selector .size-btn"),
+            );
+            const button = options.find((btn) => {
+              const value = (btn.dataset.size || btn.textContent || "")
+                .trim()
+                .toLowerCase();
+              return value === desired || value.startsWith(desired);
+            });
+            if (!button) throw new Error(`Size option not found: ${step.size}`);
+            clickEl(button);
+            return;
+          }
+
+          case "modal_add_to_cart": {
+            const btn = document.getElementById("modal-add-cart");
+            if (!btn) throw new Error("Modal add-to-cart button not found.");
+            clickEl(btn);
+            return;
+          }
+
+          case "modal_toggle_wishlist": {
+            const btn = document.getElementById("modal-wishlist-btn");
+            if (!btn) throw new Error("Modal wishlist button not found.");
+            clickEl(btn);
+            return;
+          }
+
+          case "modal_close": {
+            if (!window.closeModal) throw new Error("closeModal is unavailable.");
+            window.closeModal();
+            return;
+          }
+
+          case "toggle_card_wishlist": {
+            const idx = Number(step.index || 0);
+            const buttons = Array.from(document.querySelectorAll(".btn-wishlist"));
+            const btn = buttons[idx];
+            if (!btn) throw new Error(`Wishlist card button missing at index: ${idx}`);
+            clickEl(btn);
+            return;
+          }
+
+          case "open_wishlist": {
+            ensureWishlist(true);
+            return;
+          }
+
+          case "close_wishlist": {
+            ensureWishlist(false);
+            return;
+          }
+
+          case "click_similar": {
+            const idx = Number(step.index || 0);
+            const cards = Array.from(
+              document.querySelectorAll("#modal-similar .suggested-product-card"),
+            );
+            const card = cards[idx];
+            if (!card) throw new Error(`Similar product card missing at index: ${idx}`);
+            clickEl(card);
+            return;
+          }
+
+          case "start_checkout": {
+            scenarioCheckoutAttempt();
+            return;
+          }
+
+          case "scroll_grid": {
+            const amount = Number(step.amount || 600);
+            window.scrollBy({ top: amount, behavior: "smooth" });
+            return;
+          }
+
+          case "home_top": {
+            showHomeTop100();
+            return;
+          }
+
+          default:
+            throw new Error(`Unsupported scenario action: ${action}`);
+        }
+      }
+
+      async function runScenarioFromPayload(payload = {}) {
+        const runId = String(payload.runId || "");
+        const scenarioId = String(payload.scenarioId || "unknown");
+        const steps = Array.isArray(payload.steps) ? payload.steps : [];
+        const delayMultiplier = Math.max(0.25, Number(payload.delayMultiplier || 1));
+        const injectors = payload.injectors || {};
+        const meta = payload.meta || {};
+
+        if (!runId) {
+          scenarioPost("ava:scenario:run:error", {
+            runId: null,
+            error: "runId is required",
+          });
+          return;
+        }
+
+        if (scenarioRuntime.activeRunId) {
+          scenarioPost("ava:scenario:run:error", {
+            runId,
+            error: `Another run is already active (${scenarioRuntime.activeRunId}).`,
+          });
+          return;
+        }
+
+        scenarioRuntime.activeRunId = runId;
+        scenarioRuntime.stopRequested = false;
+        const startedAt = new Date().toISOString();
+        const logs = [];
+
+        try {
+          await resetScenarioEnvironment();
+          applyScenarioInjectors(injectors);
+
+          scenarioPost("ava:scenario:run:started", {
+            runId,
+            scenarioId,
+            startedAt,
+            injectors: cloneInjectors(),
+            meta,
+          });
+
+          for (let i = 0; i < steps.length; i++) {
+            const step = steps[i] || {};
+            const stepStart = Date.now();
+            try {
+              await executeScenarioAction(step, delayMultiplier);
+              const settleMs = Math.max(
+                50,
+                Math.round(Number(step.settleMs ?? 260) * delayMultiplier),
+              );
+              await scenarioDelay(settleMs);
+
+              const stepLog = {
+                index: i + 1,
+                action: step.action || "unknown",
+                status: "ok",
+                durationMs: Date.now() - stepStart,
+              };
+              logs.push(stepLog);
+              scenarioPost("ava:scenario:step", {
+                runId,
+                scenarioId,
+                step: stepLog,
+                snapshot: getScenarioSnapshot(),
+              });
+            } catch (stepError) {
+              const stepLog = {
+                index: i + 1,
+                action: step.action || "unknown",
+                status: "failed",
+                durationMs: Date.now() - stepStart,
+                error: stepError instanceof Error ? stepError.message : String(stepError),
+              };
+              logs.push(stepLog);
+              scenarioPost("ava:scenario:step", {
+                runId,
+                scenarioId,
+                step: stepLog,
+                snapshot: getScenarioSnapshot(),
+              });
+              throw stepError;
+            }
+          }
+
+          scenarioPost("ava:scenario:run:complete", {
+            runId,
+            scenarioId,
+            success: true,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            logs,
+            snapshot: getScenarioSnapshot(),
+          });
+        } catch (error) {
+          scenarioPost("ava:scenario:run:complete", {
+            runId,
+            scenarioId,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            logs,
+            snapshot: getScenarioSnapshot(),
+          });
+        } finally {
+          scenarioRuntime.activeRunId = null;
+          scenarioRuntime.stopRequested = false;
+          resetScenarioInjectors();
+          hideScenarioBanner();
+        }
+      }
+
+      window.addEventListener("message", (event) => {
+        const msg = event.data;
+        if (!msg || typeof msg !== "object") return;
+        if (msg.source !== SCENARIO_MSG_SOURCE_IN) return;
+
+        if (msg.type === "ava:scenario:ping") {
+          scenarioPost("ava:scenario:ready", {
+            version: "1.0.0",
+            actions: [
+              "wait",
+              "reset_state",
+              "set_injector",
+              "click_nav",
+              "hero_slide",
+              "browse_hero",
+              "search",
+              "apply_filter",
+              "set_sort",
+              "open_product",
+              "modal_tab",
+              "modal_select_size",
+              "modal_add_to_cart",
+              "modal_toggle_wishlist",
+              "modal_close",
+              "toggle_card_wishlist",
+              "open_wishlist",
+              "close_wishlist",
+              "click_similar",
+              "start_checkout",
+              "scroll_grid",
+              "home_top",
+            ],
+            injectors: Object.keys(SCENARIO_DEFAULT_INJECTORS),
+            currentRunId: scenarioRuntime.activeRunId,
+            snapshot: getScenarioSnapshot(),
+          });
+          return;
+        }
+
+        if (msg.type === "ava:scenario:reset") {
+          resetScenarioInjectors();
+          resetScenarioEnvironment().then(() => {
+            scenarioPost("ava:scenario:reset:complete", {
+              runId: msg.payload?.runId || null,
+              snapshot: getScenarioSnapshot(),
+            });
+          });
+          return;
+        }
+
+        if (msg.type === "ava:scenario:stop") {
+          scenarioRuntime.stopRequested = true;
+          scenarioPost("ava:scenario:stop:ack", {
+            runId: scenarioRuntime.activeRunId,
+          });
+          return;
+        }
+
+        if (msg.type === "ava:scenario:set-injector") {
+          applyScenarioInjectors(msg.payload?.injectors || {});
+          scenarioPost("ava:scenario:injector:updated", {
+            injectors: cloneInjectors(),
+          });
+          return;
+        }
+
+        if (msg.type === "ava:scenario:run") {
+          void runScenarioFromPayload(msg.payload || {});
+        }
+      });
+
+      // Prevent navigation during scenario checkout-error injection while preserving normal behavior otherwise.
+      const topCartBtn = document.getElementById("top-cart-btn");
+      if (topCartBtn) {
+        topCartBtn.addEventListener(
+          "click",
+          (event) => {
+            const injectors = cloneInjectors();
+            if (!injectors.forceCheckoutError) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            scenarioCheckoutAttempt();
+          },
+          true,
+        );
+      }
+
+      // Initial ready signal
+      setTimeout(() => {
+        scenarioPost("ava:scenario:ready", {
+          version: "1.0.0",
+          actions: [
+            "wait",
+            "reset_state",
+            "set_injector",
+            "click_nav",
+            "hero_slide",
+            "browse_hero",
+            "search",
+            "apply_filter",
+            "set_sort",
+            "open_product",
+            "modal_tab",
+            "modal_select_size",
+            "modal_add_to_cart",
+            "modal_toggle_wishlist",
+            "modal_close",
+            "toggle_card_wishlist",
+            "open_wishlist",
+            "close_wishlist",
+            "click_similar",
+            "start_checkout",
+            "scroll_grid",
+            "home_top",
+          ],
+          injectors: Object.keys(SCENARIO_DEFAULT_INJECTORS),
+          currentRunId: scenarioRuntime.activeRunId,
+          snapshot: getScenarioSnapshot(),
+        });
+      }, 200);
 
       subscribe(syncCart);
       syncCart(); // Init

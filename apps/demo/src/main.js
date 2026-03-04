@@ -133,26 +133,24 @@ if (!wizardRoot) {
   throw new Error("Missing #wizard-root element");
 }
 
+const getStoreFrame = () =>
+  document.querySelector('.panel--center iframe[title="Demo Store"]');
+
+const getDashboardFrame = () =>
+  document.querySelector('.panel--right iframe[title="Dashboard"]');
+
 createIntegrationWizard(wizardRoot, {
   apiBaseUrl: "http://localhost:8080",
+  // Gives the wizard access to the store iframe for scenario-control messaging.
+  getStoreFrame,
   onActivated: () => {
-    // 1. Notify dashboard to unlock its UI
-    const dashboardIframe = document.querySelector(
-      '.panel--right iframe[title="Dashboard"]'
-    );
-    if (dashboardIframe) {
-      dashboardIframe.contentWindow.postMessage(
-        { type: "ava:activate" },
-        "*"
-      );
+    // Notify dashboard to unlock its UI
+    const dashboardFrame = getDashboardFrame();
+    if (dashboardFrame) {
+      dashboardFrame.contentWindow.postMessage({ type: "ava:activate" }, "*");
     }
-    // 2. Reload the store iframe so the widget re-runs its activation gate
-    //    (the gate check fires once at page load; reload is needed to pick up the new status)
-    const storeIframe = document.querySelector(
-      '.panel--center iframe[title="Demo Store"]'
-    );
-    if (storeIframe) {
-      storeIframe.src = storeIframe.src;
-    }
+    // Reload store so the widget re-runs its activation gate and appears
+    const storeFrame = getStoreFrame();
+    if (storeFrame) storeFrame.src = storeFrame.src;
   },
 });

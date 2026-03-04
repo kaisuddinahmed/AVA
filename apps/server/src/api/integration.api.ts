@@ -203,6 +203,31 @@ export async function activateIntegration(req: Request, res: Response) {
 }
 
 /**
+ * POST /api/site/reset?siteUrl=...
+ * Resets a site's integration status back to "analyzing" (dormant).
+ * Called by the demo wizard on startup so every demo session starts with the widget dormant.
+ */
+export async function resetSiteStatus(req: Request, res: Response) {
+  const siteUrl = typeof req.query.siteUrl === "string" ? req.query.siteUrl : null;
+  if (!siteUrl) {
+    res.status(400).json({ error: "siteUrl query param is required" });
+    return;
+  }
+  try {
+    const site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
+    if (!site) {
+      res.json({ status: "unknown", reset: false });
+      return;
+    }
+    await SiteConfigRepo.setIntegrationStatus(site.id, "analyzing", null);
+    res.json({ status: "analyzing", reset: true });
+  } catch (error) {
+    console.error("[API] resetSiteStatus error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+/**
  * GET /api/site/status?siteUrl=...
  * Lightweight endpoint called by the widget on init to check if this site is activated.
  * Returns { status, activated } — no auth needed, read-only.

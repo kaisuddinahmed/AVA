@@ -116,6 +116,7 @@ export async function runMSWIM(
     totalNudges: sessionCtx.totalNudges,
     totalActive: sessionCtx.totalActive,
     totalNonPassive: sessionCtx.totalNonPassive,
+    secondsSinceLastIntervention: sessionCtx.secondsSinceLastIntervention,
     secondsSinceLastActive: sessionCtx.secondsSinceLastActive,
     secondsSinceLastNudge: sessionCtx.secondsSinceLastNudge,
     secondsSinceLastDismissal: sessionCtx.secondsSinceLastDismissal,

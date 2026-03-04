@@ -8,6 +8,7 @@ export interface GateContext {
   totalNudges: number;
   totalActive: number;
   totalNonPassive: number;
+  secondsSinceLastIntervention: number | null;  // any tier — PASSIVE cooldown
   secondsSinceLastActive: number | null;
   secondsSinceLastNudge: number | null;
   secondsSinceLastDismissal: number | null;
@@ -52,6 +53,21 @@ export function runGateChecks(
   );
   if (duplicateFriction && tier < ScoreTier.ESCALATE) {
     return { override: GateOverride.DUPLICATE_FRICTION, action: "suppress" };
+  }
+
+  // Gate 3b: PASSIVE global cooldown — prevent any tier from firing within 30s of
+  //   the last intervention of any type. This is the primary race-condition guard:
+  //   even if two evaluations load history before either commits, the second will
+  //   still be suppressed once the first intervention is committed.
+  //   Also prevents repeated PASSIVE fires when the inferred frictionId (e.g. F002)
+  //   changes between evaluations due to LLM vs fast-engine path differences.
+  const PASSIVE_COOLDOWN_SEC = 30;
+  if (
+    ctx.secondsSinceLastIntervention !== null &&
+    ctx.secondsSinceLastIntervention < PASSIVE_COOLDOWN_SEC &&
+    tier <= ScoreTier.PASSIVE
+  ) {
+    return { override: GateOverride.COOLDOWN_ACTIVE, action: "suppress" };
   }
 
   // Gate 4: Cooldown after ACTIVE intervention

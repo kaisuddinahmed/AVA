@@ -55,6 +55,7 @@ apiRouter.get("/onboarding/:runId/results", onboardingApi.getOnboardingResults);
 
 // Integration
 apiRouter.get("/site/status", integrationApi.getSiteStatus);          // widget activation gate
+apiRouter.post("/site/reset", integrationApi.resetSiteStatus);        // demo: reset to dormant
 apiRouter.post("/integration/:siteId/verify", integrationApi.verifyIntegration);
 apiRouter.post("/integration/:siteId/activate", integrationApi.activateIntegration);
 

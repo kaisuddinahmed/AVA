@@ -307,6 +307,15 @@ async function evaluateLLM(
     scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
+  // 4. Compute effective frictionIds BEFORE MSWIM so Gate 3 (duplicate friction)
+  //    sees the same frictionId that will be stored on the intervention.
+  //    Raw LLM output may be [] on generic page views; inferFrictionFromContext
+  //    provides the canonical fallback that the intervention record will use.
+  const effectiveFrictionIdsForMSWIM =
+    llmOutput.detected_frictions.length > 0
+      ? llmOutput.detected_frictions
+      : [inferFrictionFromContext(sessionCtx)];
+
   // 4. Run MSWIM engine
   const mswimResult = await runMSWIM(
     {
@@ -315,7 +324,7 @@ async function evaluateLLM(
       clarity: llmOutput.signals.clarity,
       receptivity: llmOutput.signals.receptivity,
       value: llmOutput.signals.value,
-      detectedFrictionIds: llmOutput.detected_frictions,
+      detectedFrictionIds: effectiveFrictionIdsForMSWIM,
       recommendedAction: llmOutput.recommended_action,
     },
     sessionCtx
