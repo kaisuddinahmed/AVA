@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { prisma } from "../client.js";
 
 // ============================================================================
@@ -104,4 +105,55 @@ export async function getTrackingConfig(
   } catch {
     return null;
   }
+}
+
+/** Get site config by siteKey (avak_<hex>). */
+export async function getSiteConfigBySiteKey(siteKey: string) {
+  return prisma.siteConfig.findUnique({ where: { siteKey } });
+}
+
+/**
+ * Generate a fresh siteKey for a site, creating the SiteConfig if it doesn't
+ * exist. Always rotates to a new key so the wizard can re-generate.
+ */
+export async function generateSiteKeyForSite(siteUrl: string) {
+  const key = "avak_" + randomBytes(8).toString("hex");
+  return prisma.siteConfig.upsert({
+    where: { siteUrl },
+    create: {
+      siteUrl,
+      siteKey: key,
+      platform: "custom",
+      trackingConfig: JSON.stringify({}),
+      integrationStatus: "pending",
+    },
+    update: { siteKey: key },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ActivationPolicy helpers
+// ---------------------------------------------------------------------------
+
+/** Get the activation policy for a site (returns null if not set → caller uses defaults). */
+export async function getActivationPolicy(siteConfigId: string) {
+  return prisma.activationPolicy.findUnique({ where: { siteConfigId } });
+}
+
+/** Create or update the activation policy for a site. */
+export async function upsertActivationPolicy(
+  siteConfigId: string,
+  data: Partial<{
+    behaviorMinPct: number;
+    frictionMinPct: number;
+    minConfidence: number;
+    requiredJourneys: string;
+    tier: string;
+  }>,
+) {
+  return prisma.activationPolicy.upsert({
+    where: { siteConfigId },
+    create: { siteConfigId, ...data },
+    update: data,
+  });
 }

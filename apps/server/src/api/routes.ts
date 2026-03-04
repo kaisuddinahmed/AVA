@@ -56,8 +56,13 @@ apiRouter.get("/onboarding/:runId/results", onboardingApi.getOnboardingResults);
 // Integration
 apiRouter.get("/site/status", integrationApi.getSiteStatus);          // widget activation gate
 apiRouter.post("/site/reset", integrationApi.resetSiteStatus);        // demo: reset to dormant
+apiRouter.post("/integration/generate", integrationApi.generateIntegration);          // wizard: generate siteKey + snippet
+apiRouter.get("/integration/install-status", integrationApi.getInstallStatus);        // wizard: poll for tag installation
 apiRouter.post("/integration/:siteId/verify", integrationApi.verifyIntegration);
 apiRouter.post("/integration/:siteId/activate", integrationApi.activateIntegration);
+
+// Widget bundle (served with CORS so any site can load it via <script src>)
+apiRouter.get("/widget.js", integrationApi.serveWidget);
 
 // Training Data Export
 apiRouter.get("/training/stats", trainingApi.getStats);

@@ -12,6 +12,7 @@
     "dev:server": "npm run dev --workspace=@ava/server",
     "dev:dashboard": "turbo run dev --filter=@ava/dashboard",
     "dev:widget": "turbo run dev --filter=@ava/widget",
+    "dev:wizard": "npm run dev --workspace=@ava/wizard",
     "dev:integration": "npm run dev --workspace=@ava/demo",
     "dev:demo": "node scripts/dev-demo.mjs",
     "db:push": "prisma db push --schema packages/db/prisma/schema.prisma",

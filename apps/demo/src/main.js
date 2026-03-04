@@ -1,5 +1,4 @@
 import "./styles.css";
-import { createIntegrationWizard } from "./components/integration-wizard.js";
 
 const app = document.getElementById("app");
 if (!app) {
@@ -8,16 +7,17 @@ if (!app) {
 
 app.innerHTML = `
   <div class="layout" id="layout">
-    <!-- Left Panel: Integration Wizard -->
+    <!-- Left Panel: Integration Wizard (embedded from port 3002) -->
     <aside class="panel panel--left" id="panel-left">
       <button class="panel-toggle" id="toggle-left" title="Toggle wizard panel">&#8249;</button>
-      <div class="panel-content">
-        <header class="pane-header">
-          <p class="eyebrow">AVA Demo</p>
-          <h1>Integration Wizard</h1>
-          <p class="subtext">Analyze &rarr; Map &rarr; Verify &rarr; Activate</p>
-        </header>
-        <section id="wizard-root"></section>
+      <div class="panel-content panel-content--iframe">
+        <iframe
+          id="wizard-frame"
+          title="Integration Wizard"
+          src="http://localhost:3002"
+          style="width:100%;height:100%;border:none;display:block;"
+          allow="clipboard-write"
+        ></iframe>
       </div>
     </aside>
 
@@ -28,7 +28,7 @@ app.innerHTML = `
           <h2>Demo Store</h2>
           <span class="hint">Customer journey view</span>
         </div>
-        <iframe title="Demo Store" src="http://localhost:3001"></iframe>
+        <iframe id="store-frame" title="Demo Store" src="http://localhost:3001"></iframe>
       </section>
     </main>
 
@@ -41,7 +41,7 @@ app.innerHTML = `
             <h2>Dashboard</h2>
             <span class="hint">Backend analysis + intervention feed</span>
           </div>
-          <iframe title="Dashboard" src="http://localhost:3000"></iframe>
+          <iframe id="dashboard-frame" title="Dashboard" src="http://localhost:3000"></iframe>
         </section>
       </div>
     </aside>
@@ -126,31 +126,69 @@ function handleViewport(e) {
 mql.addEventListener("change", handleViewport);
 handleViewport(mql);
 
-// ── Initialize Wizard ───────────────────────────────────
+// ── Cross-Origin Message Proxy ───────────────────────────
+//
+// The wizard (port 3002) and store (port 3001) are in separate iframes and
+// cannot communicate directly. This demo page (port 4002) acts as a trusted
+// bridge, forwarding messages between them.
+//
+// Message flows:
+//   wizard → demo  (ava:proxy:to-store)  → store
+//   store  → demo  (ava-store-scenario)  → wizard
+//   wizard → demo  (ava:wizard:activated) → dashboard + reload store
 
-const wizardRoot = document.getElementById("wizard-root");
-if (!wizardRoot) {
-  throw new Error("Missing #wizard-root element");
-}
+const getWizardFrame = () => document.getElementById("wizard-frame");
+const getStoreFrame = () => document.getElementById("store-frame");
+const getDashboardFrame = () => document.getElementById("dashboard-frame");
 
-const getStoreFrame = () =>
-  document.querySelector('.panel--center iframe[title="Demo Store"]');
+window.addEventListener("message", (event) => {
+  // Accept messages from known local origins + same-origin
+  const allowedOrigins = [
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3000",
+    window.location.origin,
+  ];
+  if (!allowedOrigins.includes(event.origin) && event.origin !== "") return;
 
-const getDashboardFrame = () =>
-  document.querySelector('.panel--right iframe[title="Dashboard"]');
+  const msg = event.data;
+  if (!msg || typeof msg !== "object") return;
 
-createIntegrationWizard(wizardRoot, {
-  apiBaseUrl: "http://localhost:8080",
-  // Gives the wizard access to the store iframe for scenario-control messaging.
-  getStoreFrame,
-  onActivated: () => {
-    // Notify dashboard to unlock its UI
+  // ── Wizard → Store: scenario control & widget commands ──────────────────
+  if (msg.type === "ava:proxy:to-store") {
+    const storeFrame = getStoreFrame();
+    if (storeFrame?.contentWindow) {
+      storeFrame.contentWindow.postMessage(msg.payload, "*");
+    }
+    return;
+  }
+
+  // ── Store → Wizard: scenario results & status updates ───────────────────
+  if (
+    msg.source === "ava-store-scenario" ||
+    msg.type === "ava:store:scenario-result" ||
+    msg.type === "ava:store:ready"
+  ) {
+    const wizardFrame = getWizardFrame();
+    if (wizardFrame?.contentWindow) {
+      wizardFrame.contentWindow.postMessage(msg, "*");
+    }
+    return;
+  }
+
+  // ── Wizard → All: activation complete ───────────────────────────────────
+  if (msg.type === "ava:wizard:activated") {
+    // Unlock dashboard UI
     const dashboardFrame = getDashboardFrame();
-    if (dashboardFrame) {
+    if (dashboardFrame?.contentWindow) {
       dashboardFrame.contentWindow.postMessage({ type: "ava:activate" }, "*");
     }
-    // Reload store so the widget re-runs its activation gate and appears
+
+    // Reload store so widget re-runs its activation gate and appears
     const storeFrame = getStoreFrame();
-    if (storeFrame) storeFrame.src = storeFrame.src;
-  },
+    if (storeFrame) {
+      storeFrame.src = storeFrame.src;
+    }
+    return;
+  }
 });

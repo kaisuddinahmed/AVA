@@ -207,6 +207,7 @@ model ScoringConfig {
 model SiteConfig {
   id                  String                   @id @default(uuid())
   siteUrl             String                   @unique
+  siteKey             String?                  @unique // avak_<16-hex> — install verification key
   platform            String                   // shopify | woocommerce | magento | custom
   trackingConfig      String                   // JSON: auto-detected selectors
   integrationStatus   String                   @default("pending") // pending | analyzing | mapped | verified | limited_active | active | failed
@@ -216,8 +217,36 @@ model SiteConfig {
   behaviorMappings    BehaviorPatternMapping[]
   frictionMappings    FrictionMapping[]
   integrationStatuses IntegrationStatus[]
+  activationPolicy    ActivationPolicy?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// ActivationPolicy — per-site configurable thresholds for go-live modes
+// Defaults to 50% coverage (starter tier). Configurable to 75% (growth) or
+// 85% (enterprise) without code changes.
+// ---------------------------------------------------------------------------
+model ActivationPolicy {
+  id           String     @id @default(uuid())
+  siteConfigId String     @unique
+  siteConfig   SiteConfig @relation(fields: [siteConfigId], references: [id])
+
+  // Coverage thresholds (0–100 percent of catalog mapped)
+  behaviorMinPct Int   @default(50)  // % of B001-B614 required for full active
+  frictionMinPct Int   @default(50)  // % of F001-F325 required for full active
+
+  // Confidence gate
+  minConfidence  Float @default(0.50) // avg mapping confidence required
+
+  // Critical journey gates (comma-separated journey keys; null = use defaults)
+  requiredJourneys String? // e.g. "add_to_cart,cart,checkout,payment"
+
+  // Tier label shown in UI (informational)
+  tier           String @default("starter") // starter | growth | enterprise
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------

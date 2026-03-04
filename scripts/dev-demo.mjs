@@ -22,6 +22,11 @@ const targets = [
     args: ["run", "dev", "--workspace=@ava/dashboard"],
   },
   {
+    name: "wizard",
+    cmd: npmCmd,
+    args: ["run", "dev", "--workspace=@ava/wizard"],
+  },
+  {
     name: "integration",
     cmd: npmCmd,
     args: ["run", "dev", "--workspace=@ava/demo"],
@@ -31,11 +36,12 @@ const targets = [
 const children = [];
 let shuttingDown = false;
 let readyAnnounced = false;
-const requiredPorts = [8080, 3001, 3000, 4002];
+const requiredPorts = [8080, 3001, 3000, 3002, 4002];
 const startupPorts = [
   { port: 8080, service: "server" },
   { port: 3001, service: "store" },
   { port: 3000, service: "dashboard" },
+  { port: 3002, service: "wizard" },
   { port: 4002, service: "integration" },
 ];
 
@@ -79,7 +85,7 @@ const readinessInterval = setInterval(async () => {
 
   if (allUp) {
     readyAnnounced = true;
-    console.log("[dev:demo] Ready -> http://localhost:4002 (wizard), http://localhost:3001 (store), http://localhost:3000 (dashboard), http://localhost:8080/health (server)");
+    console.log("[dev:demo] Ready -> http://localhost:4002 (demo), http://localhost:3002 (wizard standalone), http://localhost:3001 (store), http://localhost:3000 (dashboard), http://localhost:8080/health (server)");
     clearInterval(readinessInterval);
     return;
   }

@@ -33,10 +33,28 @@ export async function startOnboardingRun(
     : null;
 
   if (!siteConfig && payload.siteUrl) {
-    if (payload.forceReanalyze && payload.html) {
-      await reanalyzeSite(payload.siteUrl, payload.html);
+    // Fetch the site's HTML if the caller did not provide it.
+    // A best-effort request — we continue without it if the fetch fails.
+    let html = payload.html;
+    if (!html) {
+      try {
+        const response = await fetch(payload.siteUrl, {
+          headers: { "User-Agent": "AVA-Analyzer/1.0 (site analysis bot)" },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (response.ok) {
+          html = await response.text();
+          console.log(`[Onboarding] Fetched ${html.length} chars from ${payload.siteUrl}`);
+        }
+      } catch (fetchErr) {
+        console.warn(`[Onboarding] Could not fetch ${payload.siteUrl}:`, fetchErr);
+      }
+    }
+
+    if (payload.forceReanalyze && html) {
+      await reanalyzeSite(payload.siteUrl, html);
     } else {
-      await analyzeSite(payload.siteUrl, payload.html);
+      await analyzeSite(payload.siteUrl, html);
     }
     siteConfig = await SiteConfigRepo.getSiteConfigByUrl(payload.siteUrl);
   }
