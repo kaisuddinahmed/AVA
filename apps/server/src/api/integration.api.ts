@@ -202,6 +202,34 @@ export async function activateIntegration(req: Request, res: Response) {
   }
 }
 
+/**
+ * GET /api/site/status?siteUrl=...
+ * Lightweight endpoint called by the widget on init to check if this site is activated.
+ * Returns { status, activated } — no auth needed, read-only.
+ */
+export async function getSiteStatus(req: Request, res: Response) {
+  const siteUrl = typeof req.query.siteUrl === "string" ? req.query.siteUrl : null;
+  if (!siteUrl) {
+    res.status(400).json({ error: "siteUrl query param is required" });
+    return;
+  }
+  try {
+    const site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
+    if (!site) {
+      // Unknown site — respond with unactivated so widget stays dormant
+      res.json({ status: "unknown", activated: false });
+      return;
+    }
+    const activated =
+      site.integrationStatus === "active" ||
+      site.integrationStatus === "limited_active";
+    res.json({ status: site.integrationStatus, activated });
+  } catch (error) {
+    console.error("[API] getSiteStatus error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
 function parseTrackingHooks(trackingConfig: string, platform: string): TrackingHooks {
   try {
     const parsed = JSON.parse(trackingConfig) as TrackingHooks;

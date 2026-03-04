@@ -136,6 +136,7 @@ if (!wizardRoot) {
 createIntegrationWizard(wizardRoot, {
   apiBaseUrl: "http://localhost:8080",
   onActivated: () => {
+    // 1. Notify dashboard to unlock its UI
     const dashboardIframe = document.querySelector(
       '.panel--right iframe[title="Dashboard"]'
     );
@@ -144,6 +145,14 @@ createIntegrationWizard(wizardRoot, {
         { type: "ava:activate" },
         "*"
       );
+    }
+    // 2. Reload the store iframe so the widget re-runs its activation gate
+    //    (the gate check fires once at page load; reload is needed to pick up the new status)
+    const storeIframe = document.querySelector(
+      '.panel--center iframe[title="Demo Store"]'
+    );
+    if (storeIframe) {
+      storeIframe.src = storeIframe.src;
     }
   },
 });

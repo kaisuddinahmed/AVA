@@ -18,6 +18,8 @@ export interface WidgetConfig {
     fontFamily?: string;
     borderRadius?: string;
   };
+  // Activation gate — widget stays completely dormant until the site is activated
+  siteUrl?: string;              // canonical URL of the host store (e.g. "http://localhost:3001")
   // Voice settings (Phase 1 Deepgram TTS — server sends voice_script, widget plays it)
   voiceEnabled?: boolean;        // merchant-level toggle (default: false)
   voiceMaxPerSession?: number;   // session budget ceiling (default: 3, enforced server-side)

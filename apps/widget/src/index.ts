@@ -8,13 +8,47 @@ declare global {
     ShopAssistConfig: Partial<WidgetConfig>;
     __AVA_CONFIG__: Partial<WidgetConfig>;
     ShopAssist: {
-      init: (config: Partial<WidgetConfig>) => { widget: AVAWidget };
+      init: (config: Partial<WidgetConfig>) => Promise<{ widget: AVAWidget | null }>;
     };
   }
 }
 
-function init(config: Partial<WidgetConfig>) {
+/**
+ * Checks whether this site has been activated via the AVA integration wizard.
+ * Returns true  → proceed and mount the widget.
+ * Returns false → site not yet activated; stay completely dormant.
+ *
+ * If serverUrl or siteUrl are not configured (dev/demo without the gate),
+ * this returns true so the widget still works in local development.
+ */
+async function checkActivationGate(serverUrl: string, siteUrl: string): Promise<boolean> {
+  try {
+    const url = `${serverUrl}/api/site/status?siteUrl=${encodeURIComponent(siteUrl)}`;
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!res.ok) return false;
+    const data = await res.json() as { status: string; activated: boolean };
+    return data.activated === true;
+  } catch {
+    // Network error / server unreachable — fail safe: stay dormant
+    return false;
+  }
+}
+
+async function init(config: Partial<WidgetConfig>): Promise<{ widget: AVAWidget | null }> {
   const fullConfig: WidgetConfig = { ...DEFAULT_CONFIG, ...config };
+
+  // ── Activation gate ──────────────────────────────────────────────────────────
+  // If serverUrl is configured, always check activation.
+  // siteUrl auto-falls back to window.location.origin so merchants don't need to set it.
+  if (fullConfig.serverUrl) {
+    const effectiveSiteUrl = fullConfig.siteUrl || window.location.origin;
+    const activated = await checkActivationGate(fullConfig.serverUrl, effectiveSiteUrl);
+    if (!activated) {
+      // Site not yet activated — no DOM, no WebSocket, complete silence.
+      return { widget: null };
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Create host element
   let hostEl = document.getElementById("ava-widget-root");
@@ -98,5 +132,5 @@ window.ShopAssist = { init };
 // Auto-init if config present
 if (window.__AVA_CONFIG__ || window.ShopAssistConfig) {
   const config = window.__AVA_CONFIG__ || window.ShopAssistConfig;
-  init(config);
+  init(config).catch(() => { /* startup failure — stay silent */ });
 }

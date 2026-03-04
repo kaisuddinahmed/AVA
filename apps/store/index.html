@@ -38,58 +38,61 @@
       class="border-b border-gray-200 bg-white sticky top-0 z-40"
     >
       <div
-        class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between"
+        class="max-w-7xl mx-auto px-6 h-16 flex items-center gap-6"
       >
         <div class="flex items-center gap-2">
           <!-- Text Logo Only -->
           <span class="font-bold text-2xl tracking-tighter text-black uppercase">AVA</span>
         </div>
-        <div class="hidden md:flex gap-8 text-black">
+        <div class="hidden md:flex gap-8 text-black items-center mr-auto">
           <a
-            href="/"
+            href="#"
+            id="nav-home-link"
             class="nav-link hover:underline decoration-2 underline-offset-4"
             data-nav="internal"
             >Home</a
           >
-          <a
-            href="#"
-            class="nav-category nav-link hover:underline decoration-2 underline-offset-4"
-            data-cat="clothing"
-            >Clothing</a
-          >
-          <a
-            href="#"
-            class="nav-category nav-link hover:underline decoration-2 underline-offset-4"
-            data-cat="footwear"
-            >Footwear</a
-          >
-          <a
-            href="#"
-            class="nav-category nav-link hover:underline decoration-2 underline-offset-4"
-            data-cat="watches"
-            >Watches</a
-          >
-          <a
-            href="#"
-            class="nav-category nav-link hover:underline decoration-2 underline-offset-4"
-            data-cat="accessories"
-            >Accessories</a
-          >
-          <a
-            href="#"
-            class="nav-category nav-link hover:underline decoration-2 underline-offset-4"
-            data-cat="lifestyle"
-            >Lifestyle</a
-          >
+          <div class="relative group">
+            <button class="nav-link hover:underline decoration-2 underline-offset-4">Men</button>
+            <div class="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
+              <div class="w-56 bg-white border border-gray-200 shadow-xl p-2">
+                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="men" data-label="New In">New In</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Clothing">Clothing</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="men" data-label="Shoes">Shoes</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="men" data-label="Accessories">Accessories</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="men" data-label="Brands">Brands</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Activewear">Activewear</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="men" data-label="Grooming">Grooming</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Tailoring">Tailoring</a>
+                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="men" data-label="Sale">Sale</a>
+              </div>
+            </div>
+          </div>
+          <div class="relative group">
+            <button class="nav-link hover:underline decoration-2 underline-offset-4">Women</button>
+            <div class="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
+              <div class="w-56 bg-white border border-gray-200 shadow-xl p-2">
+                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="women" data-label="New In">New In</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Clothing">Clothing</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Dresses">Dresses</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="women" data-label="Shoes">Shoes</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="women" data-label="Face + Body">Face + Body</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="women" data-label="Accessories">Accessories</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="women" data-label="Brands">Brands</a>
+                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Activewear">Activewear</a>
+                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="women" data-label="Sale">Sale</a>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="flex gap-4 text-black items-center">
+        <div class="ml-auto flex gap-4 text-black items-center">
           <!-- ... existing search/cart/user ... -->
           <div class="relative">
             <input
               type="text"
               id="store-search"
               placeholder="Search for items..."
-              class="bg-gray-100 border border-transparent rounded-full px-4 py-2 text-sm text-black focus:bg-white focus:border-black outline-none w-48 transition-all placeholder-gray-500"
+              class="bg-gray-100 border border-transparent rounded-full px-5 py-2 text-sm text-black focus:bg-white focus:border-black outline-none w-72 md:w-[36rem] md:max-w-[48vw] transition-all placeholder-gray-500"
             />
             <div
               id="search-dropdown"
@@ -106,7 +109,7 @@
           <div class="relative mx-2">
             <button
               id="wishlist-btn"
-              class="hover:text-white flex items-center gap-2 group"
+              class="hover:text-white flex items-center gap-2 group relative"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -124,6 +127,7 @@
                   d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
                 ></path>
               </svg>
+              <span id="wishlist-count-badge" class="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center">0</span>
             </button>
             <div
               id="wishlist-dropdown"
@@ -224,33 +228,17 @@
       </div>
     </nav>
 
-    <!-- ... (Hero Section unchanged) ... -->
     <!-- Hero Section -->
-    <header class="relative bg-asos-gray-light h-[500px] flex items-center overflow-hidden">
-      <div class="max-w-7xl mx-auto px-6 w-full grid grid-cols-1 md:grid-cols-2 gap-10 items-center relative z-10">
-        <div>
-          <span class="text-asos-red text-sm font-bold tracking-widest uppercase mb-4 block">New Season</span>
-          <h1 class="text-6xl font-black text-black leading-none mb-6 tracking-tighter uppercase">
-            Redefine<br />Your Look.
-          </h1>
-          <p class="text-gray-600 text-lg mb-8 max-w-md">
-            Discover our curated collection of timeless fashion pieces designed for the modern individual.
-          </p>
-          <div class="flex gap-4">
-            <button class="bg-black text-white px-8 py-4 font-bold uppercase tracking-wider hover:bg-gray-800 transition">
-              Shop Collection
-            </button>
-            <button class="border-2 border-black text-black px-8 py-4 font-bold uppercase tracking-wider hover:bg-black hover:text-white transition">
-              View Lookbook
-            </button>
-          </div>
-        </div>
-        <div class="h-full flex items-center justify-center relative">
-             <img
-            src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=800"
-            alt="Fashion Model"
-            class="h-[90%] w-auto object-cover object-top shadow-xl"
-          />
+    <header class="relative bg-gray-50 overflow-hidden border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-6 py-6">
+        <div class="relative">
+          <div id="hero-slide-stage" class="h-[500px] border border-gray-200 bg-white overflow-hidden"></div>
+          <button onclick="window.changeHeroSlide(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/70 text-white hover:bg-black transition z-10">‹</button>
+          <button onclick="window.changeHeroSlide(1)" class="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/70 text-white hover:bg-black transition z-10">›</button>
+          <button id="hero-browse-btn" onclick="window.browseHeroCategoryByCurrent()" class="absolute left-8 bottom-8 bg-black text-white px-8 py-3 font-bold uppercase tracking-wider hover:bg-gray-800 transition z-20">
+            Browse all
+          </button>
+          <div id="hero-dots" class="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-10"></div>
         </div>
       </div>
     </header>
@@ -259,16 +247,16 @@
     <div class="border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row gap-4 items-center justify-between">
             <!-- Filters -->
-            <div class="flex gap-2 items-center overflow-x-auto">
+            <div class="flex gap-2 items-center flex-wrap">
                 <span class="text-sm font-bold text-black uppercase">Filter:</span>
-                <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="all">View All</button>
+                <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="all" data-filter-type="price">View All</button>
                 <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="under-50" data-filter-type="price" data-price-min="0" data-price-max="50">Under $50</button>
                 <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="50-150" data-filter-type="price" data-price-min="50" data-price-max="150">$50 - $150</button>
                 <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition" data-filter="premium" data-filter-type="price" data-price-min="200" data-price-max="9999">Designer ($200+)</button>
                 
                 <!-- NEW: Color Filter -->
                 <div class="relative">
-                    <button id="color-filter-btn" onclick="toggleFilterDropdown('color-filter-dropdown', event)" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
+                    <button id="color-filter-btn" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
                         Color <span class="text-[10px] text-gray-400">▼</span>
                     </button>
                     <div id="color-filter-dropdown" class="hidden absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 shadow-xl z-50">
@@ -284,7 +272,7 @@
 
                 <!-- NEW: Size Filter -->
                 <div class="relative">
-                    <button id="size-filter-btn" onclick="toggleFilterDropdown('size-filter-dropdown', event)" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
+                    <button id="size-filter-btn" class="px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition flex items-center gap-2">
                         Size <span class="text-[10px] text-gray-400">▼</span>
                     </button>
                     <div id="size-filter-dropdown" class="hidden absolute top-full left-0 mt-1 w-24 bg-white border border-gray-200 shadow-xl z-50">
@@ -296,7 +284,7 @@
                     </div>
                 </div>
 
-                <button class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition text-asos-red" data-filter="sale">Sale</button>
+                <button id="sale-filter-btn" class="filter-btn px-4 py-2 border border-gray-300 text-xs font-bold uppercase hover:border-black transition text-asos-red" data-filter="sale" data-filter-type="price">Sale</button>
             </div>
 
             <!-- Sort -->
@@ -345,7 +333,7 @@
         class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none"
       >
         <div
-          class="bg-white border border-gray-200 w-full max-w-4xl min-h-[600px] max-h-[90vh] shadow-2xl overflow-y-auto pointer-events-auto flex flex-col md:flex-row relative animate-scaleIn"
+          class="bg-white border border-gray-200 w-full max-w-5xl h-[88vh] max-h-[760px] shadow-2xl overflow-hidden pointer-events-auto flex flex-col md:flex-row relative animate-scaleIn"
         >
           <!-- Close Button -->
           <button
@@ -359,12 +347,18 @@
           <div
             class="w-full md:w-1/2 bg-gray-100 p-0 flex flex-col relative overflow-hidden"
           >
-            <div class="flex-grow w-full relative">
+            <div class="flex-grow w-full relative bg-gray-100 min-h-[340px]">
               <img
                 id="modal-image"
                 src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                class="w-full h-full object-cover absolute inset-0"
+                class="w-full h-full object-contain absolute inset-0 p-2 cursor-zoom-in"
               />
+              <button
+                id="modal-image-zoom-btn"
+                class="absolute bottom-3 right-3 bg-black/70 text-white text-xs font-bold px-3 py-1 uppercase tracking-wide hover:bg-black transition"
+              >
+                Zoom
+              </button>
             </div>
 
             <!-- Pop-up Similar Products (Moved) -->
@@ -379,7 +373,7 @@
           </div>
 
           <!-- Right: Details -->
-          <div class="w-full md:w-1/2 p-8 flex flex-col">
+          <div class="w-full md:w-1/2 p-8 flex flex-col h-full overflow-y-auto">
             <span
               id="modal-category"
               class="text-amber-600 text-xs font-bold uppercase tracking-wider mb-2"
@@ -392,8 +386,9 @@
               <span id="modal-price" class="text-2xl font-bold text-black"
                 >$0.00</span
               >
-              <div class="flex text-amber-500 text-sm">
-                ★★★★☆ <span class="text-gray-500 ml-1">(42)</span>
+              <div class="flex text-amber-500 text-sm items-center">
+                <span id="modal-rating-stars">★★★★★</span>
+                <span id="modal-review-count" class="text-gray-500 ml-1">(0)</span>
               </div>
             </div>
 
@@ -423,7 +418,7 @@
             </div>
 
             <!-- Tab: Details -->
-            <div id="tab-details" class="tab-content block">
+            <div id="tab-details" class="tab-content block h-[240px] overflow-y-auto pr-1">
               <div class="mb-6">
                 <p
                   id="modal-desc"
@@ -447,28 +442,34 @@
             </div>
 
             <!-- Tab: Returns -->
-            <div id="tab-returns" class="tab-content hidden">
+            <div id="tab-returns" class="tab-content hidden h-[240px] overflow-y-auto pr-1">
               <div class="mb-6">
                 <h4 class="text-xs text-gray-500 uppercase font-bold mb-1">
                   Return Policy
                 </h4>
                 <p
                   id="modal-return-policy"
-                  class="text-gray-400 text-xs leading-relaxed"
+                  class="text-gray-400 text-xs leading-relaxed line-clamp-3"
                 >
                   We offer a 30-day return policy for all unworn items in
                   original packaging. To initiate a return, please visit our
                   support section or contact customer service. Refunds are
                   processed within 5-7 business days.
                 </p>
+                <button
+                  id="return-policy-read-more"
+                  class="text-amber-600 text-xs font-bold uppercase tracking-wide hover:underline mt-3"
+                >
+                  Read More
+                </button>
               </div>
             </div>
 
             <!-- Tab: Reviews -->
-            <div id="tab-reviews" class="tab-content hidden">
+            <div id="tab-reviews" class="tab-content hidden h-[240px]">
               <div
                 id="modal-reviews"
-                class="space-y-4 max-h-48 overflow-y-auto custom-scrollbar"
+                class="space-y-4 h-full overflow-y-auto custom-scrollbar pr-1"
               >
                 <!-- Injected JS -->
               </div>
@@ -576,6 +577,26 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMAGE ZOOM MODAL -->
+    <div id="image-zoom-modal" class="fixed inset-0 z-[130] hidden">
+      <div class="absolute inset-0 bg-black/90" onclick="closeImageZoom()"></div>
+      <div class="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
+        <div class="relative w-full h-full max-w-6xl pointer-events-auto flex items-center justify-center">
+          <button
+            class="absolute top-3 right-3 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white text-xl"
+            onclick="closeImageZoom()"
+          >
+            ✕
+          </button>
+          <img
+            id="image-zoom-target"
+            src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+            class="max-w-full max-h-full object-contain"
+          />
         </div>
       </div>
     </div>
@@ -724,9 +745,11 @@
         brandColor: "#1A1A2E",
         brandColorLight: "#16213E",
         accentColor: "#35d3a1",
+        // Activation gate — widget stays dormant until integration wizard activates this site
+        serverUrl: "http://localhost:8080",
+        siteUrl: "http://localhost:3001",
         // Voice — Deepgram TTS proxied via AVA server (key never reaches browser)
         voiceEnabled: true,
-        serverUrl: "http://localhost:8080",
         deepgramModel: "aura-asteria-en",
         voiceMaxPerSession: 3,
         voiceAutoPlay: true,
@@ -769,19 +792,52 @@
         { id: "smart-ring-fashion", name: "Luxury Smart Ring", category: "accessories", price: 299, image: "https://images.unsplash.com/photo-1671960610018-f2fdebbe5b47?q=80&w=500", specs: ["Sleep Tracking","Gold Finish","7 Days Battery"], reviews: [{id:"r1",user:"TechGeek",rating:5,text:"Tracking is very accurate.",date:"2024-01-25"},{id:"r2",user:"SleepyHead",rating:5,text:"Helped me improve my sleep.",date:"2024-02-05"},{id:"r3",user:"FashionTech",rating:4,text:"Looks like jewelry, acts like a tracker.",date:"2023-12-15"},{id:"r4",user:"BatteryLife",rating:5,text:"Battery actually lasts a week.",date:"2024-01-10"},{id:"r5",user:"EarlyAdopter",rating:4,text:"App is easy to use.",date:"2023-11-30"}], description: "Experience wearable technology with our Luxury Smart Ring. 18k gold finish with sensors monitoring sleep, heart rate, and activity. Connects via Bluetooth with 7-day battery life and 50m water resistance.", isDemo: true, colors: ["Gold","Silver","Black"], sizes: ["6","7","8","9","10"] },
       ];
 
-      const CATEGORIES = ["clothing","footwear","watches","accessories","lifestyle"];
-      const CLOTHING_IMGS = ["https://images.unsplash.com/photo-1434389677669-e08b4cac3105?q=80&w=500","https://images.unsplash.com/photo-1485968579580-b6d095142e6e?q=80&w=500","https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=500","https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=500","https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=500","https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=500"];
+      const CATEGORIES = ["clothing","footwear","watches","accessories","lifestyle","beauty","home","tech"];
+      const GENDERS = ["men", "women"];
+      const TARGET_PER_CATEGORY_PER_GENDER = 40;
+      const WOMEN_CLOTHING_IMGS = ["https://images.unsplash.com/photo-1434389677669-e08b4cac3105?q=80&w=500","https://images.unsplash.com/photo-1485968579580-b6d095142e6e?q=80&w=500","https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=500","https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=500","https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=500","https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=500"];
+      const MEN_CLOTHING_IMGS = ["https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=500","https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?q=80&w=500","https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=500","https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=500","https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=500","https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?q=80&w=500"];
       const FOOTWEAR_IMGS = ["https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=500","https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=500","https://images.unsplash.com/photo-1460353581641-37baddab0fa2?q=80&w=500","https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=500","https://images.unsplash.com/photo-1543508282-6319a3e2621f?q=80&w=500","https://images.unsplash.com/photo-1562183241-b937e95585b6?q=80&w=500","https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=500","https://images.unsplash.com/photo-1595341888016-a392ef81b7de?q=80&w=500","https://images.unsplash.com/photo-1603808033192-082d6919d3e1?q=80&w=500","https://images.unsplash.com/photo-1515955656352-a1fa3ffcd111?q=80&w=500"];
       const WATCH_IMGS = ["https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?q=80&w=500","https://images.unsplash.com/photo-1523170335258-f5ed11844a49?q=80&w=500","https://images.unsplash.com/photo-1542487354-feaf93476caa?q=80&w=500","https://images.unsplash.com/photo-1526045431048-f857369baa09?q=80&w=500","https://images.unsplash.com/photo-1548171915-e79a380a2a4b?q=80&w=500","https://images.unsplash.com/photo-1461141346587-763ab02bced9?q=80&w=500"];
       const ACCESSORY_IMGS = ["https://images.unsplash.com/photo-1584917865442-de89df76afd3?q=80&w=500","https://images.unsplash.com/photo-1611591437281-460bfbe1220a?q=80&w=500","https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?q=80&w=500","https://images.unsplash.com/photo-1576053139778-7e32f2ae3cfd?q=80&w=500","https://images.unsplash.com/photo-1620916297397-a4a5402a3c6c?q=80&w=500","https://images.unsplash.com/photo-1662091131946-338d213f4a39?q=80&w=500","https://images.unsplash.com/photo-1663585703603-9be01a72a62a?q=80&w=500"];
       const LIFESTYLE_IMGS = ["https://images.unsplash.com/photo-1611930021698-a55ec4d5fe6e?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1605714117967-9fe201ddfe9d?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1684721689327-9ff62a215161?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1656782047936-4ba73fac0fe4?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1766934587214-86e21b3ae093?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1599865240613-69a7655f94b3?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1684721689079-f3cb8b07381f?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1611930021592-a8cfd5319ceb?q=80&w=600&auto=format&fit=crop"];
-      const CAT_IMGS = { clothing: CLOTHING_IMGS, footwear: FOOTWEAR_IMGS, watches: WATCH_IMGS, accessories: ACCESSORY_IMGS, lifestyle: LIFESTYLE_IMGS };
+      const BEAUTY_IMGS = ["https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1619451334792-150fd785ee74?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1625772452859-1c03d5bf1137?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?q=80&w=600&auto=format&fit=crop"];
+      const MEN_GROOMING_IMGS = ["https://images.unsplash.com/photo-1621605815971-fbc98d665033?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1521498542256-5aeb47ba2b36?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1588405748880-12d1d2a59c75?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1599351431202-1e0f0137899a?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1620917669788-3c2fe2f58207?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1594736797933-d0401ba2fe65?q=80&w=600&auto=format&fit=crop"];
+      const HOME_IMGS = ["https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1493666438817-866a91353ca9?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1555041469-a586c61ea9bc?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1549187774-b4e9b0445b41?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1484101403633-562f891dc89a?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1560185007-c5ca9d2c014d?q=80&w=600&auto=format&fit=crop"];
+      const TECH_IMGS = ["https://images.unsplash.com/photo-1519389950473-47ba0277781c?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1517336714739-489689fd1ca8?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1541807084-5c52b6b3adef?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=600&auto=format&fit=crop","https://images.unsplash.com/photo-1583394838336-acd977736f90?q=80&w=600&auto=format&fit=crop"];
+      const CAT_IMGS = { clothing: WOMEN_CLOTHING_IMGS, footwear: FOOTWEAR_IMGS, watches: WATCH_IMGS, accessories: ACCESSORY_IMGS, lifestyle: LIFESTYLE_IMGS, beauty: BEAUTY_IMGS, home: HOME_IMGS, tech: TECH_IMGS };
+      const GENDERED_CAT_IMGS = {
+        men: { clothing: MEN_CLOTHING_IMGS, footwear: FOOTWEAR_IMGS, watches: WATCH_IMGS, accessories: ACCESSORY_IMGS, lifestyle: LIFESTYLE_IMGS, beauty: MEN_GROOMING_IMGS, home: HOME_IMGS, tech: TECH_IMGS },
+        women: { clothing: WOMEN_CLOTHING_IMGS, footwear: FOOTWEAR_IMGS, watches: WATCH_IMGS, accessories: ACCESSORY_IMGS, lifestyle: LIFESTYLE_IMGS, beauty: BEAUTY_IMGS, home: HOME_IMGS, tech: TECH_IMGS },
+      };
       const ADJECTIVES = ["Elegant","Urban","Vintage","Modern","Luxe","Casual","Formal","Chic","Retro","Classic","Bold","Summer","Winter","Essential","Premium","Minimal","Sleek","Smart"];
-      const NOUNS = { clothing: ["Jacket","Coat","Dress","Shirt","Blouse","Tee","Hoodie","Blazer","Skirt","Trousers"], footwear: ["Sneakers","Boots","Loafers","Heels","Sandals","Flats","Oxfords","Trainers","Pumps","Slides"], watches: ["Chronograph","Timepiece","Dial","Quartz","Automatic","Classic","Sport","Diver","Pilot","Field"], accessories: ["Bag","Purse","Scarf","Belt","Hat","Cap","Wallet","Glasses","Necklace","Bracelet"], lifestyle: ["Planter","Lamp","Chair","Speaker","Vase","Diffuser","Clock","Organizer","Stand","Monitor"] };
+      const BASE_NOUNS = { clothing: ["Jacket","Coat","Shirt","Tee","Hoodie","Blazer","Trousers","Overshirt","Polo","Knit"], footwear: ["Sneakers","Boots","Loafers","Sandals","Flats","Oxfords","Trainers","Slides","Clogs","Runner"], watches: ["Chronograph","Timepiece","Dial","Quartz","Automatic","Classic","Sport","Diver","Pilot","Field"], accessories: ["Bag","Scarf","Belt","Hat","Cap","Wallet","Glasses","Chain","Bracelet","Backpack"], lifestyle: ["Planter","Lamp","Chair","Speaker","Vase","Diffuser","Clock","Organizer","Stand","Monitor"], beauty: ["Serum","Cleanser","Perfume","Palette","Essence","Mask","Moisturizer","Sunscreen","Set","Grooming Kit"], home: ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"], tech: ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"] };
+      const GENDERED_NOUNS = {
+        men: {
+          clothing: ["Oxford Shirt","Bomber Jacket","Polo Shirt","Henley Tee","Cargo Trousers","Chino Pants","Denim Jacket","Tailored Blazer","Crew Sweatshirt","Overshirt"],
+          footwear: ["Running Sneakers","Chelsea Boots","Derby Shoes","High-top Sneakers","Leather Loafers","Trainer Shoes","Trail Sneakers","Slip-on Shoes","Oxford Shoes","Desert Boots"],
+          watches: ["Chronograph","Field Watch","Sport Watch","Pilot Watch","Automatic Watch","Tactical Watch","Steel Watch","Dive Watch","Quartz Watch","Classic Watch"],
+          accessories: ["Leather Belt","Messenger Bag","Card Holder","Travel Wallet","Baseball Cap","Weekend Duffel","Wayfarer Shades","Chain Bracelet","Backpack","Crossbody Bag"],
+          lifestyle: ["Desk Lamp","Travel Kit","Room Diffuser","Wall Clock","Bluetooth Speaker","Coffee Set","Organizer Tray","Workspace Mat","Gym Bottle","Shoe Rack"],
+          beauty: ["Beard Oil","Face Wash","Aftershave","Hair Clay","Grooming Kit","Shave Cream","Moisturizer","Body Spray","Trimmer Set","SPF Lotion"],
+          home: ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
+          tech: ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"],
+        },
+        women: {
+          clothing: ["Floral Dress","Blouse Top","Pleated Skirt","Cardigan","Midi Dress","Wrap Top","Knit Sweater","Tailored Trousers","Cropped Jacket","Jumpsuit"],
+          footwear: ["Heeled Sandals","Ankle Boots","Platform Sneakers","Ballet Flats","Court Heels","Running Sneakers","Loafers","Slides","Wedge Sandals","Strappy Heels"],
+          watches: ["Chronograph","Jewelry Watch","Slim Watch","Rose Gold Watch","Classic Watch","Quartz Watch","Dress Watch","Smart Watch","Steel Watch","Automatic Watch"],
+          accessories: ["Shoulder Bag","Mini Tote","Silk Scarf","Statement Belt","Sun Hat","Wallet","Sunglasses","Layered Necklace","Bracelet","Crossbody Bag"],
+          lifestyle: ["Aroma Diffuser","Accent Lamp","Desk Organizer","Vase Set","Bluetooth Speaker","Vanity Mirror","Travel Pouch","Scented Candle","Wellness Kit","Storage Basket"],
+          beauty: ["Vitamin Serum","Face Cleanser","Hydrating Mist","Lip Tint","Eyeshadow Palette","Sheet Mask","Body Lotion","SPF Cream","Perfume Set","Glow Primer"],
+          home: ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
+          tech: ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"],
+        },
+      };
       const SUFFIXES = ["Collection","Edition","Series","Fit","Basic","Signature","Vibe","Mode","Style","Wear","Pro","Max","Lite"];
       const REVIEWERS = ["Emma S.","Liam J.","FashionGuru","StyleIcon","Olivia W.","Noah B.","TrendSetter","DesignerDan","Chloe M.","Shopaholic"];
       const COMMENTS = [{rating:5,text:"The quality is outstanding. Fits exactly as described."},{rating:5,text:"A beautiful addition to my collection. Stunning!"},{rating:4,text:"Love the style, though shipping was a bit slow."},{rating:4,text:"Comfortable and stylish. Highly recommended."},{rating:3,text:"Fabric feels a bit thinner than expected, but looks good."},{rating:5,text:"Absolute perfection. I get complements everywhere I go."},{rating:2,text:"Size runs small. Had to return for a larger one."},{rating:5,text:"Bought this as a gift and they absolutely loved it."},{rating:4,text:"Great value for the price. Will buy again."},{rating:3,text:"Color is slightly different from the picture."}];
-      const SIZES = { clothing: ["XS","S","M","L","XL"], footwear: ["US 7","US 8","US 9","US 10","US 11"], watches: ["One Size"], accessories: ["One Size"], lifestyle: ["One Size"] };
+      const SIZES = { clothing: ["XS","S","M","L","XL"], footwear: ["US 7","US 8","US 9","US 10","US 11"], watches: ["One Size"], accessories: ["One Size"], lifestyle: ["One Size"], beauty: ["One Size"], home: ["One Size"], tech: ["One Size"] };
       const COLORS = ["Black","White","Red","Blue","Green","Beige","Gold","Silver"];
       const INTROS = ["Experience the epitome of style and comfort with this exceptional piece.","Redefine your everyday look with a product designed for the modern lifestyle.","Crafted with precision and care, this item represents the pinnacle of our collection.","Discover a new standard of quality with materials sourced from the finest suppliers.","Elevate your wardrobe instantly with this versatile and striking addition."];
       const FILLER = "Furthermore, our commitment to sustainability means this product was created with eco-friendly practices in mind. The ergonomic design ensures tailored fit and maximum comfort throughout the day, making it an essential companion for your busy lifestyle.";
@@ -797,32 +853,97 @@
       }
 
       function generateProducts() {
-        const products = [...DEMO_PRODUCTS];
+        const products = assignDemoGenders([...DEMO_PRODUCTS]);
         let n = 1;
-        CATEGORIES.forEach(cat => {
-          const imgs = CAT_IMGS[cat];
-          const existing = products.filter(p => p.category === cat).length;
-          const needed = Math.max(0, 8 - existing);
-          for (let i = 0; i < needed; i++) {
-            const adj = ADJECTIVES[Math.floor(Math.random()*ADJECTIVES.length)];
-            const noun = NOUNS[cat][Math.floor(Math.random()*NOUNS[cat].length)];
-            const suffix = SUFFIXES[Math.floor(Math.random()*SUFFIXES.length)];
-            const name = adj + " " + noun + " " + suffix;
-            const id = cat + "-" + (n++); // deterministic — must not use random words or wishlist IDs break on reload
-            const reviews = Array.from({length: Math.floor(Math.random()*5)+5}, (_,r) => genReview(id,r));
-            // Deterministic price derived from the counter so cart/wishlist prices stay
-            // consistent across page reloads (random price would cause mismatches).
-            const PRICE_SEEDS = [49,79,99,119,139,159,179,199,229,249,279,299,349,399,449];
-            const price = PRICE_SEEDS[n % PRICE_SEEDS.length];
-            const COLOR_PAIRS = [["Black","White"],["Navy","Beige"],["Red","Black"],["Green","Brown"],["Gold","Silver"],["Blue","White"]];
-            const colorPair = COLOR_PAIRS[n % COLOR_PAIRS.length];
-            products.push({ id, name, category: cat, price, image: imgs[i%imgs.length], specs: ["Premium Material","Sustainable","New Season"], reviews, description: genDesc(name), stock: 50, colors: colorPair, sizes: SIZES[cat] || ["One Size"] });
+        CATEGORIES.forEach((cat) => {
+          GENDERS.forEach((gender) => {
+            const imgs =
+              (GENDERED_CAT_IMGS[gender] && GENDERED_CAT_IMGS[gender][cat]) ||
+              CAT_IMGS[cat] ||
+              [];
+            const nounPool =
+              (GENDERED_NOUNS[gender] && GENDERED_NOUNS[gender][cat]) ||
+              BASE_NOUNS[cat] ||
+              ["Item"];
+            const existing = products.filter(
+              (p) => p.category === cat && p.gender === gender,
+            ).length;
+            const needed = Math.max(0, TARGET_PER_CATEGORY_PER_GENDER - existing);
+            for (let i = 0; i < needed; i++) {
+              const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+              const noun = nounPool[(i + n) % nounPool.length];
+              const suffix = SUFFIXES[Math.floor(Math.random() * SUFFIXES.length)];
+              const name = adj + " " + noun + " " + suffix;
+              const id = `${gender}-${cat}-${n++}`; // deterministic IDs keep wishlist/cart stable
+              const reviews = Array.from(
+                { length: Math.floor(Math.random() * 5) + 5 },
+                (_, r) => genReview(id, r),
+              );
+              const PRICE_SEEDS = [49,79,99,119,139,159,179,199,229,249,279,299,349,399,449];
+              const price = PRICE_SEEDS[n % PRICE_SEEDS.length];
+              const COLOR_PAIRS = [["Black","White"],["Navy","Beige"],["Red","Black"],["Green","Brown"],["Gold","Silver"],["Blue","White"]];
+              const colorPair = COLOR_PAIRS[n % COLOR_PAIRS.length];
+              products.push({
+                id,
+                name,
+                category: cat,
+                gender,
+                price,
+                image: imgs[(i + n) % imgs.length],
+                specs: ["Premium Material","Sustainable","New Season"],
+                reviews,
+                description: genDesc(name),
+                stock: 50,
+                colors: colorPair,
+                sizes: SIZES[cat] || ["One Size"],
+              });
+            }
+          });
+        });
+        return products;
+      }
+
+      function assignDemoGenders(products) {
+        const DEMO_GENDER_BY_ID = {
+          "trench-coat": "women",
+          "summer-dress": "women",
+          "urban-sneakers": "men",
+          "silver-watch": "men",
+          "chic-shades": "women",
+          "leather-bag": "men",
+          "boots-leather": "men",
+          "smart-ring-fashion": "women",
+        };
+        products.forEach((p) => {
+          if (!p.gender) {
+            p.gender = DEMO_GENDER_BY_ID[p.id] || "women";
           }
         });
         return products;
       }
 
-      const ALL_PRODUCTS = generateProducts();
+      function applySaleDiscounts(products) {
+        const DISCOUNT_RATES = [0.15, 0.2, 0.25, 0.3];
+        CATEGORIES.forEach((cat) => {
+          GENDERS.forEach((gender) => {
+            const categoryProducts = products
+              .filter((p) => p.category === cat && p.gender === gender)
+              .slice(0, 10);
+            categoryProducts.forEach((p, idx) => {
+              const original = Number(p.price || 0);
+              const discounted = Math.max(19, Math.round(original * (1 - DISCOUNT_RATES[idx % DISCOUNT_RATES.length])));
+              if (discounted < original) {
+                p.originalPrice = original;
+                p.price = discounted;
+                p.onSale = true;
+              }
+            });
+          });
+        });
+        return products;
+      }
+
+      const ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts()));
       function getProductsByCategory(cat) { return ALL_PRODUCTS.filter(p => p.category === cat); }
       function searchProducts(query) { const q = query.toLowerCase(); return ALL_PRODUCTS.filter(p => p.name.toLowerCase().includes(q) || p.category.includes(q)); }
 
@@ -850,6 +971,13 @@
       function getCartTotal() { return getCart().reduce((s,i) => s + i.price * i.quantity, 0); }
       function getCartCount() { return getCart().reduce((s,i) => s + i.quantity, 0); }
       function subscribe(cb) { listeners.push(cb); }
+      function getWishlistState() {
+        if (!window.wishlistState) {
+          const saved = localStorage.getItem("wishlist");
+          window.wishlistState = saved ? new Map(JSON.parse(saved)) : new Map();
+        }
+        return window.wishlistState;
+      }
 
       const grid = document.getElementById("product-grid");
       const cartCountEl = document.getElementById("cart-count");
@@ -891,9 +1019,154 @@
 
       // Pagination State
       let currentPage = 1;
-      const itemsPerPage = 50; // Show all products (User requested 40 on single page)
+      const itemsPerPage = 100; // Home shows top 100 in one view; category pages still fit comfortably
       let currentProducts = []; // Track full list for pagination
       let currentSort = 'featured'; // Default sort
+      let currentCategory = null;
+      let currentGender = null;
+      let currentNavLabel = null;
+      const HERO_SLIDES = [
+        {
+          category: "clothing",
+          label: "New Season",
+          title: "Redefine Your Look.",
+          description:
+            "Discover statement clothing picks curated for everyday confidence.",
+          image:
+            "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=1600",
+        },
+        {
+          category: "footwear",
+          label: "Street Ready",
+          title: "Step Into The Season.",
+          description:
+            "Explore fresh footwear drops designed for movement and style.",
+          image:
+            "https://images.unsplash.com/photo-1464863979621-258859e62245?q=80&w=1600",
+        },
+        {
+          category: "beauty",
+          label: "Face + Body",
+          title: "Glow With Essentials.",
+          description:
+            "Discover beauty must-haves for daily routines and standout looks.",
+          image:
+            "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?q=80&w=1600",
+        },
+      ];
+      let currentHeroSlideIndex = 0;
+      let heroAutoTimer = null;
+
+      function titleCase(value) {
+        return value
+          .split(" ")
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(" ");
+      }
+
+      function getCurrentViewTitle(fallback = "Filtered Results") {
+        if (currentNavLabel) {
+          return currentGender
+            ? `${titleCase(currentGender)} ${currentNavLabel}`
+            : currentNavLabel;
+        }
+
+        if (currentCategory) {
+          return currentGender
+            ? `${titleCase(currentGender)} ${titleCase(currentCategory)}`
+            : `${titleCase(currentCategory)} Collection`;
+        }
+
+        return fallback;
+      }
+
+      function getHomeTopProducts() {
+        return [...ALL_PRODUCTS]
+          .sort((a, b) => (b.isDemo ? 1 : 0) - (a.isDemo ? 1 : 0))
+          .slice(0, 100);
+      }
+
+      function showHomeTop100() {
+        currentCategory = null;
+        currentGender = null;
+        currentNavLabel = null;
+        currentSort = "featured";
+        if (typeof activeFilters !== "undefined") {
+          activeFilters.price = "all";
+          activeFilters.color = null;
+          activeFilters.size = null;
+        }
+        const search = document.getElementById("store-search");
+        if (search) search.value = "";
+        const sort = document.getElementById("sort-select");
+        if (sort) sort.value = "featured";
+        currentPage = 1;
+        render(getHomeTopProducts());
+        document.getElementById("grid-title").innerText = "Home Top 100";
+      }
+
+      function renderHeroSlide() {
+        const stage = document.getElementById("hero-slide-stage");
+        const dots = document.getElementById("hero-dots");
+        if (!stage || !dots) return;
+
+        const slide = HERO_SLIDES[currentHeroSlideIndex];
+        stage.innerHTML = `
+          <div class="h-full grid grid-cols-1 md:grid-cols-2">
+            <div class="bg-gray-100 h-full px-8 py-8 md:px-12 md:py-10 relative">
+              <div class="max-w-xl pr-2 pb-24">
+                <span class="text-sm font-bold tracking-widest uppercase mb-3 block">${slide.label}</span>
+                <h1 class="text-4xl md:text-5xl font-black text-black leading-[0.95] mb-4 tracking-tighter uppercase">${slide.title}</h1>
+                <p class="text-gray-600 text-lg mb-4 max-w-lg">${slide.description}</p>
+              </div>
+            </div>
+            <div class="bg-white h-full p-4 md:p-6 flex items-center justify-center">
+              <img src="${slide.image}" alt="${slide.title}" class="w-full h-full object-contain object-top">
+            </div>
+          </div>
+        `;
+
+        dots.innerHTML = HERO_SLIDES.map((_, idx) => `
+          <button onclick="window.goToHeroSlide(${idx})" class="w-2.5 h-2.5 rounded-full transition ${idx === currentHeroSlideIndex ? "bg-black" : "bg-black/30 hover:bg-black/60"}" aria-label="Go to slide ${idx + 1}"></button>
+        `).join("");
+      }
+
+      function restartHeroAutoPlay() {
+        if (heroAutoTimer) clearInterval(heroAutoTimer);
+        heroAutoTimer = setInterval(() => {
+          currentHeroSlideIndex = (currentHeroSlideIndex + 1) % HERO_SLIDES.length;
+          renderHeroSlide();
+        }, 7000);
+      }
+
+      window.changeHeroSlide = (delta) => {
+        currentHeroSlideIndex =
+          (currentHeroSlideIndex + delta + HERO_SLIDES.length) % HERO_SLIDES.length;
+        renderHeroSlide();
+        restartHeroAutoPlay();
+      };
+
+      window.goToHeroSlide = (index) => {
+        currentHeroSlideIndex = index;
+        renderHeroSlide();
+        restartHeroAutoPlay();
+      };
+
+      window.browseHeroCategory = (cat) => {
+        currentCategory = cat;
+        currentGender = null;
+        currentNavLabel = null;
+        currentPage = 1;
+        applyFilters();
+        document.getElementById("grid-title").innerText = `${titleCase(cat)} Collection`;
+        document.getElementById("product-grid").scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+
+      window.browseHeroCategoryByCurrent = () => {
+        const slide = HERO_SLIDES[currentHeroSlideIndex];
+        if (!slide) return;
+        window.browseHeroCategory(slide.category);
+      };
 
       // 1. Render Function
       function render(products) {
@@ -951,6 +1224,7 @@
           card.className =
             "p-0 group relative overflow-hidden product-card hover:shadow-lg transition bg-white";
           card.dataset.id = p.id;
+          const isWishlisted = Boolean(getWishlistState().get(p.id));
           
            // Low Stock Badge
           let badge = "";
@@ -962,14 +1236,25 @@
                     ${badge}
                     <div class="aspect-[3/4] bg-black/20 mb-0 flex items-center justify-center overflow-hidden cursor-pointer product-trigger relative">
                         <img src="${p.image}" alt="${p.name}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-700">
-                         <button class="btn-add absolute bottom-4 right-4 bg-white text-black hover:bg-amber-100 w-10 h-10 flex items-center justify-center rounded-none shadow-lg transition opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 duration-300" data-id="${p.id}" data-added="false">+</button>
+                         <button class="btn-wishlist absolute bottom-3 right-3 w-10 h-10 rounded-full border flex items-center justify-center shadow-lg transition ${isWishlisted ? "bg-rose-50 border-rose-200 text-rose-500" : "bg-white/95 border-gray-200 text-gray-700 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-200"}" data-id="${p.id}" data-active="${isWishlisted ? "true" : "false"}" aria-label="Toggle wishlist">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                           </svg>
+                         </button>
                     </div>
                     <div class="p-4">
                         <p class="text-amber-400 text-[10px] uppercase font-bold tracking-widest mb-1">${p.category}</p>
                           <h3 class="font-bold text-sm uppercase tracking-wide mb-1 truncate cursor-pointer hover:underline product-trigger text-black">${p.name}</h3>
                         
                         <div class="flex items-center justify-between mt-1">
-                            <div class="price-tag font-bold text-base text-black" data-analyze="price">$${p.price.toFixed(2)}</div>
+                            ${
+                              p.onSale && p.originalPrice
+                                ? `<div class="flex items-end gap-2" data-analyze="price">
+                                     <div class="price-tag font-bold text-base text-red-600">$${p.price.toFixed(2)}</div>
+                                     <div class="text-xs text-gray-400 line-through">$${p.originalPrice.toFixed(2)}</div>
+                                   </div>`
+                                : `<div class="price-tag font-bold text-base text-black" data-analyze="price">$${p.price.toFixed(2)}</div>`
+                            }
                         </div>
 
                          <button class="text-xs text-gray-500 hover:text-gray-300 mt-2 underline specs-toggle">Details</button>
@@ -1026,9 +1311,49 @@
 
       // --- MODAL LOGIC ---
       const modal = document.getElementById("product-modal");
+      const zoomModal = document.getElementById("image-zoom-modal");
+      const zoomTarget = document.getElementById("image-zoom-target");
+      const modalImageEl = document.getElementById("modal-image");
+      const modalZoomBtn = document.getElementById("modal-image-zoom-btn");
       let currentModalQty = 1;
 
+      window.openImageZoom = () => {
+        if (!zoomModal || !zoomTarget || !modalImageEl) return;
+        zoomTarget.src = modalImageEl.src;
+        zoomTarget.alt = modalImageEl.alt || "Product image";
+        zoomModal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+        if (window.DemoTrigger) {
+          window.DemoTrigger("product_image_zoomed", {
+            product_id: currentModalProductId,
+            product_name: currentModalProductName,
+          });
+        }
+      };
+
+      window.closeImageZoom = () => {
+        if (!zoomModal) return;
+        zoomModal.classList.add("hidden");
+        if (modal.classList.contains("hidden")) {
+          document.body.style.overflow = "";
+        }
+      };
+
+      if (modalZoomBtn) {
+        modalZoomBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.openImageZoom();
+        };
+      }
+
+      if (modalImageEl) {
+        modalImageEl.onclick = () => window.openImageZoom();
+      }
+
       window.closeModal = () => {
+        window.closeImageZoom();
+
         if (modalOpenTime && window.DemoTrigger) {
           const timeSpent = Date.now() - modalOpenTime;
           window.DemoTrigger("product_detail", {
@@ -1242,10 +1567,25 @@
         });
         document.getElementById("modal-qty").innerText = 1;
         document.getElementById("modal-image").src = p.image;
+        document.getElementById("modal-image").alt = p.name;
         document.getElementById("modal-category").innerText = p.category;
         document.getElementById("modal-title").innerText = p.name;
-        document.getElementById("modal-price").innerText =
-          "$" + p.price.toFixed(2);
+        const modalPriceEl = document.getElementById("modal-price");
+        if (p.onSale && p.originalPrice) {
+          modalPriceEl.innerHTML =
+            `<span class="text-red-600">$${p.price.toFixed(2)}</span><span class="ml-2 text-sm text-gray-400 line-through align-middle">$${p.originalPrice.toFixed(2)}</span>`;
+        } else {
+          modalPriceEl.innerText = "$" + p.price.toFixed(2);
+        }
+        const productReviews = Array.isArray(p.reviews) ? p.reviews : [];
+        const reviewCount = productReviews.length || 5;
+        const totalRating = productReviews.reduce((sum, r) => sum + (r.rating || 0), 0);
+        const avgRating = productReviews.length ? totalRating / productReviews.length : 4.5;
+        const roundedStars = Math.max(1, Math.min(5, Math.round(avgRating)));
+        const starsEl = document.getElementById("modal-rating-stars");
+        const reviewCountEl = document.getElementById("modal-review-count");
+        if (starsEl) starsEl.innerText = `${"★".repeat(roundedStars)}${"☆".repeat(5 - roundedStars)}`;
+        if (reviewCountEl) reviewCountEl.innerText = `(${reviewCount})`;
         document.getElementById("modal-desc").innerText = p.description;
         document.getElementById("modal-desc").className =
           "text-gray-900 text-sm leading-relaxed mb-2 line-clamp-4";
@@ -1337,12 +1677,7 @@
 
         // Wishlist Button - Track state per product
         const wishlistBtn = document.getElementById("modal-wishlist-btn");
-        // Initialize from LocalStorage if empty
-        if (!window.wishlistState) {
-             const saved = localStorage.getItem('wishlist');
-             window.wishlistState = saved ? new Map(JSON.parse(saved)) : new Map();
-        }
-        const wishlistState = window.wishlistState;
+        const wishlistState = getWishlistState();
 
         const isWishlisted = wishlistState.get(p.id) || false;
         const svg = wishlistBtn.querySelector("svg");
@@ -1416,22 +1751,29 @@
         };
 
         // Return Policy Read More
-        document.getElementById("return-policy-read-more").onclick = (e) => {
-          const policy = document.getElementById("modal-return-policy");
-          if (policy.classList.contains("line-clamp-3")) {
-            policy.classList.remove("line-clamp-3");
-            e.target.innerText = "Show Less";
-            if (window.DemoTrigger)
-              window.DemoTrigger("product_return_policy_viewed", {
-                product_id: currentModalProductId,
-                product_name: currentModalProductName,
-                source: "modal",
-              });
-          } else {
-            policy.classList.add("line-clamp-3");
-            e.target.innerText = "Read More";
-          }
-        };
+        const returnPolicy = document.getElementById("modal-return-policy");
+        const returnPolicyToggle = document.getElementById("return-policy-read-more");
+        if (returnPolicy) {
+          returnPolicy.classList.add("line-clamp-3");
+        }
+        if (returnPolicy && returnPolicyToggle) {
+          returnPolicyToggle.innerText = "Read More";
+          returnPolicyToggle.onclick = (e) => {
+            if (returnPolicy.classList.contains("line-clamp-3")) {
+              returnPolicy.classList.remove("line-clamp-3");
+              e.target.innerText = "Show Less";
+              if (window.DemoTrigger)
+                window.DemoTrigger("product_return_policy_viewed", {
+                  product_id: currentModalProductId,
+                  product_name: currentModalProductName,
+                  source: "modal",
+                });
+            } else {
+              returnPolicy.classList.add("line-clamp-3");
+              e.target.innerText = "Read More";
+            }
+          };
+        }
 
         // Similar Products Injection
         const similarContainer = document.getElementById("modal-similar");
@@ -1542,61 +1884,43 @@
           });
         });
 
-        document.querySelectorAll(".btn-add").forEach((btn) => {
+        document.querySelectorAll(".btn-wishlist").forEach((btn) => {
           btn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
             const id = btn.dataset.id;
-            const isAdded = btn.dataset.added === "true";
             const prod = ALL_PRODUCTS.find((p) => p.id === id);
             const pName = prod?.name || id;
             const pPrice = prod?.price || 0;
-            if (!isAdded) {
-              btn.dataset.added = "true";
-              btn.textContent = "✓";
-              btn.classList.remove("bg-white", "text-black");
-              btn.classList.add("bg-green-500", "text-white");
-              addToCart(id);
-              if (window.DemoTrigger) {
-                // Only send cart_item_added (add_to_cart was duplicate)
-                window.DemoTrigger("cart_item_added", {
-                  product_id: id,
-                  product_name: pName,
-                  product_price: pPrice,
-                  quantity: 1,
-                  location: "grid",
-                });
-              }
-            } else {
-              btn.dataset.added = "false";
-              btn.textContent = "+";
-              btn.classList.add("bg-white", "text-black");
-              btn.classList.remove("bg-green-500", "text-white");
-              removeFromCart(id);
-              if (window.DemoTrigger) {
-                // Only send cart_item_removed (remove_from_cart was duplicate)
-                window.DemoTrigger("cart_item_removed", {
-                  product_id: id,
-                  product_name: pName,
-                  product_price: pPrice,
-                  location: "grid",
-                });
-              }
-            }
-          };
+            const wishlistState = getWishlistState();
+            const currentlyWishlisted = Boolean(wishlistState.get(id));
+            const newState = !currentlyWishlisted;
+            wishlistState.set(id, newState);
+            localStorage.setItem("wishlist", JSON.stringify(Array.from(wishlistState.entries())));
 
-          // Hover Hesitation Trigger (Throttled)
-          let lastBtnHover = 0;
-          btn.onmouseenter = () => {
-            const now = Date.now();
-            if (now - lastBtnHover > 5000) {
-              // Max once every 5 seconds
-              lastBtnHover = now;
-              if (window.DemoTrigger)
-                window.DemoTrigger("hover", {
-                  element: "add_to_cart_btn",
-                  product_id: btn.dataset.id,
-                });
+            btn.dataset.active = newState ? "true" : "false";
+            const svg = btn.querySelector("svg");
+            if (svg) {
+              svg.style.fill = newState ? "currentColor" : "none";
+            }
+
+            btn.classList.toggle("bg-rose-50", newState);
+            btn.classList.toggle("border-rose-200", newState);
+            btn.classList.toggle("text-rose-500", newState);
+            btn.classList.toggle("bg-white/95", !newState);
+            btn.classList.toggle("border-gray-200", !newState);
+            btn.classList.toggle("text-gray-700", !newState);
+
+            renderWishlist();
+
+            if (window.DemoTrigger) {
+              window.DemoTrigger("wishlist_item_added", {
+                product_id: id,
+                product_name: pName,
+                product_price: pPrice,
+                action: newState ? "add" : "remove",
+                location: "grid",
+              });
             }
           };
         });
@@ -1621,6 +1945,20 @@
       // 3. Search & Filter Logic
       const searchInput = document.getElementById("store-search");
       const filterBtns = document.querySelectorAll(".filter-btn");
+      const colorFilterBtn = document.getElementById("color-filter-btn");
+      const sizeFilterBtn = document.getElementById("size-filter-btn");
+
+      if (colorFilterBtn) {
+        colorFilterBtn.addEventListener("click", (e) => {
+          window.toggleFilterDropdown("color-filter-dropdown", e);
+        });
+      }
+
+      if (sizeFilterBtn) {
+        sizeFilterBtn.addEventListener("click", (e) => {
+          window.toggleFilterDropdown("size-filter-dropdown", e);
+        });
+      }
 
       // Sort Select      // 3. Sort Logic
       const sortSelect = document.getElementById("sort-select");
@@ -1642,6 +1980,14 @@
         applyFilters(); // Re-apply all filters + sort
       });
 
+      const homeNavLink = document.getElementById("nav-home-link");
+      if (homeNavLink) {
+        homeNavLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          showHomeTop100();
+        });
+      }
+
       // Category Links Logic
       document.querySelectorAll(".nav-category").forEach((link) => {
         link.addEventListener("click", (e) => {
@@ -1651,20 +1997,47 @@
             b.classList.remove("bg-white/20", "border-white/50"),
           );
 
-          const cat = link.dataset.cat;
-          // Simple category mapping based on products data
-          // Note: This relies on 'getProductsByCategory' potentially, or just filtering ALL_PRODUCTS
-          // Since 'getProductsByCategory' is imported, let's try to use it or manual filter
-          const filtered = ALL_PRODUCTS.filter(
-            (p) =>
-              p.category.toLowerCase().includes(cat) ||
-              p.category.toLowerCase() === cat,
-          );
-
+          const cat = link.dataset.cat || null;
+          const gender = link.dataset.gender || null;
+          const label = link.dataset.label || (cat ? titleCase(cat) : null);
+          currentCategory = cat;
+          currentGender = gender;
+          currentNavLabel = label;
           currentPage = 1; // Reset to page 1
-          render(filtered);
-          document.getElementById("grid-title").innerText =
-            cat.charAt(0).toUpperCase() + cat.slice(1);
+          applyFilters();
+          document.getElementById("grid-title").innerText = getCurrentViewTitle();
+        });
+      });
+
+      document.querySelectorAll(".nav-menu-action").forEach((link) => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          const action = link.dataset.action;
+          const cat = link.dataset.cat || null;
+          const gender = link.dataset.gender || null;
+          const label = link.dataset.label || null;
+
+          if (action === "new-in") {
+            currentSort = "newest";
+            sortSelect.value = "newest";
+            currentCategory = cat;
+            currentGender = gender;
+            currentNavLabel = label || "New In";
+            currentPage = 1;
+            applyFilters();
+            document.getElementById("grid-title").innerText = getCurrentViewTitle("New In");
+            return;
+          }
+
+          if (action === "sale") {
+            currentCategory = cat;
+            currentGender = gender;
+            currentNavLabel = label || "Sale";
+            currentPage = 1;
+            activeFilters.price = "sale";
+            applyFilters();
+            document.getElementById("grid-title").innerText = getCurrentViewTitle("Sale");
+          }
         });
       });
 
@@ -1769,13 +2142,9 @@
       function renderWishlist() {
         const listContainer = document.getElementById("wishlist-items");
         const countHeader = document.getElementById("wishlist-count-header");
+        const countBadge = document.getElementById("wishlist-count-badge");
         
-        // Ensure state exists (global init might be needed if modal never opened)
-        if (!window.wishlistState) {
-             const saved = localStorage.getItem('wishlist');
-             window.wishlistState = saved ? new Map(JSON.parse(saved)) : new Map();
-        }
-        const wishlistState = window.wishlistState;
+        const wishlistState = getWishlistState();
 
         // Get valid items — only IDs that exist in ALL_PRODUCTS
         const activeIds = Array.from(wishlistState.entries())
@@ -1799,6 +2168,7 @@
 
         // Count reflects only renderable products, not raw state entries
         countHeader.innerText = items.length;
+        if (countBadge) countBadge.innerText = items.length;
 
         if (items.length === 0) {
           listContainer.innerHTML = `<div class="p-8 text-center text-gray-500 text-xs italic flex flex-col items-center gap-2"><span class="text-xl opacity-20">♥</span>Your wishlist is empty.</div>`;
@@ -1925,7 +2295,7 @@
               }
           }
 
-          document.getElementById("grid-title").innerText = "Filtered Results";
+          document.getElementById("grid-title").innerText = getCurrentViewTitle("Filtered Results");
 
           applyFilters();
 
@@ -1948,51 +2318,42 @@
       });
 
       function applyFilters() {
-          let filtered = ALL_PRODUCTS;
+          let filtered = [...ALL_PRODUCTS];
 
-          // 1. Category (from URL/Nav - simulated by text check for now or state)
-          // We aren't tracking category state in a var yet, it filters immediately on click. 
-          // Ideally, category is a top-level filter. 
-          // The current implementation re-renders on category click. 
-          // We should probably check if we are in a category view? 
-          // For now, let's strictly filter ALL_PRODUCTS based on *active* local filters.
-          // If the user clicked "Men", we showed men. If they then click "Red", we filter "Men".
-          // *Correction*: The previous Category Link logic just `render(filtered)`. It didn't save state.
-          // To fix this, we need to know the current set.
-          // Let's assume we filter from the *currently displayed* set if possible? 
-          // Or better: Let's store `currentCategory` state.
-
-          const currentTitle = document.getElementById("grid-title").innerText.toLowerCase();
-          // Heuristic: If title is a category, filter by it first.
-          
-          if (['clothing', 'footwear', 'watches', 'accessories', 'lifestyle'].includes(currentTitle)) {
-              filtered = filtered.filter(p => p.category === currentTitle);
+          // 1. Gender
+          if (currentGender) {
+              filtered = filtered.filter((p) => p.gender === currentGender);
           }
 
-          // 2. Price
+          // 2. Category
+          if (currentCategory && CATEGORIES.includes(currentCategory)) {
+              filtered = filtered.filter((p) => p.category === currentCategory);
+          }
+
+          // 3. Price
           if (activeFilters.price && activeFilters.price !== 'all') {
               const pMin = parseInt(document.querySelector(`[data-filter="${activeFilters.price}"]`)?.dataset.priceMin || 0);
               const pMax = parseInt(document.querySelector(`[data-filter="${activeFilters.price}"]`)?.dataset.priceMax || 9999);
               
               if (activeFilters.price === 'sale') {
-                   // Sale logic
-                   filtered = filtered.filter(p => p.price < 100); // Mock sale
+                   // Sale logic: show only discounted products
+                   filtered = filtered.filter((p) => p.onSale && p.originalPrice && p.originalPrice > p.price);
               } else {
                    filtered = filtered.filter(p => p.price >= pMin && p.price <= pMax);
               }
           }
 
-          // 3. Color
+          // 4. Color
           if (activeFilters.color) {
               filtered = filtered.filter(p => p.colors && p.colors.some(c => c.toLowerCase() === activeFilters.color));
           }
 
-          // 4. Size
+          // 5. Size
           if (activeFilters.size) {
               filtered = filtered.filter(p => p.sizes && p.sizes.includes(activeFilters.size));
           }
           
-          // 5. Sorting Logic
+          // 6. Sorting Logic
           if (currentSort === 'price_low') {
               filtered.sort((a, b) => a.price - b.price);
           } else if (currentSort === 'price_high') {
@@ -2020,6 +2381,9 @@
         const resultsDiv = document.getElementById("search-results");
 
         if (query.length > 1) {
+          currentCategory = null;
+          currentGender = null;
+          currentNavLabel = null;
           const matches = searchProducts(query).slice(0, 5);
           if (matches.length > 0) {
             dropdown.classList.remove("hidden");
@@ -2041,12 +2405,15 @@
           }
 
           currentPage = 1; // Reset
+          document.getElementById("grid-title").innerText = "Search Results";
           render(searchProducts(query));
         } else {
           dropdown.classList.add("hidden");
           if (query.length === 0) {
-              currentPage = 1;
-              render(ALL_PRODUCTS);
+              currentCategory = null;
+              currentGender = null;
+              currentNavLabel = null;
+              showHomeTop100();
           }
         }
       });
@@ -2056,6 +2423,9 @@
         if (e.key === "Enter") {
           const query = searchInput.value;
           document.getElementById("search-dropdown").classList.add("hidden");
+          currentCategory = null;
+          currentGender = null;
+          currentNavLabel = null;
 
           if (query.includes("fly") || query.length < 3) {
             if (window.DemoTrigger) {
@@ -2068,6 +2438,7 @@
               () => searchInput.classList.remove("ring-2", "ring-red-500"),
               500,
             );
+            document.getElementById("grid-title").innerText = "Search Results";
             render([]);
           } else {
             const results = searchProducts(query);
@@ -2080,6 +2451,7 @@
               });
             }
             currentPage = 1; // Reset to page 1
+            document.getElementById("grid-title").innerText = "Search Results";
             render(results);
           }
         }
@@ -2096,12 +2468,9 @@
       syncCart(); // Init
 
       // Initial Render
-      // Priorities: Demo items first, then others
-      const sorted = [...ALL_PRODUCTS].sort(
-        (a, b) => (b.isDemo ? 1 : 0) - (a.isDemo ? 1 : 0),
-      );
-      
-      render(sorted);
+      renderHeroSlide();
+      restartHeroAutoPlay();
+      showHomeTop100();
 
     </script>
   </body>

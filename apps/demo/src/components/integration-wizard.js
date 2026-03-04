@@ -3,7 +3,7 @@ const POLL_INTERVAL_MS = 3000;
 export function createIntegrationWizard(root, options) {
   const state = {
     apiBaseUrl: options.apiBaseUrl,
-    siteUrl: "https://demo-store.example",
+    siteUrl: "http://localhost:3001",
     mode: "auto",
     notes: "",
     runId: "",
