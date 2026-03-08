@@ -84,9 +84,13 @@ export async function getEvaluationsBySite(siteUrl: string, limit = 50) {
 /**
  * List all evaluations with optional limit and time filter (for analytics).
  */
-export async function listEvaluations(options?: { limit?: number; since?: Date }) {
+export async function listEvaluations(options?: { limit?: number; since?: Date; siteUrl?: string }) {
+  const where: Record<string, unknown> = {};
+  if (options?.since) where.timestamp = { gte: options.since };
+  if (options?.siteUrl) where.session = { siteUrl: options.siteUrl };
+
   return prisma.evaluation.findMany({
-    where: options?.since ? { timestamp: { gte: options.since } } : {},
+    where,
     orderBy: { timestamp: "desc" },
     take: options?.limit ?? 100,
   });

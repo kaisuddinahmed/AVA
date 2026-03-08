@@ -4,6 +4,7 @@ import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
 import { buildPayload } from "./payload-builder.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
+import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 import { config } from "../config.js";
 
 export interface InterventionOutput {
@@ -161,6 +162,33 @@ export async function recordInterventionOutcome(
   // Capture training datapoint on terminal outcomes (non-blocking)
   captureTrainingDatapoint(interventionId, effectiveStatus).catch((error) => {
     console.error("[Intervene] Training datapoint capture failed:", error);
+  });
+
+  // Broadcast updated intervention status to dashboard so feed reflects outcomes in real time.
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(intervention.payload) as Record<string, unknown>;
+  } catch {
+    // keep empty payload on parse error
+  }
+  broadcastToChannel("dashboard", {
+    type: "intervention",
+    sessionId: intervention.sessionId,
+    data: {
+      intervention_id: intervention.id,
+      session_id: intervention.sessionId,
+      type: intervention.type,
+      action_code: intervention.actionCode,
+      friction_id: intervention.frictionId,
+      timestamp: Date.now(),
+      message: payload?.message as string | undefined,
+      cta_label: payload?.cta_label as string | undefined,
+      cta_action: payload?.cta_action as string | undefined,
+      mswim_score: intervention.mswimScoreAtFire,
+      mswim_tier: intervention.tierAtFire,
+      status: effectiveStatus,
+      voice_enabled: payload?.voice_enabled as boolean | undefined,
+    },
   });
 
   return intervention;

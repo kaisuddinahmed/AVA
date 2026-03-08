@@ -40,7 +40,11 @@ function reducer(state: DashboardState, action: Action): DashboardState {
       return { ...state, activeTab: action.tab };
 
     case "ADD_EVENT": {
-      const events = [action.event, ...state.events].slice(0, MAX_ITEMS);
+      const eventWithSession = {
+        ...action.event,
+        session_id: action.event.session_id ?? action.sessionId,
+      };
+      const events = [eventWithSession, ...state.events].slice(0, MAX_ITEMS);
       return { ...state, events, eventCount: state.eventCount + 1 };
     }
 
@@ -50,6 +54,19 @@ function reducer(state: DashboardState, action: Action): DashboardState {
     }
 
     case "ADD_INTERVENTION": {
+      const existingIdx = state.interventions.findIndex(
+        (i) => i.intervention_id === action.intervention.intervention_id
+      );
+
+      if (existingIdx >= 0) {
+        const interventions = [...state.interventions];
+        interventions[existingIdx] = {
+          ...interventions[existingIdx],
+          ...action.intervention,
+        };
+        return { ...state, interventions };
+      }
+
       const interventions = [action.intervention, ...state.interventions].slice(0, MAX_ITEMS);
       return { ...state, interventions, intervCount: state.intervCount + 1 };
     }

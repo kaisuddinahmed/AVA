@@ -114,10 +114,15 @@ export async function getSiteConfigBySiteKey(siteKey: string) {
 
 /**
  * Generate a fresh siteKey for a site, creating the SiteConfig if it doesn't
- * exist. Always rotates to a new key so the wizard can re-generate.
+ * exist. Existing site keys are preserved so repeated "Generate" calls do not
+ * invalidate an already-installed snippet.
  */
 export async function generateSiteKeyForSite(siteUrl: string) {
-  const key = "avak_" + randomBytes(8).toString("hex");
+  const existing = await prisma.siteConfig.findUnique({
+    where: { siteUrl },
+    select: { siteKey: true },
+  });
+  const key = existing?.siteKey || ("avak_" + randomBytes(8).toString("hex"));
   return prisma.siteConfig.upsert({
     where: { siteUrl },
     create: {
@@ -127,7 +132,7 @@ export async function generateSiteKeyForSite(siteUrl: string) {
       trackingConfig: JSON.stringify({}),
       integrationStatus: "pending",
     },
-    update: { siteKey: key },
+    update: existing?.siteKey ? {} : { siteKey: key },
   });
 }
 

@@ -61,7 +61,7 @@ export function createIntegrationWizard(root, options) {
     snippet: "",
     snippetTab: "script",     // script | shopify | gtm | webflow
     snippetCopied: false,
-    installStatus: "not_found", // not_found | verified_ready
+    installStatus: "not_found", // not_found | found_unverified | verified_ready
     installLastChecked: 0,
 
     // Step 3 — Analyze
@@ -127,11 +127,14 @@ export function createIntegrationWizard(root, options) {
 
   // ── Snippet builder ────────────────────────────────────────────────────────
 
-  const buildSnippet = (tab, siteKey, siteUrl) => {
+  const buildSnippet = (tab, siteKey, _siteUrl) => {
     const wsUrl = state.apiBaseUrl.replace(/^http/, "ws").replace("8080", "8081");
+    // siteUrl is intentionally omitted from the snippet — the widget auto-detects
+    // window.location.origin at runtime. This means the snippet only activates on
+    // the domain it was installed on; copying it to another site won't work because
+    // the origin won't match the registered siteUrl in the server DB.
     const config = JSON.stringify({
       siteKey,
-      siteUrl,
       serverUrl: state.apiBaseUrl,
       websocketUrl: wsUrl,
       position: "bottom-right",
@@ -185,8 +188,10 @@ export function createIntegrationWizard(root, options) {
         body: { siteUrl: url },
       });
 
-      const snippet = buildSnippet(state.snippetTab, result.siteKey, url);
+      const canonicalSiteUrl = result.siteUrl || url;
+      const snippet = buildSnippet(state.snippetTab, result.siteKey, canonicalSiteUrl);
       setState({
+        siteUrl: canonicalSiteUrl,
         siteKey: result.siteKey,
         siteId: result.siteId,
         snippet,
@@ -215,17 +220,19 @@ export function createIntegrationWizard(root, options) {
   };
 
   const checkInstallStatus = async () => {
-    if (!state.siteUrl) return;
+    if (!state.siteKey) return;
     try {
       const result = await api(
-        `/api/integration/install-status?siteUrl=${encodeURIComponent(state.siteUrl)}`,
+        `/api/integration/${encodeURIComponent(state.siteKey)}/install-status`,
       );
       const prev = state.installStatus;
-      const next = result.status;
+      const next = result.status; // not_found | found_unverified | verified_ready
       setState({ installStatus: next, installLastChecked: Date.now() });
       if (next === "verified_ready" && prev !== "verified_ready") {
         stopInstallPoll();
-        setState({ message: "Tag detected! Click Analyze to begin." });
+        setState({ message: "Tag confirmed! Click Analyze to begin." });
+      } else if (next === "found_unverified" && prev === "not_found") {
+        setState({ message: "Tag detected — waiting for more events to confirm…" });
       }
     } catch {
       // network error — keep polling silently
@@ -883,6 +890,7 @@ export function createIntegrationWizard(root, options) {
     const isActivatePhase = ["mapped", "activating", "active"].includes(step);
     const isDone = step === "active";
     const detected = state.installStatus === "verified_ready";
+    const unverified = state.installStatus === "found_unverified";
 
     // Mapping snapshot numbers
     const baseBehaviorMapped = state.coverage?.behaviorMapped ?? state.metrics?.behaviorMapped ?? 0;
@@ -950,16 +958,20 @@ export function createIntegrationWizard(root, options) {
             "Project Settings → Custom Code → Before &lt;/body&gt; tag"}
         </p>
 
-        <div class="install-status ${detected ? "is-detected" : ""}">
-          <div class="install-pulse ${detected ? "detected" : ""}"></div>
-          <span>${detected ? "✓ Tag detected — widget is live" : state.installPolling ? "Checking for tag installation…" : "Waiting to check…"}</span>
+        <div class="install-status ${detected ? "is-detected" : unverified ? "is-unverified" : ""}">
+          <div class="install-pulse ${detected ? "detected" : unverified ? "unverified" : ""}"></div>
+          <span>${
+            detected   ? "✓ Tag confirmed — widget is live" :
+            unverified ? "⚡ Tag detected — confirming activity…" :
+            state.installPolling ? "Checking for tag installation…" : "Waiting to check…"
+          }</span>
           ${!detected ? `<button data-action="check-install" style="margin-left:auto;font-size:11px;padding:4px 8px;">Check Now</button>` : ""}
         </div>
 
         <button data-action="analyze"
-          ${state.loading || !detected || isAnalyzePhase ? "disabled" : ""}
+          ${state.loading || (!detected && !unverified) || isAnalyzePhase ? "disabled" : ""}
           style="width:100%;margin-top:8px;">
-          ${isAnalyzePhase ? "Analysis Running…" : detected ? "Analyze Website →" : "Waiting for tag…"}
+          ${isAnalyzePhase ? "Analysis Running…" : (detected || unverified) ? "Analyze Website →" : "Waiting for tag…"}
         </button>
       </div>
       ` : ""}

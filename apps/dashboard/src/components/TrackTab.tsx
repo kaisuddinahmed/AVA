@@ -223,7 +223,7 @@ function AnalyticsSection({ title, children, defaultOpen = true }: {
 
 export function TrackTab({ events, selectedSession, overview, trafficData, deviceData, funnelData, flowData, pageStatsData, clickPoints }: Props) {
   const filtered = useMemo(
-    () => selectedSession ? events.filter(() => true) : events,
+    () => selectedSession ? events.filter((e) => e.session_id === selectedSession) : events,
     [events, selectedSession]
   );
 

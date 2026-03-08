@@ -21,9 +21,26 @@ declare global {
  * If serverUrl or siteUrl are not configured (dev/demo without the gate),
  * this returns true so the widget still works in local development.
  */
-async function checkActivationGate(serverUrl: string, siteUrl: string): Promise<boolean> {
+/**
+ * Checks whether this site has been activated via the AVA integration wizard.
+ * Returns true  → proceed and mount the widget.
+ * Returns false → site not yet activated; stay completely dormant.
+ *
+ * When siteKey is provided the server validates that the key matches the
+ * configured siteUrl, preventing spoofing via siteUrl alone.
+ *
+ * If serverUrl or siteUrl are not configured (dev/demo without the gate),
+ * this returns true so the widget still works in local development.
+ */
+async function checkActivationGate(
+  serverUrl: string,
+  siteUrl: string,
+  siteKey?: string,
+): Promise<boolean> {
   try {
-    const url = `${serverUrl}/api/site/status?siteUrl=${encodeURIComponent(siteUrl)}`;
+    const params = new URLSearchParams({ siteUrl });
+    if (siteKey) params.set("siteKey", siteKey);
+    const url = `${serverUrl}/api/site/status?${params.toString()}`;
     const res = await fetch(url, { method: "GET", cache: "no-store" });
     if (!res.ok) return false;
     const data = await res.json() as { status: string; activated: boolean };
@@ -42,7 +59,11 @@ async function init(config: Partial<WidgetConfig>): Promise<{ widget: AVAWidget 
   // siteUrl auto-falls back to window.location.origin so merchants don't need to set it.
   if (fullConfig.serverUrl) {
     const effectiveSiteUrl = fullConfig.siteUrl || window.location.origin;
-    const activated = await checkActivationGate(fullConfig.serverUrl, effectiveSiteUrl);
+    const activated = await checkActivationGate(
+      fullConfig.serverUrl,
+      effectiveSiteUrl,
+      fullConfig.siteKey,
+    );
     if (!activated) {
       // Site not yet activated — no DOM, no WebSocket, complete silence.
       return { widget: null };

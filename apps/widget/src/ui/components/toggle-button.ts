@@ -52,10 +52,13 @@ export function renderToggleButton(opts: ToggleButtonOptions): HTMLButtonElement
   btn.addEventListener("mouseenter", () => {
     btn.style.transform = "scale(1.05)";
     btn.style.boxShadow = "0 6px 28px rgba(0,0,0,0.2)";
+    btn.style.opacity = "1"; // always fully visible on hover
   });
   btn.addEventListener("mouseleave", () => {
     btn.style.transform = "scale(1)";
     btn.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)";
+    // restore whatever idle opacity was last set by updateToggleButton
+    btn.style.opacity = btn.dataset.idleOpacity ?? "0.65";
   });
 
   return btn;
@@ -89,6 +92,7 @@ export function updateToggleButton(
     btn.setAttribute("aria-label", "Close assistant");
     btn.style.animation = "none";
     btn.style.opacity = "1";
+    btn.dataset.idleOpacity = "1";
 
   } else if (state === "signal" && labelText) {
     // Signal mode: show label strip
@@ -102,6 +106,7 @@ export function updateToggleButton(
     btn.setAttribute("aria-label", labelText);
     btn.style.animation = "sa-breathe 2s ease-in-out infinite";
     btn.style.opacity = "1";
+    btn.dataset.idleOpacity = "1";
 
   } else {
     // minimized: nearly invisible when idle, visible when there's something to see
@@ -113,9 +118,10 @@ export function updateToggleButton(
     }
     btn.setAttribute("aria-label", "Open assistant");
     btn.style.animation = hasUnread ? "sa-breathe 2s ease-in-out infinite" : "none";
-    // Fade to near-invisible when idle (no unread)
-    btn.style.opacity = hasUnread ? "1" : "0.18";
-    btn.style.pointerEvents = hasUnread ? "auto" : "auto"; // still clickable even faded
+    // Visible but understated when idle; fully visible when there's something to see
+    const idleOpacity = hasUnread ? "1" : "0.65";
+    btn.style.opacity = idleOpacity;
+    btn.dataset.idleOpacity = idleOpacity; // used by mouseleave to restore after hover
   }
 
   // Unread dot

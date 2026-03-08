@@ -56,8 +56,8 @@ apiRouter.get("/onboarding/:runId/results", onboardingApi.getOnboardingResults);
 // Integration
 apiRouter.get("/site/status", integrationApi.getSiteStatus);          // widget activation gate
 apiRouter.post("/site/reset", integrationApi.resetSiteStatus);        // demo: reset to dormant
-apiRouter.post("/integration/generate", integrationApi.generateIntegration);          // wizard: generate siteKey + snippet
-apiRouter.get("/integration/install-status", integrationApi.getInstallStatus);        // wizard: poll for tag installation
+apiRouter.post("/integration/generate", integrationApi.generateIntegration);                    // wizard: generate siteKey + snippet
+apiRouter.get("/integration/:siteKey/install-status", integrationApi.getInstallStatus);        // wizard: poll for tag installation (3-state)
 apiRouter.post("/integration/:siteId/verify", integrationApi.verifyIntegration);
 apiRouter.post("/integration/:siteId/activate", integrationApi.activateIntegration);
 

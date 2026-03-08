@@ -16,27 +16,31 @@ export function App() {
   const { state, dispatch, handleWSMessage } = useDashboardStore();
   const { connected } = useWS(handleWSMessage, activated);
 
-  // Build since param so we only fetch data created after activation
-  const sinceParam = activatedAt ? `?since=${encodeURIComponent(activatedAt)}` : "";
+  // Build since query so we only fetch data created after activation
+  const sinceQuery = activatedAt ? `since=${encodeURIComponent(activatedAt)}` : "";
+  const sinceSuffix = sinceQuery ? `?${sinceQuery}` : "";
 
   // Poll sessions every 5s — only when activated
   const { data: sessionsResp } = useApi<{ sessions: SessionSummary[] }>(
-    activated ? `/sessions${sinceParam}` : null,
+    activated ? `/sessions${sinceSuffix}` : null,
     { pollMs: 5000 }
   );
   const sessions = sessionsResp?.sessions ?? [];
 
-  // Poll overview analytics every 8s — only when activated
-  const { data: overview } = useApi<OverviewAnalytics>(
-    activated ? `/analytics/overview${sinceParam}` : null,
-    { pollMs: 8000 }
-  );
-
   // Determine siteUrl from first active session (for analytics queries)
   const activeSiteUrl = sessions[0]?.siteUrl ?? "";
   const analyticsParams = activeSiteUrl
-    ? `?siteUrl=${encodeURIComponent(activeSiteUrl)}${sinceParam ? `&since=${encodeURIComponent(activatedAt ?? "")}` : ""}`
+    ? `?siteUrl=${encodeURIComponent(activeSiteUrl)}${sinceQuery ? `&${sinceQuery}` : ""}`
     : "";
+  const overviewParams = activeSiteUrl
+    ? `?siteUrl=${encodeURIComponent(activeSiteUrl)}${sinceQuery ? `&${sinceQuery}` : ""}`
+    : sinceSuffix;
+
+  // Poll overview analytics every 8s — only when activated
+  const { data: overview } = useApi<OverviewAnalytics>(
+    activated ? `/analytics/overview${overviewParams}` : null,
+    { pollMs: 8000 }
+  );
 
   // Poll analytics for Track tab — only when Track tab is active
   const isTrackTab = state.activeTab === "track";

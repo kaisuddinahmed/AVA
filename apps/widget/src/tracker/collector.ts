@@ -126,6 +126,7 @@ export class BehaviorCollector {
   private emitPageView(): void {
     this.send("navigation", "page_view", {
       referrer: document.referrer || "direct",
+      previous_page_url: document.referrer || undefined,
       page_title: document.title,
     });
   }
@@ -439,9 +440,17 @@ export class BehaviorCollector {
         const product = this.extractProductContext(target);
         const label = this.getElementLabel(interactive);
         if (label.length <= 1 && !product) return;
+        const vw = window.innerWidth || 1;
+        const vh = window.innerHeight || 1;
         this.send("engagement", "click", {
           element: interactive.tagName,
           text: label,
+          x_pct: Math.round((e.clientX / vw) * 1000) / 1000,
+          y_pct: Math.round((e.clientY / vh) * 1000) / 1000,
+          client_x: e.clientX,
+          client_y: e.clientY,
+          viewport_width: vw,
+          viewport_height: vh,
           ...product,
         });
       }

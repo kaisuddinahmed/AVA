@@ -176,6 +176,13 @@ window.addEventListener("message", (event) => {
     return;
   }
 
+  // ── Wizard → Demo: reset site to dormant, reload store ──────────────────
+  if (msg.type === "ava:wizard:reset") {
+    const storeFrame = getStoreFrame();
+    if (storeFrame) storeFrame.src = storeFrame.src;
+    return;
+  }
+
   // ── Wizard → All: activation complete ───────────────────────────────────
   if (msg.type === "ava:wizard:activated") {
     // Unlock dashboard UI

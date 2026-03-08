@@ -8,6 +8,7 @@
 // Server broadcasts NormalizedEvent shape: camelCase fields
 export interface TrackEventData {
   id: string;
+  session_id?: string;
   category: string;
   eventType: string;
   frictionId?: string;

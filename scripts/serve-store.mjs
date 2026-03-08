@@ -31,6 +31,9 @@ function loadDotEnv() {
 }
 loadDotEnv();
 
+const storePort = Number.parseInt(process.env.STORE_PORT ?? '3001', 10);
+const storeHost = process.env.STORE_HOST ?? '127.0.0.1';
+
 const srv = http.createServer((req, res) => {
   let p = req.url === '/' ? '/index.html' : req.url;
   p = p.split('?')[0];
@@ -50,4 +53,6 @@ const srv = http.createServer((req, res) => {
   fs.createReadStream(fp).pipe(res);
 });
 
-srv.listen(3001, () => console.log('[store] Static server on http://localhost:3001'));
+srv.listen(storePort, storeHost, () =>
+  console.log(`[store] Static server on http://${storeHost}:${storePort}`)
+);

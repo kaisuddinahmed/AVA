@@ -32,6 +32,10 @@ export function normalizeEvent(raw: Record<string, unknown>): NormalizedEvent {
 
   const timeOnPageMs = (pc?.time_on_page_ms ?? signals.time_on_page_ms);
   const scrollDepthPct = (pc?.scroll_depth_pct ?? signals.scroll_depth_pct);
+  const referrer =
+    typeof signals.referrer === "string" && /^https?:\/\//.test(signals.referrer)
+      ? signals.referrer
+      : undefined;
 
   return {
     category: String(raw.category ?? "unknown"),
@@ -41,7 +45,9 @@ export function normalizeEvent(raw: Record<string, unknown>): NormalizedEvent {
     pageUrl: String(pc?.page_url ?? raw.pageUrl ?? raw.url ?? ""),
     rawSignals: JSON.stringify(raw.raw_signals ?? raw.signals ?? raw.data ?? {}),
     metadata: raw.metadata ? JSON.stringify(raw.metadata) : undefined,
-    previousPageUrl: signals.previous_page_url ? String(signals.previous_page_url) : undefined,
+    previousPageUrl: signals.previous_page_url
+      ? String(signals.previous_page_url)
+      : referrer,
     timeOnPageMs: timeOnPageMs !== undefined ? Number(timeOnPageMs) : undefined,
     scrollDepthPct: scrollDepthPct !== undefined ? Math.round(Number(scrollDepthPct)) : undefined,
     sessionSequenceNumber: signals.session_sequence_number !== undefined ? Number(signals.session_sequence_number) : undefined,

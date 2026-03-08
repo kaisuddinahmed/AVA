@@ -180,6 +180,12 @@ button[disabled] {
   background: rgba(20, 69, 51, 0.35);
 }
 
+/* found_unverified — tag detected but not yet fully confirmed */
+.install-status.is-unverified {
+  border-color: #b07d2a;
+  background: rgba(80, 55, 10, 0.30);
+}
+
 .install-pulse {
   width: 8px;
   height: 8px;
@@ -192,6 +198,12 @@ button[disabled] {
 .install-pulse.detected {
   background: var(--accent);
   animation: none;
+}
+
+/* Slow amber pulse for intermediate unverified state */
+.install-pulse.unverified {
+  background: #e0a630;
+  animation: pulse 2.2s ease-in-out infinite;
 }
 
 @keyframes pulse {

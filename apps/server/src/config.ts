@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 export const config = {
   port: Number(process.env.PORT ?? 8080),
   wsPort: Number(process.env.WS_PORT ?? 8081),

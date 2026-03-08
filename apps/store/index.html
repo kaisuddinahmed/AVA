@@ -736,27 +736,19 @@
       </div>
     </footer>
 
-    <!-- AVA Widget -->
+    <!-- AVA Shopping Assistant — paste before </body> -->
     <script>
-      window.__AVA_CONFIG__ = {
-        websocketUrl: "ws://localhost:8081",
-        sessionId: "demo-" + Math.random().toString(36).slice(2),
-        assistantName: "AVA",
-        position: "bottom-right",
-        brandColor: "#1A1A2E",
-        brandColorLight: "#16213E",
-        accentColor: "#35d3a1",
-        // Activation gate — widget stays dormant until integration wizard activates this site
-        serverUrl: "http://localhost:8080",
-        siteUrl: "http://localhost:3001",
-        // Voice — Deepgram TTS proxied via AVA server (key never reaches browser)
-        voiceEnabled: true,
-        deepgramModel: "aura-asteria-en",
-        voiceMaxPerSession: 3,
-        voiceAutoPlay: true,
+      window.__AVA_CONFIG__ =   {
+          "siteKey": "avak_eff0c37fabe8d527",
+          "siteUrl": "http://localhost:3001/",
+          "serverUrl": "http://localhost:8080",
+          "websocketUrl": "ws://localhost:8081",
+          "position": "bottom-right",
+          "brandColor": "#000000",
+          "accentColor": "#35d3a1"
       };
     </script>
-    <script src="/ava-widget.iife.js"></script>
+    <script src="http://localhost:8080/api/widget.js" async></script>
 
     <!-- MAIN APP LOGIC -->
     <script>

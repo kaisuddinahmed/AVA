@@ -2,9 +2,14 @@ import type { Request, Response } from "express";
 import { EvaluationRepo, InterventionRepo, EventRepo, SessionRepo } from "@ava/db";
 import { prisma } from "@ava/db";
 
+function parseSinceValue(value: unknown): Date | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 function parseSince(req: Request): Date | undefined {
-  const s = req.query.since as string | undefined;
-  return s ? new Date(s) : undefined;
+  return parseSinceValue(req.query.since);
 }
 
 function parseSiteUrl(req: Request): string | undefined {
@@ -88,22 +93,39 @@ export async function getSessionAnalytics(req: Request, res: Response): Promise<
 export async function getOverview(req: Request, res: Response): Promise<void> {
   try {
     // Optional "since" filter — only count data created after this timestamp
-    const sinceParam = req.query.since as string | undefined;
-    const sinceDate = sinceParam ? new Date(sinceParam) : undefined;
+    const sinceDate = parseSince(req);
     const sinceFilter = sinceDate ? { gte: sinceDate } : undefined;
+    const siteUrl = parseSiteUrl(req);
 
-    const sessionWhere = sinceFilter ? { startedAt: sinceFilter } : {};
-    const activeSessionWhere = sinceFilter
-      ? { status: "active" as const, startedAt: sinceFilter }
-      : { status: "active" as const };
+    const sessionWhere = {
+      ...(sinceFilter ? { startedAt: sinceFilter } : {}),
+      ...(siteUrl ? { siteUrl } : {}),
+    };
+
+    const activeSessionWhere = {
+      status: "active" as const,
+      ...(sinceFilter ? { startedAt: sinceFilter } : {}),
+      ...(siteUrl ? { siteUrl } : {}),
+    };
+
+    const eventWhere = {
+      ...(sinceFilter ? { timestamp: sinceFilter } : {}),
+      ...(siteUrl ? { siteUrl } : {}),
+    };
+
+    const evaluationsPromise = siteUrl
+      ? EvaluationRepo.getEvaluationsBySite(siteUrl, 1000).then((rows) =>
+          sinceDate ? rows.filter((e) => e.timestamp >= sinceDate) : rows
+        )
+      : EvaluationRepo.listEvaluations({ limit: 1000, since: sinceDate });
 
     const [allInterventions, allEvaluations, totalSessions, activeSessions, totalEvents] =
       await Promise.all([
-        InterventionRepo.listInterventions({ limit: 1000, since: sinceDate }),
-        EvaluationRepo.listEvaluations({ limit: 1000, since: sinceDate }),
+        InterventionRepo.listInterventions({ limit: 1000, since: sinceDate, siteUrl }),
+        evaluationsPromise,
         prisma.session.count({ where: sessionWhere }),
         prisma.session.count({ where: activeSessionWhere }),
-        prisma.trackEvent.count({ where: sinceFilter ? { timestamp: sinceFilter } : {} }),
+        prisma.trackEvent.count({ where: eventWhere }),
       ]);
 
     // Intervention efficiency
@@ -144,7 +166,6 @@ export async function getOverview(req: Request, res: Response): Promise<void> {
       .map(([frictionId, { count, category }]) => ({ frictionId, count, category }));
 
     // Enriched analytics metrics
-    const siteUrl = req.query.siteUrl as string | undefined;
     const [bounceData, avgDuration, avgPageViews] = await Promise.all([
       siteUrl ? SessionRepo.getBounceRate(siteUrl, sinceDate) : Promise.resolve({ total: 0, bounced: 0, bounceRate: 0 }),
       siteUrl ? SessionRepo.getAvgSessionDuration(siteUrl, sinceDate) : Promise.resolve(0),
@@ -325,8 +346,7 @@ export async function getRetention(req: Request, res: Response): Promise<void> {
  */
 export async function getVoiceAnalytics(req: Request, res: Response): Promise<void> {
   try {
-    const sinceParam = req.query.since as string | undefined;
-    const sinceDate = sinceParam ? new Date(sinceParam) : undefined;
+    const sinceDate = parseSince(req);
     const sinceFilter = sinceDate ? { gte: sinceDate } : undefined;
     const siteUrl = parseSiteUrl(req);
 

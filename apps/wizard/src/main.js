@@ -9,7 +9,7 @@ app.innerHTML = `
     <header class="wizard-header">
       <p class="eyebrow">AVA</p>
       <h1>Integration Wizard</h1>
-      <p class="subtext">Connect → Analyze → Activate → Validate</p>
+      <p class="subtext">Connect → Install → Analyze → Activate → Validate</p>
     </header>
     <section id="wizard-root"></section>
   </div>
@@ -32,3 +32,16 @@ createIntegrationWizard(wizardRoot, {
     }
   },
 });
+
+// On wizard load, reset the demo store to dormant so every demo session starts clean.
+// Fire-and-forget — failure is non-critical (server may not be ready yet).
+fetch("http://localhost:8080/api/site/reset?siteUrl=" + encodeURIComponent("http://localhost:3001"), {
+  method: "POST",
+})
+  .then(() => {
+    // Tell parent (demo at 4002) to reload the store so the widget hides
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "ava:wizard:reset" }, "*");
+    }
+  })
+  .catch(() => { /* server may not be ready yet — harmless */ });

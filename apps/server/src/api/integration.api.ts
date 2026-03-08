@@ -35,7 +35,7 @@ export async function generateIntegration(req: Request, res: Response) {
       return;
     }
 
-    const normalised = siteUrl.trim().replace(/\/$/, "");
+    const normalised = normalizeSiteUrl(siteUrl);
     const site = await SiteConfigRepo.generateSiteKeyForSite(normalised);
 
     // Ensure a default ActivationPolicy exists for this site
@@ -56,31 +56,63 @@ export async function generateIntegration(req: Request, res: Response) {
 }
 
 /**
- * GET /api/integration/install-status?siteUrl=...
- * Polls whether the AVA widget has been installed and is sending events from
- * the given siteUrl. Used by the wizard to detect tag installation.
- * Status values: "not_found" | "verified_ready"
+ * GET /api/integration/:siteKey/install-status
+ * Polls whether the AVA widget has been installed and is actively sending
+ * events. Identified by siteKey (avak_<hex>) so the wizard doesn't need to
+ * pass the siteUrl in a query param — the key is enough to look up the site.
+ *
+ * Status values (3-state):
+ *   "not_found"       — no site for this siteKey, or site exists but 0 sessions
+ *   "found_unverified"— sessions exist (1-2, low confidence — tag may have just loaded)
+ *   "verified_ready"  — 3+ sessions or any session with meaningful events; widget confirmed
  */
 export async function getInstallStatus(req: Request, res: Response) {
   try {
-    const siteUrl = typeof req.query.siteUrl === "string" ? req.query.siteUrl : null;
-    if (!siteUrl) {
-      res.status(400).json({ error: "siteUrl query param is required" });
+    const siteKeyFromPath = readParam(req.params.siteKey);
+    const siteKeyFromQuery =
+      typeof req.query.siteKey === "string" ? req.query.siteKey.trim() : "";
+    const siteUrlFromQuery =
+      typeof req.query.siteUrl === "string" ? normalizeSiteUrl(req.query.siteUrl) : "";
+
+    const siteKey = siteKeyFromPath || siteKeyFromQuery;
+    if (!siteKey && !siteUrlFromQuery) {
+      res.status(400).json({ error: "siteKey or siteUrl is required" });
       return;
     }
 
-    // Check whether any live sessions exist from this siteUrl
-    const sessions = await SessionRepo.listActiveSessions(siteUrl);
-    const detected = sessions.length > 0;
+    // Resolve by siteKey first, then fallback to siteUrl
+    const site = siteKey
+      ? await SiteConfigRepo.getSiteConfigBySiteKey(siteKey)
+      : await SiteConfigRepo.getSiteConfigByUrl(siteUrlFromQuery);
+    if (!site) {
+      res.json({ status: "not_found", detected: false, sessionCount: 0, platform: null, siteId: null });
+      return;
+    }
 
-    const site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
+    // Runtime signal: active sessions from this site URL
+    const sessions = await SessionRepo.listActiveSessions();
+    const sessionCount = sessions.filter((s) => isSameSiteUrl(s.siteUrl, site.siteUrl)).length;
+
+    // Static signal: install snippet present in target HTML
+    const installSignal = await detectInstallSignal(site.siteUrl, site.siteKey ?? undefined);
+
+    let status: "not_found" | "found_unverified" | "verified_ready";
+    if (sessionCount >= 3 || installSignal.status === "verified_ready") {
+      status = "verified_ready";
+    } else if (sessionCount > 0 || installSignal.status === "found_unverified") {
+      status = "found_unverified";
+    } else {
+      status = "not_found";
+    }
 
     res.json({
-      status: detected ? "verified_ready" : "not_found",
-      detected,
-      sessionCount: sessions.length,
-      platform: site?.platform ?? null,
-      siteId: site?.id ?? null,
+      status,
+      detected: status !== "not_found",
+      sessionCount,
+      installSignal: installSignal.status,
+      installReason: installSignal.reason,
+      platform: site.platform,
+      siteId: site.id,
     });
   } catch (error) {
     console.error("[API] getInstallStatus error:", error);
@@ -95,11 +127,14 @@ export async function getInstallStatus(req: Request, res: Response) {
  */
 export async function serveWidget(req: Request, res: Response) {
   try {
-    // The widget is built to apps/widget/dist/ava-widget.iife.js.
-    // We also copy it to apps/store/public/ — try several paths.
+    // The widget is built to apps/widget/dist/ava-widget.iife.js and copied
+    // to apps/store/ava-widget.iife.js. Try all known locations.
+    // __dirname is apps/server/src/api (dev/tsx) or apps/server/dist/api (built).
+    // In both cases ../../../.. resolves to the apps/ directory.
     const candidates = [
-      join(__dirname, "../../../../widget/dist/ava-widget.iife.js"),
-      join(__dirname, "../../../store/public/ava-widget.iife.js"),
+      join(__dirname, "../../../../apps/widget/dist/ava-widget.iife.js"), // from project root
+      join(__dirname, "../../../store/ava-widget.iife.js"),                // apps/store/ copy
+      join(__dirname, "../../../../../../apps/widget/dist/ava-widget.iife.js"), // extra fallback
     ];
 
     let widgetJs: string | null = null;
@@ -155,6 +190,14 @@ export async function verifyIntegration(req: Request, res: Response) {
       return;
     }
 
+    // Load per-site thresholds (same source as activateIntegration for consistency)
+    const verifyPolicy = await SiteConfigRepo.getActivationPolicy(siteId);
+    const verifyThresholds = {
+      behaviorCoveragePct: verifyPolicy?.behaviorMinPct ?? FULL_ACTIVE_THRESHOLDS.behaviorCoveragePct,
+      frictionCoveragePct: verifyPolicy?.frictionMinPct ?? FULL_ACTIVE_THRESHOLDS.frictionCoveragePct,
+      avgConfidence: verifyPolicy?.minConfidence ?? FULL_ACTIVE_THRESHOLDS.avgConfidence,
+    };
+
     const run = parsed.data.runId
       ? await AnalyzerRunRepo.getAnalyzerRun(parsed.data.runId)
       : await AnalyzerRunRepo.getLatestAnalyzerRunBySite(siteId);
@@ -185,7 +228,7 @@ export async function verifyIntegration(req: Request, res: Response) {
         details: JSON.stringify({
           phase: "verify",
           verification,
-          thresholds: FULL_ACTIVE_THRESHOLDS,
+          thresholds: verifyThresholds,
         }),
       }),
     ]);
@@ -194,7 +237,7 @@ export async function verifyIntegration(req: Request, res: Response) {
       siteId,
       runId: run.id,
       verification,
-      thresholds: FULL_ACTIVE_THRESHOLDS,
+      thresholds: verifyThresholds,
       recommendedMode: verification.recommendedMode,
     });
   } catch (error) {
@@ -303,7 +346,7 @@ export async function activateIntegration(req: Request, res: Response) {
         details: JSON.stringify({
           mode,
           gates,
-          thresholds: FULL_ACTIVE_THRESHOLDS,
+          thresholds,
           verification,
           notes: payload.notes,
         }),
@@ -330,7 +373,8 @@ export async function activateIntegration(req: Request, res: Response) {
  * Called by the demo wizard on startup so every demo session starts with the widget dormant.
  */
 export async function resetSiteStatus(req: Request, res: Response) {
-  const siteUrl = typeof req.query.siteUrl === "string" ? req.query.siteUrl : null;
+  const siteUrl =
+    typeof req.query.siteUrl === "string" ? normalizeSiteUrl(req.query.siteUrl) : null;
   if (!siteUrl) {
     res.status(400).json({ error: "siteUrl query param is required" });
     return;
@@ -350,23 +394,52 @@ export async function resetSiteStatus(req: Request, res: Response) {
 }
 
 /**
- * GET /api/site/status?siteUrl=...
+ * GET /api/site/status?siteUrl=...&siteKey=<optional>
  * Lightweight endpoint called by the widget on init to check if this site is activated.
  * Returns { status, activated } — no auth needed, read-only.
+ *
+ * When siteKey is present the server validates that it belongs to the given siteUrl.
+ * A mismatched key is treated as an unactivated site (prevents siteUrl spoofing).
  */
 export async function getSiteStatus(req: Request, res: Response) {
-  const siteUrl = typeof req.query.siteUrl === "string" ? req.query.siteUrl : null;
+  const siteUrl =
+    typeof req.query.siteUrl === "string" ? normalizeSiteUrl(req.query.siteUrl) : null;
   if (!siteUrl) {
     res.status(400).json({ error: "siteUrl query param is required" });
     return;
   }
+
+  // Extract siteKey early — needed for fallback lookup below
+  const incomingSiteKey = typeof req.query.siteKey === "string" ? req.query.siteKey : null;
+
   try {
-    const site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
+    // Primary lookup: exact siteUrl match
+    let site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
+
+    // Fallback: exact URL match failed but widget provided a siteKey.
+    // This handles localhost port mismatches — e.g. wizard stored "http://localhost"
+    // (no port) while the store widget reports "http://localhost:3001" (with port).
+    // isSameSiteUrl() treats any port-difference on localhost as the same host.
+    if (!site && incomingSiteKey) {
+      const siteByKey = await SiteConfigRepo.getSiteConfigBySiteKey(incomingSiteKey);
+      if (siteByKey && isSameSiteUrl(siteByKey.siteUrl, siteUrl)) {
+        site = siteByKey;
+      }
+    }
+
     if (!site) {
       // Unknown site — respond with unactivated so widget stays dormant
       res.json({ status: "unknown", activated: false });
       return;
     }
+
+    // Validate siteKey when the widget provides one (prevents siteUrl spoofing)
+    if (incomingSiteKey && site.siteKey && incomingSiteKey !== site.siteKey) {
+      // Key mismatch — stale snippet or spoofing attempt; stay dormant
+      res.json({ status: "key_mismatch", activated: false });
+      return;
+    }
+
     const activated =
       site.integrationStatus === "active" ||
       site.integrationStatus === "limited_active";
@@ -389,9 +462,77 @@ function parseTrackingHooks(trackingConfig: string, platform: string): TrackingH
   return generateHooks(platform);
 }
 
+async function detectInstallSignal(
+  siteUrl: string,
+  expectedSiteKey?: string,
+): Promise<{ status: "not_found" | "found_unverified" | "verified_ready"; reason: string }> {
+  try {
+    const response = await fetch(siteUrl, {
+      headers: { "User-Agent": "AVA-Install-Checker/1.0" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) {
+      return { status: "not_found", reason: `fetch_${response.status}` };
+    }
+
+    const html = await response.text();
+    const hasWidgetScript =
+      /\/api\/widget\.js/i.test(html) || /ava-widget\.iife\.js/i.test(html);
+    if (!hasWidgetScript) {
+      return { status: "not_found", reason: "widget_script_missing" };
+    }
+
+    const keys = [...new Set([...html.matchAll(/avak_[a-f0-9]{16}/gi)].map((m) => m[0]))];
+    if (expectedSiteKey && keys.includes(expectedSiteKey)) {
+      return { status: "verified_ready", reason: "matching_site_key_detected" };
+    }
+    if (keys.length > 0) {
+      return { status: "found_unverified", reason: "different_site_key_detected" };
+    }
+    return {
+      status: expectedSiteKey ? "found_unverified" : "verified_ready",
+      reason: expectedSiteKey ? "widget_detected_key_missing" : "widget_detected",
+    };
+  } catch {
+    return { status: "not_found", reason: "fetch_failed" };
+  }
+}
+
 function readParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
+}
+
+function normalizeSiteUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.origin;
+  } catch {
+    return trimmed.replace(/\/$/, "");
+  }
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isSameSiteUrl(a: string, b: string): boolean {
+  const left = normalizeSiteUrl(a);
+  const right = normalizeSiteUrl(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  try {
+    const leftUrl = new URL(left);
+    const rightUrl = new URL(right);
+    const bothLocal = isLocalHost(leftUrl.hostname) && isLocalHost(rightUrl.hostname);
+    if (!bothLocal || leftUrl.protocol !== rightUrl.protocol) return false;
+    const onePortMissing = !leftUrl.port || !rightUrl.port;
+    return onePortMissing;
+  } catch {
+    return false;
+  }
 }
 
 /** Derive the server's own base URL from the incoming request (for snippet generation). */
