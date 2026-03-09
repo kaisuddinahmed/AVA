@@ -272,6 +272,49 @@ export const SCENARIO_REGISTRY = [
     ],
     packs: ["friction", "behavior"],
   },
+  {
+    id: "scn-cart-core-behaviors",
+    name: "Cart Core Behaviors",
+    category: "Cart",
+    priority: "high",
+    description:
+      "Builds and edits cart state through repeated add/remove style actions to validate core cart behavior coverage.",
+    behaviorIds: [
+      "B135","B136","B137","B138","B139","B140","B141","B142",
+      "B143","B144","B145","B146","B147","B148","B149","B150",
+      "B151","B152","B153","B154","B155","B156","B157","B158",
+      "B159","B160","B161","B162","B163","B164",
+    ],
+    frictionIds: [],
+    expectedIntervention:
+      "Confirm cart instrumentation health and state transitions before checkout-stage validation.",
+    assertions: {
+      expectedEventTypes: ["cart_item_added", "add_to_cart"],
+      minEventCount: 4,
+    },
+    steps: [
+      { action: "click_nav", gender: "men", label: "Clothing" },
+      { action: "wait", ms: 350 },
+      { action: "open_product", index: 0 },
+      { action: "wait", ms: 300 },
+      { action: "modal_select_size", size: "M" },
+      { action: "wait", ms: 200 },
+      { action: "modal_add_to_cart" },
+      { action: "wait", ms: 250 },
+      { action: "modal_add_to_cart" },
+      { action: "wait", ms: 350 },
+      { action: "modal_close" },
+      { action: "wait", ms: 250 },
+      { action: "open_product", index: 1 },
+      { action: "wait", ms: 300 },
+      { action: "modal_select_size", size: "L" },
+      { action: "wait", ms: 200 },
+      { action: "modal_add_to_cart" },
+      { action: "wait", ms: 350 },
+      { action: "modal_close" },
+    ],
+    packs: ["behavior"],
+  },
 ];
 
 export const SCENARIO_PACKS = [

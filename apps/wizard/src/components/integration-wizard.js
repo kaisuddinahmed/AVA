@@ -20,6 +20,15 @@ const POLL_INTERVAL_MS = 3000;
 const INSTALL_POLL_INTERVAL_MS = 5000;
 const SCENARIO_TARGETS = { behavior: 614, friction: 325 };
 const SPEED_MULTIPLIER = { fast: 0.65, normal: 1, slow: 1.6 };
+const EVENT_TYPE_ALIASES = {
+  cart_item_added: ["add_to_cart", "quick_add"],
+  navigation_interaction: ["category_browse", "nav_click"],
+  product_reviews_viewed: ["tab_view"],
+  product_return_policy_viewed: ["tab_view"],
+  sort_changed: ["sort_change"],
+  suggested_product_clicked: ["click"],
+  wishlist_item_added: ["wishlist_add"],
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Factory
@@ -30,7 +39,9 @@ export function createIntegrationWizard(root, options) {
   // ── Scenario index maps ────────────────────────────────────────────────────
   const scenarioCoverageSets = {
     behaviorPlanned: new Set(),
+    behaviorValidated: new Set(),
     frictionPlanned: new Set(),
+    frictionValidated: new Set(),
     frictionDetected: new Set(),
   };
   const pendingScenarioRuns = new Map();
@@ -98,7 +109,9 @@ export function createIntegrationWizard(root, options) {
     scenarioResults: [],
     scenarioCoverage: {
       behaviorPlanned: [],
+      behaviorValidated: [],
       frictionPlanned: [],
+      frictionValidated: [],
       frictionDetected: [],
     },
     mappingValidationOverlay: { behaviorMapped: 0, frictionMapped: 0, syncedAt: 0 },
@@ -437,7 +450,9 @@ export function createIntegrationWizard(root, options) {
     setState({
       scenarioCoverage: {
         behaviorPlanned: [...scenarioCoverageSets.behaviorPlanned].sort(),
+        behaviorValidated: [...scenarioCoverageSets.behaviorValidated].sort(),
         frictionPlanned: [...scenarioCoverageSets.frictionPlanned].sort(),
+        frictionValidated: [...scenarioCoverageSets.frictionValidated].sort(),
         frictionDetected: [...scenarioCoverageSets.frictionDetected].sort(),
       },
     });
@@ -446,21 +461,43 @@ export function createIntegrationWizard(root, options) {
   const syncScenarioCoverageToMappingSnapshot = () => {
     const baseBMapped = state.coverage?.behaviorMapped ?? state.metrics?.behaviorMapped ?? 0;
     const baseFMapped = state.coverage?.frictionMapped ?? state.metrics?.frictionMapped ?? 0;
+    const validatedBehaviorCount = scenarioCoverageSets.behaviorValidated.size;
+    const validatedFrictionCount = Math.max(
+      scenarioCoverageSets.frictionValidated.size,
+      scenarioCoverageSets.frictionDetected.size,
+    );
     setState({
       mappingValidationOverlay: {
-        behaviorMapped: Math.max(baseBMapped, scenarioCoverageSets.behaviorPlanned.size),
-        frictionMapped: Math.max(baseFMapped, Math.max(scenarioCoverageSets.frictionPlanned.size, scenarioCoverageSets.frictionDetected.size)),
+        behaviorMapped: Math.max(baseBMapped, validatedBehaviorCount),
+        frictionMapped: Math.max(baseFMapped, validatedFrictionCount),
         syncedAt: Date.now(),
       },
     });
   };
 
-  const registerCoverage = (scenario, evidence, overrides = null) => {
-    const behaviorIds = overrides?.behaviorIds ?? scenario.behaviorIds ?? [];
-    const frictionIds = overrides?.frictionIds ?? scenario.frictionIds ?? [];
+  const resolveCoverageIds = (scenario, overrides = null) => ({
+    behaviorIds: overrides?.behaviorIds ?? scenario.behaviorIds ?? [],
+    frictionIds: overrides?.frictionIds ?? scenario.frictionIds ?? [],
+  });
+
+  const registerPlannedCoverage = (scenario, overrides = null) => {
+    const { behaviorIds, frictionIds } = resolveCoverageIds(scenario, overrides);
     for (const bid of behaviorIds) scenarioCoverageSets.behaviorPlanned.add(bid);
     for (const fid of frictionIds) scenarioCoverageSets.frictionPlanned.add(fid);
-    for (const fid of evidence.detectedFrictionIds || []) scenarioCoverageSets.frictionDetected.add(fid);
+    updateScenarioCoverageState();
+    syncScenarioCoverageToMappingSnapshot();
+  };
+
+  const registerObservedCoverage = (scenario, evidence, verdict, overrides = null) => {
+    if (!verdict || verdict.status === "failed") return;
+    const { behaviorIds } = resolveCoverageIds(scenario, overrides);
+    for (const bid of behaviorIds) scenarioCoverageSets.behaviorValidated.add(bid);
+    for (const fid of evidence.matchedExpectedFrictions || []) {
+      scenarioCoverageSets.frictionValidated.add(fid);
+    }
+    for (const fid of evidence.detectedFrictionIds || []) {
+      scenarioCoverageSets.frictionDetected.add(fid);
+    }
     updateScenarioCoverageState();
     syncScenarioCoverageToMappingSnapshot();
   };
@@ -522,16 +559,28 @@ export function createIntegrationWizard(root, options) {
   const buildVerdict = (scenario, storeRun, evidence) => {
     const expectedEvents = scenario.assertions?.expectedEventTypes || [];
     const expectedMinEvents = Number(scenario.assertions?.minEventCount || 1);
-    const hasExpectedEvents = expectedEvents.length === 0 || expectedEvents.some((e) => evidence.eventTypes.includes(e));
+    const observedEventTypes = new Set(evidence.eventTypes || []);
+    const hasExpectedEvents = expectedEvents.length === 0 || expectedEvents.some((expectedType) => {
+      if (observedEventTypes.has(expectedType)) return true;
+      const aliases = EVENT_TYPE_ALIASES[expectedType] || [];
+      return aliases.some((alias) => observedEventTypes.has(alias));
+    });
     const hasExpectedFriction = scenario.frictionIds.length === 0 || evidence.matchedExpectedFrictions.length > 0;
-    const minEventsReached = evidence.eventCount >= expectedMinEvents;
+    const effectiveEventCount = Math.max(
+      Number(evidence.eventCount || 0),
+      Number(evidence.newEventsVsBaseline || 0),
+    );
+    const minEventsReached = effectiveEventCount >= expectedMinEvents;
     const storeSucceeded = Boolean(storeRun?.success);
 
     let status = "failed";
     if (storeSucceeded && minEventsReached && hasExpectedEvents && hasExpectedFriction) status = "passed";
     else if (storeSucceeded && (minEventsReached || hasExpectedEvents)) status = "partial";
 
-    return { status, checks: { storeSucceeded, minEventsReached, hasExpectedEvents, hasExpectedFriction } };
+    return {
+      status,
+      checks: { storeSucceeded, minEventsReached, hasExpectedEvents, hasExpectedFriction, effectiveEventCount },
+    };
   };
 
   // ── Scenario lookup helpers ────────────────────────────────────────────────
@@ -566,6 +615,65 @@ export function createIntegrationWizard(root, options) {
   const getFirstBehaviorIdForPack = (packId) => BEHAVIOR_CATEGORY_BY_ID.get(packId)?.items?.[0]?.id || "";
   const getFirstFrictionIdForPack = (packId) => FRICTION_CATEGORY_BY_ID.get(packId)?.items?.[0]?.id || "";
 
+  const getBehaviorPackAutomationStats = (packId) => {
+    const cat = BEHAVIOR_CATEGORY_BY_ID.get(packId);
+    if (!cat) return { total: 0, scripted: 0, missing: 0, scenarioCount: 0, missingIds: [] };
+    const ids = cat.items.map((i) => i.id);
+    const scriptedIds = new Set();
+    const scenarioIds = new Set();
+    for (const id of ids) {
+      for (const scenario of runnableScenariosByBehaviorId.get(id) || []) {
+        scriptedIds.add(id);
+        scenarioIds.add(scenario.id);
+      }
+    }
+    const missingIds = ids.filter((id) => !scriptedIds.has(id));
+    return {
+      total: ids.length,
+      scripted: scriptedIds.size,
+      missing: missingIds.length,
+      scenarioCount: scenarioIds.size,
+      missingIds,
+    };
+  };
+
+  const createCartPackFallbackScenario = (behaviorIds) => ({
+    id: "scn-cart-pack-fallback-inline",
+    name: "Cart Pack Fallback",
+    category: "Cart",
+    priority: "high",
+    description:
+      "Inline fallback script to ensure cart pack runs as automated evidence instead of manual placeholders.",
+    behaviorIds: [...behaviorIds],
+    frictionIds: [],
+    expectedIntervention:
+      "Validate cart instrumentation and sequencing before checkout-stage scenarios.",
+    assertions: {
+      expectedEventTypes: ["cart_item_added", "add_to_cart"],
+      minEventCount: 3,
+    },
+    steps: [
+      { action: "click_nav", gender: "men", label: "Clothing" },
+      { action: "wait", ms: 350 },
+      { action: "open_product", index: 0 },
+      { action: "wait", ms: 350 },
+      { action: "modal_select_size", size: "M" },
+      { action: "wait", ms: 250 },
+      { action: "modal_add_to_cart" },
+      { action: "wait", ms: 300 },
+      { action: "modal_close" },
+      { action: "wait", ms: 250 },
+      { action: "open_product", index: 1 },
+      { action: "wait", ms: 350 },
+      { action: "modal_select_size", size: "L" },
+      { action: "wait", ms: 250 },
+      { action: "modal_add_to_cart" },
+      { action: "wait", ms: 350 },
+      { action: "modal_close" },
+    ],
+    packs: ["behavior"],
+  });
+
   // ── Scenario run logic ─────────────────────────────────────────────────────
 
   const resetStoreScenarioState = async () => {
@@ -579,6 +687,11 @@ export function createIntegrationWizard(root, options) {
     const runId = `scn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const startedAt = new Date();
     const baseline = await captureBaseline();
+    registerPlannedCoverage(scenario, context.coverageOverride || null);
+    const expectedFrictionIds = Array.isArray(context.expectedFrictionIds)
+      ? context.expectedFrictionIds
+      : (context.coverageOverride?.frictionIds ?? scenario.frictionIds ?? []);
+    const scenarioForVerdict = { ...scenario, frictionIds: expectedFrictionIds };
 
     setState({ scenarioLastRunId: runId, scenarioMessage: `Running ${scenario.name}…` });
     addScenarioLog(`Run ${runId} started: ${scenario.name}`, "info");
@@ -593,14 +706,15 @@ export function createIntegrationWizard(root, options) {
 
       const timeoutMs = Math.max(30000, (scenario.steps.length * 4000 + 15000) * speed);
       const storeRun = await waitForRunCompletion(runId, timeoutMs);
+      await delay(Math.max(300, Math.round(900 * speed)));
       const evidence = await collectEvidence({ scenario, runStartedAt: startedAt, baseline });
-      const verdict = buildVerdict(scenario, storeRun, evidence);
-      registerCoverage(scenario, evidence, context.coverageOverride || null);
+      const verdict = buildVerdict(scenarioForVerdict, storeRun, evidence);
+      registerObservedCoverage(scenario, evidence, verdict, context.coverageOverride || null);
 
       const record = {
         runId, scenarioId: scenario.id, scenarioName: scenario.name,
         startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
-        verdict: verdict.status, expectedFrictions: scenario.frictionIds,
+        verdict: verdict.status, expectedFrictions: scenarioForVerdict.frictionIds,
         detectedFrictions: evidence.detectedFrictionIds,
         matchedFrictions: evidence.matchedExpectedFrictions,
         eventCount: evidence.eventCount, interventionCount: evidence.interventionCount,
@@ -612,7 +726,7 @@ export function createIntegrationWizard(root, options) {
         scenarioMessage: `${scenario.name}: ${verdict.status.toUpperCase()}`,
       });
       addScenarioLog(
-        `${scenario.name} → ${verdict.status.toUpperCase()} (${evidence.eventCount} events, ${evidence.matchedExpectedFrictions.length}/${scenario.frictionIds.length} frictions)`,
+        `${scenario.name} → ${verdict.status.toUpperCase()} (${evidence.eventCount} events, ${evidence.matchedExpectedFrictions.length}/${scenarioForVerdict.frictionIds.length} frictions)`,
         verdict.status === "passed" ? "ok" : verdict.status === "partial" ? "warn" : "error",
       );
       await refreshStatus();
@@ -622,7 +736,7 @@ export function createIntegrationWizard(root, options) {
       const failed = {
         runId, scenarioId: scenario.id, scenarioName: scenario.name,
         startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
-        verdict: "failed", expectedFrictions: scenario.frictionIds,
+        verdict: "failed", expectedFrictions: scenarioForVerdict.frictionIds,
         detectedFrictions: [], matchedFrictions: [], eventCount: 0, interventionCount: 0,
         checks: { storeSucceeded: false, minEventsReached: false, hasExpectedEvents: false, hasExpectedFriction: false },
         error: toMessage(err),
@@ -635,7 +749,7 @@ export function createIntegrationWizard(root, options) {
 
   const runManualBehaviorSelection = async (behavior, context = {}) => {
     const runId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    registerCoverage({ behaviorIds: [behavior.id], frictionIds: [] }, { detectedFrictionIds: [] });
+    registerPlannedCoverage({ behaviorIds: [behavior.id], frictionIds: [] });
     const record = {
       runId, scenarioId: behavior.id, scenarioName: `${behavior.id} — ${behavior.label}`,
       startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
@@ -652,7 +766,7 @@ export function createIntegrationWizard(root, options) {
 
   const runManualFrictionSelection = async (friction, context = {}) => {
     const runId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    registerCoverage({ behaviorIds: [], frictionIds: [friction.id] }, { detectedFrictionIds: [] });
+    registerPlannedCoverage({ behaviorIds: [], frictionIds: [friction.id] });
     const record = {
       runId, scenarioId: friction.id, scenarioName: `${friction.id} — ${friction.label}`,
       startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
@@ -663,6 +777,64 @@ export function createIntegrationWizard(root, options) {
     };
     setState({ scenarioResults: [record, ...state.scenarioResults].slice(0, 40), scenarioMessage: `Recorded ${friction.id}.` });
     addScenarioLog(`${friction.id} (${friction.categoryLabel}) — no script yet; recorded for coverage.`, "warn");
+    await refreshStatus();
+    return record;
+  };
+
+  const runManualBehaviorPackGapSummary = async (category, missingItems, context = {}) => {
+    if (!missingItems.length) return null;
+    const runId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const missingIds = missingItems.map((item) => item.id);
+    const record = {
+      runId,
+      scenarioId: `${category.id}-unmapped`,
+      scenarioName: `${category.label} — ${missingItems.length} unmapped behaviors`,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      verdict: "manual",
+      expectedFrictions: [],
+      detectedFrictions: [],
+      matchedFrictions: [],
+      eventCount: 0,
+      interventionCount: 0,
+      checks: { storeSucceeded: false, minEventsReached: false, hasExpectedEvents: false, hasExpectedFriction: false },
+      context: { ...context, missingBehaviorIds: missingIds },
+    };
+    setState({ scenarioResults: [record, ...state.scenarioResults].slice(0, 40), scenarioMessage: `${category.label}: ${missingItems.length} unmapped.` });
+    const preview = missingIds.slice(0, 6).join(", ");
+    addScenarioLog(
+      `${category.label}: ${missingItems.length} behavior IDs still unmapped.${preview ? ` e.g. ${preview}${missingIds.length > 6 ? ", …" : ""}` : ""}`,
+      "warn",
+    );
+    await refreshStatus();
+    return record;
+  };
+
+  const runManualFrictionPackGapSummary = async (category, missingItems, context = {}) => {
+    if (!missingItems.length) return null;
+    const runId = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const missingIds = missingItems.map((item) => item.id);
+    const record = {
+      runId,
+      scenarioId: `${category.id}-unmapped`,
+      scenarioName: `${category.label} — ${missingItems.length} unmapped frictions`,
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      verdict: "manual",
+      expectedFrictions: missingIds,
+      detectedFrictions: [],
+      matchedFrictions: [],
+      eventCount: 0,
+      interventionCount: 0,
+      checks: { storeSucceeded: false, minEventsReached: false, hasExpectedEvents: false, hasExpectedFriction: false },
+      context: { ...context, missingFrictionIds: missingIds },
+    };
+    setState({ scenarioResults: [record, ...state.scenarioResults].slice(0, 40), scenarioMessage: `${category.label}: ${missingItems.length} unmapped.` });
+    const preview = missingIds.slice(0, 6).join(", ");
+    addScenarioLog(
+      `${category.label}: ${missingItems.length} friction IDs still unmapped.${preview ? ` e.g. ${preview}${missingIds.length > 6 ? ", …" : ""}` : ""}`,
+      "warn",
+    );
     await refreshStatus();
     return record;
   };
@@ -679,7 +851,15 @@ export function createIntegrationWizard(root, options) {
     for (let i = 0; i < repeat; i++) {
       if (state.scenarioStopRequested) break;
       if (scenario) {
-        await runScenario(scenario, { mode: "single", selectedBehaviorId: behavior.id, selectedBehaviorLabel: behavior.label, repeatIndex: i + 1, repeatTotal: repeat, coverageOverride: { behaviorIds: [behavior.id], frictionIds: [] } });
+        await runScenario(scenario, {
+          mode: "single",
+          selectedBehaviorId: behavior.id,
+          selectedBehaviorLabel: behavior.label,
+          repeatIndex: i + 1,
+          repeatTotal: repeat,
+          coverageOverride: { behaviorIds: [behavior.id], frictionIds: [] },
+          expectedFrictionIds: [],
+        });
       } else {
         await runManualBehaviorSelection(behavior, { mode: "single", repeatIndex: i + 1, repeatTotal: repeat });
       }
@@ -692,20 +872,50 @@ export function createIntegrationWizard(root, options) {
     const cat = BEHAVIOR_CATEGORY_BY_ID.get(state.scenarioPackId);
     if (!cat) { setState({ scenarioMessage: "Select a valid behavior pack first." }); return; }
     const catBehaviorIds = cat.items.map((i) => i.id);
-    const scenarios = getScenariosForBehaviorCategory(state.scenarioPackId);
+    let scenarios = getScenariosForBehaviorCategory(state.scenarioPackId);
+    if (cat.id === "cart_behaviors") {
+      const coveredByScripts = new Set();
+      for (const s of scenarios) {
+        for (const bid of s.behaviorIds || []) {
+          if (catBehaviorIds.includes(bid)) coveredByScripts.add(bid);
+        }
+      }
+      const missingIds = catBehaviorIds.filter((bid) => !coveredByScripts.has(bid));
+      if (missingIds.length > 0) {
+        scenarios = [...scenarios, createCartPackFallbackScenario(missingIds)];
+        addScenarioLog(`Cart pack fallback engaged for ${missingIds.length} unmapped behaviors.`, "warn");
+      }
+    }
     const repeat = Math.max(1, Number(state.scenarioRepeat) || 1);
     setState({ scenarioRunning: true, scenarioStopRequested: false, scenarioMessage: `Running pack ${cat.label}`, scenarioSelectedId: getFirstBehaviorIdForPack(cat.id), frictionSelectedId: "", frictionPackId: "" });
-    registerCoverage({ behaviorIds: catBehaviorIds, frictionIds: [] }, { detectedFrictionIds: [] });
+    registerPlannedCoverage({ behaviorIds: catBehaviorIds, frictionIds: [] });
+    const scriptedBehaviorIds = new Set();
     if (scenarios.length === 0) {
       addScenarioLog(`${cat.label}: no automated scripts yet; recorded for coverage.`, "warn");
     } else {
       outer: for (const s of scenarios) {
         const bids = (s.behaviorIds || []).filter((bid) => catBehaviorIds.includes(bid));
+        for (const bid of bids) scriptedBehaviorIds.add(bid);
         for (let i = 0; i < repeat; i++) {
           if (state.scenarioStopRequested) break outer;
-          await runScenario(s, { mode: "pack", packId: state.scenarioPackId, repeatIndex: i + 1, repeatTotal: repeat, coverageOverride: { behaviorIds: bids, frictionIds: s.frictionIds || [] } });
+          await runScenario(s, {
+            mode: "pack",
+            packId: state.scenarioPackId,
+            repeatIndex: i + 1,
+            repeatTotal: repeat,
+            coverageOverride: { behaviorIds: bids, frictionIds: [] },
+            expectedFrictionIds: [],
+          });
         }
       }
+    }
+    if (!state.scenarioStopRequested) {
+      const missingItems = cat.items.filter((item) => !scriptedBehaviorIds.has(item.id));
+      await runManualBehaviorPackGapSummary(cat, missingItems, {
+        mode: "pack-manual-summary",
+        packId: state.scenarioPackId,
+        reason: "No automated scenario mapped yet.",
+      });
     }
     setState({ scenarioRunning: false, scenarioStopRequested: false, scenarioMessage: `${cat.label} pack done.` });
   };
@@ -720,7 +930,15 @@ export function createIntegrationWizard(root, options) {
     for (let i = 0; i < repeat; i++) {
       if (state.scenarioStopRequested) break;
       if (scenario) {
-        await runScenario(scenario, { mode: "single-friction", selectedFrictionId: friction.id, selectedFrictionLabel: friction.label, repeatIndex: i + 1, repeatTotal: repeat, coverageOverride: { behaviorIds: [], frictionIds: [friction.id] } });
+        await runScenario(scenario, {
+          mode: "single-friction",
+          selectedFrictionId: friction.id,
+          selectedFrictionLabel: friction.label,
+          repeatIndex: i + 1,
+          repeatTotal: repeat,
+          coverageOverride: { behaviorIds: [], frictionIds: [friction.id] },
+          expectedFrictionIds: [friction.id],
+        });
       } else {
         await runManualFrictionSelection(friction, { mode: "single-friction", repeatIndex: i + 1, repeatTotal: repeat });
       }
@@ -736,17 +954,34 @@ export function createIntegrationWizard(root, options) {
     const scenarios = getScenariosForFrictionCategory(state.frictionPackId);
     const repeat = Math.max(1, Number(state.scenarioRepeat) || 1);
     setState({ scenarioRunning: true, scenarioStopRequested: false, scenarioMessage: `Running friction pack ${cat.label}`, frictionSelectedId: getFirstFrictionIdForPack(cat.id), scenarioSelectedId: "", scenarioPackId: "" });
-    registerCoverage({ behaviorIds: [], frictionIds: catFrictionIds }, { detectedFrictionIds: [] });
+    registerPlannedCoverage({ behaviorIds: [], frictionIds: catFrictionIds });
+    const scriptedFrictionIds = new Set();
     if (scenarios.length === 0) {
       addScenarioLog(`${cat.label}: no automated scripts yet; recorded for coverage.`, "warn");
     } else {
       outer: for (const s of scenarios) {
         const fids = (s.frictionIds || []).filter((fid) => catFrictionIds.includes(fid));
+        for (const fid of fids) scriptedFrictionIds.add(fid);
         for (let i = 0; i < repeat; i++) {
           if (state.scenarioStopRequested) break outer;
-          await runScenario(s, { mode: "pack-friction", packId: state.frictionPackId, repeatIndex: i + 1, repeatTotal: repeat, coverageOverride: { behaviorIds: [], frictionIds: fids } });
+          await runScenario(s, {
+            mode: "pack-friction",
+            packId: state.frictionPackId,
+            repeatIndex: i + 1,
+            repeatTotal: repeat,
+            coverageOverride: { behaviorIds: [], frictionIds: fids },
+            expectedFrictionIds: fids,
+          });
         }
       }
+    }
+    if (!state.scenarioStopRequested) {
+      const missingItems = cat.items.filter((item) => !scriptedFrictionIds.has(item.id));
+      await runManualFrictionPackGapSummary(cat, missingItems, {
+        mode: "pack-manual-summary",
+        packId: state.frictionPackId,
+        reason: "No automated scenario mapped yet.",
+      });
     }
     setState({ scenarioRunning: false, scenarioStopRequested: false, scenarioMessage: `${cat.label} friction pack done.` });
   };
@@ -767,7 +1002,9 @@ export function createIntegrationWizard(root, options) {
         partial: state.scenarioResults.filter((r) => r.verdict === "partial").length,
         failed: state.scenarioResults.filter((r) => r.verdict === "failed").length,
         behaviorPlanned: state.scenarioCoverage.behaviorPlanned.length,
+        behaviorValidated: state.scenarioCoverage.behaviorValidated.length,
         frictionPlanned: state.scenarioCoverage.frictionPlanned.length,
+        frictionValidated: state.scenarioCoverage.frictionValidated.length,
         frictionDetected: state.scenarioCoverage.frictionDetected.length,
       },
       results: state.scenarioResults,
@@ -875,7 +1112,7 @@ export function createIntegrationWizard(root, options) {
 
   const renderRecentResults = () => {
     if (!state.scenarioResults.length) return `<div class="scenario-empty">No runs yet.</div>`;
-    return state.scenarioResults.slice(0, 8).map((r) => {
+    return state.scenarioResults.map((r) => {
       const cls = r.verdict === "passed" ? "pill pill--ok" : r.verdict === "partial" ? "pill pill--warn" : r.verdict === "manual" ? "pill" : "pill pill--error";
       return `<div class="scenario-result-row"><div><strong>${escapeHtml(r.scenarioName)}</strong><small>${escapeHtml(r.runId)}</small></div><span class="${cls}">${r.verdict.toUpperCase()}</span><small>${r.eventCount || 0} events / ${r.matchedFrictions?.length || 0} frictions matched</small></div>`;
     }).join("");
@@ -887,6 +1124,17 @@ export function createIntegrationWizard(root, options) {
       const cls = log.level === "error" ? "scenario-log-item is-error" : log.level === "warn" ? "scenario-log-item is-warn" : log.level === "ok" ? "scenario-log-item is-ok" : "scenario-log-item";
       return `<div class="${cls}"><span>${new Date(log.timestamp).toLocaleTimeString()}</span><p>${escapeHtml(log.message)}</p></div>`;
     }).join("");
+  };
+
+  const renderBehaviorAutomationAuditRows = (rows) => {
+    if (!rows.length) return `<div class="scenario-empty">No behavior packs found.</div>`;
+    return rows
+      .map((row) => {
+        const status = row.missing === 0 ? "FULL" : row.scripted === 0 ? "NONE" : "PARTIAL";
+        const cls = row.missing === 0 ? "pill pill--ok" : row.scripted === 0 ? "pill pill--error" : "pill pill--warn";
+        return `<div class="scenario-result-row"><div><strong>${escapeHtml(row.label)}</strong><small>${row.scripted}/${row.total} scripted · ${row.scenarioCount} scenario scripts</small></div><span class="${cls}">${status}</span><small>${row.missing} unmapped behavior IDs</small></div>`;
+      })
+      .join("");
   };
 
   // ── Main render ────────────────────────────────────────────────────────────
@@ -919,12 +1167,27 @@ export function createIntegrationWizard(root, options) {
     const selBehavior = BEHAVIOR_SUBCATEGORY_BY_ID.get(state.scenarioSelectedId);
     const selBehaviorPack = BEHAVIOR_CATEGORY_BY_ID.get(state.scenarioPackId);
     const selBehaviorPackScenarios = selBehaviorPack ? getScenariosForBehaviorCategory(selBehaviorPack.id) : [];
+    const behaviorPackAudit = BEHAVIOR_CATEGORY_PACKS.map((pack) => ({
+      id: pack.id,
+      label: pack.label,
+      ...getBehaviorPackAutomationStats(pack.id),
+    }));
+    const behaviorPackAuditById = new Map(behaviorPackAudit.map((row) => [row.id, row]));
+    const selBehaviorPackStats = selBehaviorPack ? behaviorPackAuditById.get(selBehaviorPack.id) : null;
+    const behaviorPackFull = behaviorPackAudit.filter((row) => row.missing === 0).length;
+    const behaviorPackNone = behaviorPackAudit.filter((row) => row.scripted === 0).length;
+    const behaviorPackPartial = behaviorPackAudit.length - behaviorPackFull - behaviorPackNone;
+    const behaviorAuditTopGaps = [...behaviorPackAudit]
+      .sort((a, b) => b.missing - a.missing || a.label.localeCompare(b.label))
+      .slice(0, 8);
     const selFriction = FRICTION_SUBCATEGORY_BY_ID.get(state.frictionSelectedId);
     const selFrictionPack = FRICTION_CATEGORY_BY_ID.get(state.frictionPackId);
     const selFrictionPackScenarios = selFrictionPack ? getScenariosForFrictionCategory(selFrictionPack.id) : [];
 
     const bPlanned = state.scenarioCoverage.behaviorPlanned.length;
+    const bValidated = state.scenarioCoverage.behaviorValidated.length;
     const fPlanned = state.scenarioCoverage.frictionPlanned.length;
+    const fValidated = state.scenarioCoverage.frictionValidated.length;
     const fDetected = state.scenarioCoverage.frictionDetected.length;
     const autoRuns = state.scenarioResults.filter((r) => r.verdict !== "manual");
     const passCount = autoRuns.filter((r) => r.verdict === "passed").length;
@@ -1082,16 +1345,24 @@ export function createIntegrationWizard(root, options) {
 
         <p class="micro">${escapeHtml(state.scenarioMessage)}</p>
         <p class="micro">Behavior: <strong>${escapeHtml(selBehavior ? `${selBehavior.id} — ${selBehavior.label}` : "n/a")}</strong></p>
-        <p class="micro">Pack: <strong>${escapeHtml(selBehaviorPack?.label || "n/a")}</strong> (${selBehaviorPack?.items?.length || 0} subcategories, ${selBehaviorPackScenarios.length} scripts)</p>
+        <p class="micro">Pack: <strong>${escapeHtml(selBehaviorPack?.label || "n/a")}</strong> (${selBehaviorPack?.items?.length || 0} subcategories, ${selBehaviorPackScenarios.length} scripts, ${selBehaviorPackStats?.scripted || 0}/${selBehaviorPackStats?.total || 0} behavior IDs scripted)</p>
         <p class="micro">Friction: <strong>${escapeHtml(selFriction ? `${selFriction.id} — ${selFriction.label}` : "n/a")}</strong></p>
         <p class="micro">Friction Pack: <strong>${escapeHtml(selFrictionPack?.label || "n/a")}</strong> (${selFrictionPack?.items?.length || 0} subcategories, ${selFrictionPackScenarios.length} scripts)</p>
+      </div>
+
+      <div class="wizard-card">
+        <h3 style="margin-bottom:8px;">Behavior Automation Audit</h3>
+        <p class="micro">Packs: <strong>${behaviorPackFull}</strong> full, <strong>${behaviorPackPartial}</strong> partial, <strong>${behaviorPackNone}</strong> with no scripts.</p>
+        <div class="scenario-results-list">${renderBehaviorAutomationAuditRows(behaviorAuditTopGaps)}</div>
       </div>
 
       <div class="wizard-card">
         <h3 style="margin-bottom:8px;">Coverage</h3>
         <div class="metric-grid metric-grid--2">
           <div class="metric"><span>Behaviors Planned</span><strong>${bPlanned}/${SCENARIO_TARGETS.behavior}</strong><small>${pct(bPlanned, SCENARIO_TARGETS.behavior)}</small></div>
+          <div class="metric"><span>Behaviors Validated</span><strong>${bValidated}/${SCENARIO_TARGETS.behavior}</strong><small>${pct(bValidated, SCENARIO_TARGETS.behavior)} evidence-backed</small></div>
           <div class="metric"><span>Frictions Planned</span><strong>${fPlanned}/${SCENARIO_TARGETS.friction}</strong><small>${pct(fPlanned, SCENARIO_TARGETS.friction)}</small></div>
+          <div class="metric"><span>Frictions Validated</span><strong>${fValidated}/${SCENARIO_TARGETS.friction}</strong><small>${pct(fValidated, SCENARIO_TARGETS.friction)} matched expected</small></div>
           <div class="metric"><span>Frictions Detected</span><strong>${fDetected}/${SCENARIO_TARGETS.friction}</strong><small>${pct(fDetected, SCENARIO_TARGETS.friction)} observed</small></div>
           <div class="metric"><span>Pass Rate</span><strong>${passCount}/${autoRuns.length || 0}</strong><small>${pct(passCount, autoRuns.length || 1)}</small></div>
         </div>

@@ -424,6 +424,9 @@ button[disabled] {
 .scenario-results-list {
   display: grid;
   gap: 7px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .scenario-result-row {
