@@ -292,7 +292,11 @@ export function createIntegrationWizard(root, options) {
       if (isTerminal) {
         stopPolling();
         await refreshResults();
-        setState({ wizardStep: "mapped", message: "Analysis complete. Ready to activate." });
+        // Only advance to "mapped" from the analysis phase.
+        // If the site is already "active"/"activating", do not downgrade the wizard step.
+        if (state.wizardStep === "analyzing") {
+          setState({ wizardStep: "mapped", message: "Analysis complete. Ready to activate." });
+        }
       }
     } catch (err) {
       stopPolling();
@@ -782,7 +786,11 @@ export function createIntegrationWizard(root, options) {
   const onInput = (event) => {
     const t = event.target;
     if (!(t instanceof HTMLElement)) return;
-    if (t.id === "siteUrlInput" && t instanceof HTMLInputElement) setState({ siteUrl: t.value });
+    if (t.id === "siteUrlInput" && t instanceof HTMLInputElement) {
+      // Do not re-render on every keystroke; it causes focus/caret reset.
+      state.siteUrl = t.value;
+      return;
+    }
     if (t.id === "scenarioSelect" && t instanceof HTMLSelectElement) {
       const b = BEHAVIOR_SUBCATEGORY_BY_ID.get(t.value);
       setState({ scenarioSelectedId: t.value, scenarioPackId: b?.categoryId || "", frictionSelectedId: "", frictionPackId: "" });
