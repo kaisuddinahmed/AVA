@@ -159,6 +159,9 @@ model Intervention {
   mswimScoreAtFire Float
   tierAtFire       String
 
+  // Revenue attribution — cart value captured at intervention fire time
+  cartValueAtFire  Float?  // null on pre-migration records
+
   @@index([sessionId, timestamp])
   @@index([status])
   @@index([type, status])

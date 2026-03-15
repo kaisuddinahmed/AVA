@@ -13,6 +13,8 @@ export type CreateInterventionInput = {
   payload: string; // JSON
   mswimScoreAtFire: number;
   tierAtFire: string;
+  /** Cart value at the moment the intervention was fired — used for revenue attribution */
+  cartValueAtFire?: number;
 };
 
 export type InterventionOutcomeInput = {

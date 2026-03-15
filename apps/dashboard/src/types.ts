@@ -178,5 +178,35 @@ export interface VoiceAnalytics {
   };
 }
 
+// ── Friction Analytics (from REST API) ───────────────────────
+export interface FrictionAnalyticsRow {
+  frictionId: string;
+  category: string;
+  detections: number;
+  interventionsFired: number;
+  conversions: number;
+  dismissals: number;
+  resolutionRate: number;
+}
+
+export interface FrictionAnalytics {
+  byFriction: FrictionAnalyticsRow[];
+}
+
+// ── Revenue Attribution (from REST API) ──────────────────────
+export interface RevenueAttributionRow {
+  frictionId: string;
+  conversions: number;
+  totalLift: number;
+  avgLift: number;
+}
+
+export interface RevenueAttribution {
+  totalAttributedRevenue: number;
+  totalConvertedInterventions: number;
+  avgLiftPerConversion: number;
+  byFriction: RevenueAttributionRow[];
+}
+
 // ── Tab Type ─────────────────────────────────────────────────
 export type TabId = "track" | "evaluate" | "intervene";

@@ -433,6 +433,144 @@ export async function getVoiceAnalytics(req: Request, res: Response): Promise<vo
 }
 
 /**
+ * GET /api/analytics/friction
+ * Per-frictionId breakdown: detection count, intervention count, resolution rate.
+ */
+export async function getFrictionAnalytics(req: Request, res: Response): Promise<void> {
+  try {
+    const sinceDate = parseSince(req);
+    const siteUrl = parseSiteUrl(req);
+
+    const [allInterventions, allEvaluations] = await Promise.all([
+      InterventionRepo.listInterventions({ limit: 5000, since: sinceDate, siteUrl }),
+      siteUrl
+        ? EvaluationRepo.getEvaluationsBySite(siteUrl, 2000).then((rows) =>
+            sinceDate ? rows.filter((e) => e.timestamp >= sinceDate) : rows
+          )
+        : EvaluationRepo.listEvaluations({ limit: 2000, since: sinceDate }),
+    ]);
+
+    // Aggregate friction detections from evaluation records
+    const frictionMeta: Record<string, { count: number; category: string }> = {};
+    for (const ev of allEvaluations) {
+      let frictions: Array<string | { friction_id: string; category?: string }> = [];
+      try { frictions = JSON.parse(ev.frictionsFound); } catch { continue; }
+      for (const f of frictions) {
+        const fid = typeof f === "string" ? f : f.friction_id;
+        const cat = typeof f === "string" ? "unknown" : (f.category ?? "unknown");
+        if (!frictionMeta[fid]) frictionMeta[fid] = { count: 0, category: cat };
+        frictionMeta[fid].count++;
+      }
+    }
+
+    // Aggregate interventions by frictionId
+    const ivStats: Record<string, { fired: number; converted: number; dismissed: number }> = {};
+    for (const iv of allInterventions) {
+      if (iv.type === "passive") continue;
+      const fid = iv.frictionId;
+      if (!ivStats[fid]) ivStats[fid] = { fired: 0, converted: 0, dismissed: 0 };
+      ivStats[fid].fired++;
+      if (iv.status === "converted") ivStats[fid].converted++;
+      else if (iv.status === "dismissed") ivStats[fid].dismissed++;
+    }
+
+    const allFrictionIds = new Set([...Object.keys(frictionMeta), ...Object.keys(ivStats)]);
+    const byFriction = Array.from(allFrictionIds)
+      .map((fid) => {
+        const meta = frictionMeta[fid];
+        const iv = ivStats[fid];
+        const fired = iv?.fired ?? 0;
+        const converted = iv?.converted ?? 0;
+        const resolutionRate = fired > 0 ? Math.round((converted / fired) * 10000) / 10000 : 0;
+        return {
+          frictionId: fid,
+          category: meta?.category ?? "unknown",
+          detections: meta?.count ?? 0,
+          interventionsFired: fired,
+          conversions: converted,
+          dismissals: iv?.dismissed ?? 0,
+          resolutionRate,
+        };
+      })
+      .sort((a, b) => b.detections - a.detections)
+      .slice(0, 50);
+
+    res.json({ byFriction });
+  } catch (error) {
+    console.error("[Analytics] Friction analytics error:", error);
+    res.status(500).json({ error: "Failed to compute friction analytics" });
+  }
+}
+
+/**
+ * GET /api/analytics/revenue
+ * Revenue attribution: per-frictionId cart lift from converted interventions.
+ */
+export async function getRevenueAttribution(req: Request, res: Response): Promise<void> {
+  try {
+    const sinceDate = parseSince(req);
+    const siteUrl = parseSiteUrl(req);
+
+    const allInterventions = await InterventionRepo.listInterventions({ limit: 5000, since: sinceDate, siteUrl });
+
+    // Only converted, non-passive interventions with cartValueAtFire recorded
+    const converted = allInterventions.filter(
+      (iv) =>
+        iv.status === "converted" &&
+        iv.type !== "passive" &&
+        (iv as Record<string, unknown>).cartValueAtFire != null,
+    );
+
+    // Fetch current cart values for sessions that converted
+    const sessionIds = [...new Set(converted.map((iv) => iv.sessionId))];
+    const sessionValues: Record<string, number> = {};
+    if (sessionIds.length > 0) {
+      const sessions = await prisma.session.findMany({
+        where: { id: { in: sessionIds } },
+        select: { id: true, cartValue: true },
+      });
+      for (const s of sessions) sessionValues[s.id] = s.cartValue;
+    }
+
+    const byFrictionMap: Record<string, { conversions: number; totalLift: number }> = {};
+    let totalAttributedRevenue = 0;
+
+    for (const iv of converted) {
+      const cartAtFire = (iv as Record<string, unknown>).cartValueAtFire as number;
+      const cartNow = sessionValues[iv.sessionId] ?? cartAtFire;
+      const lift = Math.max(0, cartNow - cartAtFire);
+      totalAttributedRevenue += lift;
+
+      if (!byFrictionMap[iv.frictionId]) byFrictionMap[iv.frictionId] = { conversions: 0, totalLift: 0 };
+      byFrictionMap[iv.frictionId].conversions++;
+      byFrictionMap[iv.frictionId].totalLift += lift;
+    }
+
+    const byFriction = Object.entries(byFrictionMap)
+      .map(([frictionId, r]) => ({
+        frictionId,
+        conversions: r.conversions,
+        totalLift: Math.round(r.totalLift * 100) / 100,
+        avgLift: r.conversions > 0 ? Math.round((r.totalLift / r.conversions) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.totalLift - a.totalLift);
+
+    res.json({
+      totalAttributedRevenue: Math.round(totalAttributedRevenue * 100) / 100,
+      totalConvertedInterventions: converted.length,
+      avgLiftPerConversion:
+        converted.length > 0
+          ? Math.round((totalAttributedRevenue / converted.length) * 100) / 100
+          : 0,
+      byFriction,
+    });
+  } catch (error) {
+    console.error("[Analytics] Revenue attribution error:", error);
+    res.status(500).json({ error: "Failed to compute revenue attribution" });
+  }
+}
+
+/**
  * GET /api/analytics/clicks
  * Click coordinate data for heatmap rendering.
  */

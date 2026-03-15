@@ -47,6 +47,8 @@ apiRouter.get("/analytics/sessions/trend", analyticsApi.getSessionsTrend);
 apiRouter.get("/analytics/retention", analyticsApi.getRetention);
 apiRouter.get("/analytics/clicks", analyticsApi.getClickHeatmap);
 apiRouter.get("/analytics/voice", analyticsApi.getVoiceAnalytics);
+apiRouter.get("/analytics/friction", analyticsApi.getFrictionAnalytics);
+apiRouter.get("/analytics/revenue", analyticsApi.getRevenueAttribution);
 
 // Onboarding
 apiRouter.post("/onboarding/start", onboardingApi.startOnboarding);

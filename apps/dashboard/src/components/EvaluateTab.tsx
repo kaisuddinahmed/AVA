@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { BehaviorGroup, EvaluationData, OverviewAnalytics, ScoreTier } from "../types";
+import type { BehaviorGroup, EvaluationData, FrictionAnalytics, OverviewAnalytics, RevenueAttribution, ScoreTier } from "../types";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 import { SignalBars } from "./SignalBars";
 import { CompositeRing } from "./CompositeRing";
@@ -18,6 +18,8 @@ interface Props {
   overview: OverviewAnalytics | null;
   shadowStats: any | null;
   shadowDivergences: any[] | null;
+  frictionAnalytics: FrictionAnalytics | null;
+  revenueAttribution: RevenueAttribution | null;
 }
 
 const TIERS: ScoreTier[] = ["MONITOR", "PASSIVE", "NUDGE", "ACTIVE", "ESCALATE"];
@@ -57,7 +59,7 @@ function DevSection({ title, children, defaultOpen = false }: {
   );
 }
 
-export function EvaluateTab({ evaluations, selectedSession, overview, shadowStats, shadowDivergences }: Props) {
+export function EvaluateTab({ evaluations, selectedSession, overview, shadowStats, shadowDivergences, frictionAnalytics, revenueAttribution }: Props) {
   const filtered = useMemo(
     () => selectedSession ? evaluations.filter((e) => e.session_id === selectedSession) : evaluations,
     [evaluations, selectedSession]
@@ -369,7 +371,95 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
       </div>
 
       {/* ═══════════════════════════════════════════════════════════
-          ROW 5 — SHADOW MODE  (collapsed by default — dev-facing)
+          ROW 5 — FRICTION INTELLIGENCE
+          Per-F-code breakdown: detections, intervention rate, resolution %.
+      ═══════════════════════════════════════════════════════════ */}
+      {frictionAnalytics && frictionAnalytics.byFriction.length > 0 && (
+        <DevSection title="Friction Intelligence — Resolution Rates" defaultOpen={false}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  {["F-Code", "Category", "Detections", "Interventions", "Conversions", "Dismissals", "Resolution"].map((h) => (
+                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {frictionAnalytics.byFriction.slice(0, 20).map((row) => (
+                  <tr key={row.frictionId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td style={{ padding: "5px 8px", fontWeight: 700, color: "var(--warn)" }}>{row.frictionId}</td>
+                    <td style={{ padding: "5px 8px", color: "var(--muted)", textTransform: "capitalize" }}>{row.category}</td>
+                    <td style={{ padding: "5px 8px" }} className="mono">{row.detections}</td>
+                    <td style={{ padding: "5px 8px" }} className="mono">{row.interventionsFired}</td>
+                    <td style={{ padding: "5px 8px", color: "var(--tier-nudge)" }} className="mono">{row.conversions}</td>
+                    <td style={{ padding: "5px 8px", color: "var(--tier-active)" }} className="mono">{row.dismissals}</td>
+                    <td style={{ padding: "5px 8px" }}>
+                      {row.interventionsFired > 0 ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 48, height: 4, background: "rgba(8,26,34,0.8)", borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ width: `${row.resolutionRate * 100}%`, height: "100%", background: row.resolutionRate >= 0.3 ? "var(--tier-nudge)" : row.resolutionRate >= 0.1 ? "var(--warn)" : "var(--tier-active)", borderRadius: 2 }} />
+                          </div>
+                          <span className="mono">{fmtPct(row.resolutionRate)}</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DevSection>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          ROW 6 — REVENUE ATTRIBUTION
+          Cart lift attributed to AVA interventions per friction type.
+      ═══════════════════════════════════════════════════════════ */}
+      {revenueAttribution && revenueAttribution.totalConvertedInterventions > 0 && (
+        <DevSection title="Revenue Attribution — Cart Lift per Friction" defaultOpen={false}>
+          <div className="grid-3" style={{ marginBottom: 12 }}>
+            <div className="metric-box">
+              <div className="label">Total Attributed Revenue</div>
+              <div className="value" style={{ color: "var(--tier-nudge)" }}>${fmtNum(revenueAttribution.totalAttributedRevenue)}</div>
+              <div className="sub">cart lift from conversions</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Conversions Tracked</div>
+              <div className="value">{fmtNum(revenueAttribution.totalConvertedInterventions)}</div>
+              <div className="sub">with cart data</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Avg Lift / Conversion</div>
+              <div className="value" style={{ color: "var(--info)" }}>${revenueAttribution.avgLiftPerConversion.toFixed(2)}</div>
+              <div className="sub">per converted intervention</div>
+            </div>
+          </div>
+          {revenueAttribution.byFriction.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {revenueAttribution.byFriction.slice(0, 10).map((row) => {
+                const maxLift = revenueAttribution.byFriction[0]?.totalLift ?? 1;
+                const pct = maxLift > 0 ? (row.totalLift / maxLift) * 100 : 0;
+                return (
+                  <div key={row.frictionId} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ minWidth: 40, fontSize: 10, fontWeight: 700, color: "var(--warn)" }}>{row.frictionId}</span>
+                    <div style={{ flex: 1, height: 6, background: "rgba(8,26,34,0.6)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: "var(--tier-nudge)", borderRadius: 3 }} />
+                    </div>
+                    <span className="mono" style={{ fontSize: 10, minWidth: 56, textAlign: "right", color: "var(--tier-nudge)" }}>${row.totalLift.toFixed(2)}</span>
+                    <span className="mono muted" style={{ fontSize: 9, minWidth: 40 }}>{row.conversions}×</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DevSection>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          ROW 7 — SHADOW MODE  (collapsed by default — dev-facing)
           Compare MSWIM-only vs LLM+MSWIM accuracy.
       ═══════════════════════════════════════════════════════════ */}
       {shadowStats && (

@@ -9,7 +9,7 @@ import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
 import { InterventionsTab } from "./components/InterventionsTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
-import type { SessionSummary, OverviewAnalytics } from "./types";
+import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution } from "./types";
 
 export function App() {
   const { activated, activatedAt } = useActivation();
@@ -79,6 +79,14 @@ export function App() {
     activated && isEvalTab ? `/shadow/divergences?limit=5` : null,
     { pollMs: 15000 }
   );
+  const { data: frictionAnalytics } = useApi<FrictionAnalytics>(
+    activated && isEvalTab && activeSiteUrl ? `/analytics/friction${analyticsParams}` : null,
+    { pollMs: 30000 }
+  );
+  const { data: revenueAttribution } = useApi<RevenueAttribution>(
+    activated && isEvalTab && activeSiteUrl ? `/analytics/revenue${analyticsParams}` : null,
+    { pollMs: 30000 }
+  );
 
   return (
     <div className="dashboard-shell">
@@ -123,6 +131,8 @@ export function App() {
               overview={overview ?? null}
               shadowStats={shadowStats ?? null}
               shadowDivergences={shadowDivergences?.data ?? null}
+              frictionAnalytics={frictionAnalytics ?? null}
+              revenueAttribution={revenueAttribution ?? null}
             />
           )}
 

@@ -77,7 +77,7 @@ export async function handleDecision(
     voiceDisabled
   );
 
-  // Persist intervention
+  // Persist intervention (capture cart value for revenue attribution)
   const intervention = await InterventionRepo.createIntervention({
     sessionId,
     evaluationId: effectiveDecision.evaluationId,
@@ -87,6 +87,7 @@ export async function handleDecision(
     payload: JSON.stringify(payload),
     mswimScoreAtFire: evaluation.compositeScore,
     tierAtFire: evaluation.tier,
+    cartValueAtFire: session?.cartValue ?? 0,
   });
 
   // Update session counters
