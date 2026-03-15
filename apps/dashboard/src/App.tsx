@@ -79,12 +79,14 @@ export function App() {
     activated && isEvalTab ? `/shadow/divergences?limit=5` : null,
     { pollMs: 15000 }
   );
+  // Friction analytics — polled for both TRACK and EVALUATE tabs
+  const isTrackOrEval = isTrackTab || isEvalTab;
   const { data: frictionAnalytics } = useApi<FrictionAnalytics>(
-    activated && isEvalTab && activeSiteUrl ? `/analytics/friction${analyticsParams}` : null,
+    activated && isTrackOrEval && activeSiteUrl ? `/analytics/friction${analyticsParams}` : null,
     { pollMs: 30000 }
   );
   const { data: revenueAttribution } = useApi<RevenueAttribution>(
-    activated && isEvalTab && activeSiteUrl ? `/analytics/revenue${analyticsParams}` : null,
+    activated && isTrackOrEval && activeSiteUrl ? `/analytics/revenue${analyticsParams}` : null,
     { pollMs: 30000 }
   );
 
@@ -146,6 +148,8 @@ export function App() {
               clickPoints={clickData?.points ?? null}
               insightsSnapshot={insightsData?.snapshot ?? null}
               croFindings={croData?.findings ?? null}
+              frictionAnalytics={frictionAnalytics ?? null}
+              revenueAttribution={revenueAttribution ?? null}
             />
           )}
 

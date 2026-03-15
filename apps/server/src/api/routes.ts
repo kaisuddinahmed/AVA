@@ -17,6 +17,7 @@ import * as insightsApi from "./insights.api.js";
 import * as webhooksApi from "./webhooks.api.js";
 import * as networkApi from "./network.api.js";
 import * as shopifyApi from "./shopify.api.js";
+import * as addressApi from "./address.api.js";
 
 export const apiRouter = Router();
 
@@ -121,6 +122,11 @@ apiRouter.get("/insights/cro", insightsApi.getCROFindings);
 // Webhooks (Session-exit behavioral triggers)
 apiRouter.get("/webhooks/stats", webhooksApi.getWebhookStats);
 apiRouter.put("/webhooks/config", webhooksApi.updateWebhookConfig);
+
+// Address Autofill (Story 3 — server-persisted, no PII)
+apiRouter.get("/address", addressApi.getAddress);
+apiRouter.post("/address", addressApi.saveAddress);
+apiRouter.delete("/address", addressApi.deleteAddress);
 
 // Network Flywheel (Cross-merchant behavioral priors)
 apiRouter.get("/network/status", networkApi.getNetworkStatus);

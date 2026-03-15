@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { EvaluationRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
 import { buildContext } from "./context-builder.js";
 import { evaluateWithLLM } from "./analyst.js";
@@ -69,6 +70,14 @@ const INTERVENTION_TYPE_MAP: Record<ScoreTier, string | null> = {
  *
  * Modes: "llm" | "fast" | "auto"
  */
+/** Deterministic control group check — SHA-256(sessionId) % 100 < controlGroupPct */
+function isControlGroupSession(sessionId: string): boolean {
+  if (config.controlGroupPct <= 0) return false;
+  const hash = createHash("sha256").update(sessionId).digest("hex");
+  const bucket = parseInt(hash.slice(0, 8), 16) % 100;
+  return bucket < config.controlGroupPct;
+}
+
 export async function evaluateEventBatch(
   sessionId: string,
   eventIds: string[]
@@ -76,6 +85,15 @@ export async function evaluateEventBatch(
   // Resolve experiment overrides (non-blocking on failure)
   const session = await SessionRepo.getSession(sessionId);
   const siteUrl = session?.siteUrl;
+
+  // Control group: mark session on first evaluation, then suppress interventions
+  if (!session?.isControlSession && isControlGroupSession(sessionId)) {
+    SessionRepo.markControlSession(sessionId).catch(() => {});
+    // Return a MONITOR result — no intervention will fire
+    return null;
+  }
+  if (session?.isControlSession) return null;
+
   const overrides = await resolveExperimentOverrides(sessionId, siteUrl);
 
   // Apply experiment engine override or use config default

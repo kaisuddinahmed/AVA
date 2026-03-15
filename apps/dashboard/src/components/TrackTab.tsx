@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { TrackEventData, OverviewAnalytics, InsightSnapshot, CROFinding, InsightRecommendation } from "../types";
+import type { TrackEventData, OverviewAnalytics, InsightSnapshot, CROFinding, InsightRecommendation, FrictionAnalytics, RevenueAttribution } from "../types";
 import { fmtTime, fmtNum, fmtPct } from "../lib/format";
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   clickPoints: Array<{ xPct: number; yPct: number; pageUrl: string }> | null;
   insightsSnapshot: InsightSnapshot | null;
   croFindings: CROFinding[] | null;
+  frictionAnalytics: FrictionAnalytics | null;
+  revenueAttribution: RevenueAttribution | null;
 }
 
 /** Parse raw_signals JSON and build a human-readable one-liner. */
@@ -227,7 +229,200 @@ function confidenceColor(c: InsightRecommendation["confidence"]): string {
   return c === "high" ? "var(--accent)" : c === "medium" ? "var(--tier-nudge)" : "var(--muted)";
 }
 
-export function TrackTab({ events, selectedSession, overview, trafficData, deviceData, funnelData, flowData, pageStatsData, clickPoints, insightsSnapshot, croFindings }: Props) {
+function severityColor(sev: number): string {
+  if (sev >= 80) return "var(--tier-escalate)";
+  if (sev >= 60) return "var(--warn)";
+  if (sev >= 40) return "var(--accent)";
+  return "var(--muted)";
+}
+
+/** Dedicated friction analytics panel — Story 4 */
+function FrictionSection({ analytics }: { analytics: FrictionAnalytics }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const top10 = analytics.byFriction.slice(0, 10);
+  const { severityDistribution: sev, trend, top5Ids } = analytics;
+
+  // Severity distribution bar widths
+  const sevTotal = sev.low + sev.medium + sev.high + sev.critical || 1;
+
+  // Category heatmap: aggregate detections per category
+  const catMap: Record<string, number> = {};
+  for (const row of analytics.byFriction) {
+    catMap[row.category] = (catMap[row.category] ?? 0) + row.detections;
+  }
+  const catEntries = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 20);
+  const maxCat = catEntries[0]?.[1] ?? 1;
+
+  // Trend: max value for bar scaling
+  const trendMax = Math.max(
+    1,
+    ...trend.flatMap((row) => top5Ids.map((id) => (row[id] as number) ?? 0)),
+  );
+
+  return (
+    <AnalyticsSection title={`Friction Analytics — ${analytics.byFriction.length} friction types detected`} defaultOpen={false}>
+
+      {/* ── Severity distribution ── */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Severity Distribution (by detection volume)</div>
+        <div style={{ display: "flex", gap: 4, height: 20 }}>
+          {[
+            { label: "Critical", value: sev.critical, color: "var(--tier-escalate)" },
+            { label: "High", value: sev.high, color: "var(--warn)" },
+            { label: "Medium", value: sev.medium, color: "var(--accent)" },
+            { label: "Low", value: sev.low, color: "var(--muted)" },
+          ].map(({ label, value, color }) => (
+            value > 0 && (
+              <div
+                key={label}
+                title={`${label}: ${fmtNum(value)} detections`}
+                style={{
+                  flex: value / sevTotal,
+                  background: color,
+                  borderRadius: 3,
+                  opacity: 0.8,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 9,
+                  color: "#000",
+                  fontWeight: 700,
+                  overflow: "hidden",
+                  minWidth: 30,
+                }}
+              >
+                {value / sevTotal > 0.15 ? `${label} ${fmtNum(value)}` : ""}
+              </div>
+            )
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+          {[
+            { label: "Critical ≥80", value: sev.critical, color: "var(--tier-escalate)" },
+            { label: "High 60–79", value: sev.high, color: "var(--warn)" },
+            { label: "Medium 40–59", value: sev.medium, color: "var(--accent)" },
+            { label: "Low <40", value: sev.low, color: "var(--muted)" },
+          ].map(({ label, value, color }) => (
+            <span key={label} style={{ fontSize: 9, color }}>
+              {label}: {fmtNum(value)}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 30-day trend sparkline ── */}
+      {trend.length > 0 && top5Ids.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>
+            30-Day Detection Trend — Top {top5Ids.length} Frictions
+          </div>
+          <div style={{ display: "flex", gap: 1, alignItems: "flex-end", height: 40 }}>
+            {trend.map((row, i) => {
+              const total = top5Ids.reduce((s, id) => s + ((row[id] as number) ?? 0), 0);
+              return (
+                <div
+                  key={i}
+                  title={`${row.date}: ${total} detections`}
+                  style={{
+                    flex: 1,
+                    height: `${Math.max(2, (total / trendMax) * 40)}px`,
+                    background: "var(--accent)",
+                    opacity: 0.6 + (total / trendMax) * 0.4,
+                    borderRadius: "2px 2px 0 0",
+                  }}
+                />
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+            <span style={{ fontSize: 8, color: "var(--muted)" }}>{trend[0]?.date}</span>
+            <span style={{ fontSize: 8, color: "var(--muted)" }}>{trend[trend.length - 1]?.date}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Category heatmap ── */}
+      {catEntries.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Category Heatmap</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {catEntries.map(([cat, count]) => {
+              const intensity = count / maxCat;
+              return (
+                <div
+                  key={cat}
+                  title={`${cat}: ${fmtNum(count)} detections`}
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 3,
+                    fontSize: 9,
+                    fontWeight: 600,
+                    background: `rgba(232,155,59,${0.1 + intensity * 0.7})`,
+                    color: intensity > 0.5 ? "#000" : "var(--accent)",
+                    border: "1px solid rgba(232,155,59,0.2)",
+                  }}
+                >
+                  {cat} ({fmtNum(count)})
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Top 10 friction list with expandable rows ── */}
+      <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Top 10 Frictions</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {top10.map((row) => (
+          <div key={row.frictionId}>
+            <div
+              onClick={() => setExpanded(expanded === row.frictionId ? null : row.frictionId)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+                background: "rgba(8,26,34,0.5)", borderRadius: 4, cursor: "pointer",
+                border: `1px solid ${expanded === row.frictionId ? "rgba(232,155,59,0.3)" : "rgba(255,255,255,0.04)"}`,
+              }}
+            >
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--warn)", minWidth: 48 }}>{row.frictionId}</span>
+              <span style={{ fontSize: 9, color: "var(--muted)", flex: 1 }}>{row.category}</span>
+              <span style={{ fontSize: 10, color: severityColor(row.severity), fontWeight: 700, minWidth: 32 }} title="Severity">sev {row.severity}</span>
+              <span style={{ fontSize: 10, color: "var(--text)", minWidth: 60 }}>{fmtNum(row.detections)} det</span>
+              <span style={{ fontSize: 9, color: "var(--muted)", minWidth: 54 }}>fire {fmtNum(row.interventionsFired)}</span>
+              <span style={{ fontSize: 9, color: "var(--tier-nudge)", minWidth: 50 }}>res {fmtPct(row.resolutionRate)}</span>
+              <span style={{ fontSize: 9, color: "var(--muted)", opacity: 0.5 }}>{expanded === row.frictionId ? "▲" : "▼"}</span>
+            </div>
+            {expanded === row.frictionId && (
+              <div style={{ padding: "8px 12px", background: "rgba(8,26,34,0.3)", borderRadius: "0 0 4px 4px", border: "1px solid rgba(232,155,59,0.15)", borderTop: "none" }}>
+                <div className="grid-4" style={{ gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: "var(--muted)" }}>Detections</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{fmtNum(row.detections)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: "var(--muted)" }}>Interventions Fired</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>{fmtNum(row.interventionsFired)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: "var(--muted)" }}>Resolution Rate</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--tier-nudge)" }}>{fmtPct(row.resolutionRate)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: "var(--muted)" }}>Avg MSWIM at Detection</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--info)" }}>
+                      {row.avgMswimAtDetection != null ? row.avgMswimAtDetection.toFixed(1) : "—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </AnalyticsSection>
+  );
+}
+
+export function TrackTab({ events, selectedSession, overview, trafficData, deviceData, funnelData, flowData, pageStatsData, clickPoints, insightsSnapshot, croFindings, frictionAnalytics, revenueAttribution }: Props) {
   const filtered = useMemo(
     () => selectedSession ? events.filter((e) => e.session_id === selectedSession) : events,
     [events, selectedSession]
@@ -335,10 +530,18 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
       )}
 
       {/* ═══════════════════════════════════════════════════════════
+          FRICTION — Dedicated friction analytics
+          Top frictions, trend chart, severity distribution, category heatmap.
+      ═══════════════════════════════════════════════════════════ */}
+      {frictionAnalytics && frictionAnalytics.byFriction.length > 0 && (
+        <FrictionSection analytics={frictionAnalytics} />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
           ROW 1 — KPI HERO STRIP
           Four numbers a business owner reads in 3 seconds.
       ═══════════════════════════════════════════════════════════ */}
-      <div className="grid-4" style={{ marginBottom: 12 }}>
+      <div className={revenueAttribution ? "grid-5" : "grid-4"} style={{ marginBottom: 12 }}>
         <div className="metric-box">
           <div className="label">Active Sessions</div>
           <div className="value accent">{fmtNum(overview?.activeSessions ?? 0)}</div>
@@ -363,6 +566,19 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
           </div>
           <div className="sub">{overview?.avgPageViewsPerSession ? `${overview.avgPageViewsPerSession} pages / visit` : "duration"}</div>
         </div>
+        {revenueAttribution && (
+          <div className="metric-box" style={{ borderColor: "rgba(100,200,130,0.3)" }}>
+            <div className="label">Assisted Revenue</div>
+            <div className="value" style={{ color: "var(--tier-nudge)" }}>
+              ${fmtNum(revenueAttribution.totalAttributedRevenue)}
+            </div>
+            <div className="sub">
+              <span style={{ fontSize: 9 }}>assisted conversions</span>
+              <span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)" }}
+                title="Revenue where AVA intervened before checkout. Not claimed as caused by AVA.">ⓘ</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════

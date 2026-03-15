@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { EvaluationRepo, InterventionRepo, EventRepo, SessionRepo } from "@ava/db";
 import { prisma } from "@ava/db";
+import { SEVERITY_SCORES } from "@ava/shared";
 
 function parseSinceValue(value: unknown): Date | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
@@ -434,32 +435,47 @@ export async function getVoiceAnalytics(req: Request, res: Response): Promise<vo
 
 /**
  * GET /api/analytics/friction
- * Per-frictionId breakdown: detection count, intervention count, resolution rate.
+ * Per-frictionId breakdown + 30-day trend + severity distribution.
  */
 export async function getFrictionAnalytics(req: Request, res: Response): Promise<void> {
   try {
     const sinceDate = parseSince(req);
     const siteUrl = parseSiteUrl(req);
 
+    // Use 30 days for trend regardless of since param
+    const trendSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
     const [allInterventions, allEvaluations] = await Promise.all([
       InterventionRepo.listInterventions({ limit: 5000, since: sinceDate, siteUrl }),
       siteUrl
-        ? EvaluationRepo.getEvaluationsBySite(siteUrl, 2000).then((rows) =>
+        ? EvaluationRepo.getEvaluationsBySite(siteUrl, 5000).then((rows) =>
             sinceDate ? rows.filter((e) => e.timestamp >= sinceDate) : rows
           )
-        : EvaluationRepo.listEvaluations({ limit: 2000, since: sinceDate }),
+        : EvaluationRepo.listEvaluations({ limit: 5000, since: sinceDate }),
     ]);
 
     // Aggregate friction detections from evaluation records
-    const frictionMeta: Record<string, { count: number; category: string }> = {};
+    const frictionMeta: Record<string, { count: number; category: string; mswimScores: number[] }> = {};
+    // Daily trend: { "YYYY-MM-DD": { [frictionId]: count } }
+    const trendMap: Record<string, Record<string, number>> = {};
+
     for (const ev of allEvaluations) {
       let frictions: Array<string | { friction_id: string; category?: string }> = [];
       try { frictions = JSON.parse(ev.frictionsFound); } catch { continue; }
+      const dayKey = new Date(ev.timestamp).toISOString().slice(0, 10);
+
       for (const f of frictions) {
         const fid = typeof f === "string" ? f : f.friction_id;
         const cat = typeof f === "string" ? "unknown" : (f.category ?? "unknown");
-        if (!frictionMeta[fid]) frictionMeta[fid] = { count: 0, category: cat };
+        if (!frictionMeta[fid]) frictionMeta[fid] = { count: 0, category: cat, mswimScores: [] };
         frictionMeta[fid].count++;
+        if (ev.compositeScore != null) frictionMeta[fid].mswimScores.push(ev.compositeScore);
+
+        // Trend (30-day window only)
+        if (new Date(ev.timestamp) >= trendSince) {
+          if (!trendMap[dayKey]) trendMap[dayKey] = {};
+          trendMap[dayKey][fid] = (trendMap[dayKey][fid] ?? 0) + 1;
+        }
       }
     }
 
@@ -474,6 +490,7 @@ export async function getFrictionAnalytics(req: Request, res: Response): Promise
       else if (iv.status === "dismissed") ivStats[fid].dismissed++;
     }
 
+    // Build by-friction rows
     const allFrictionIds = new Set([...Object.keys(frictionMeta), ...Object.keys(ivStats)]);
     const byFriction = Array.from(allFrictionIds)
       .map((fid) => {
@@ -482,20 +499,55 @@ export async function getFrictionAnalytics(req: Request, res: Response): Promise
         const fired = iv?.fired ?? 0;
         const converted = iv?.converted ?? 0;
         const resolutionRate = fired > 0 ? Math.round((converted / fired) * 10000) / 10000 : 0;
+        const scores = meta?.mswimScores ?? [];
+        const avgMswim = scores.length > 0
+          ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+          : null;
+        const severity = SEVERITY_SCORES[fid] ?? 50;
         return {
           frictionId: fid,
           category: meta?.category ?? "unknown",
+          severity,
           detections: meta?.count ?? 0,
           interventionsFired: fired,
           conversions: converted,
           dismissals: iv?.dismissed ?? 0,
           resolutionRate,
+          avgMswimAtDetection: avgMswim,
         };
       })
       .sort((a, b) => b.detections - a.detections)
       .slice(0, 50);
 
-    res.json({ byFriction });
+    // Top 5 frictions for trend chart
+    const top5Ids = byFriction.slice(0, 5).map((r) => r.frictionId);
+
+    // Build 30-day trend: array of { date, [frictionId]: count }
+    const days: string[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    const trend = days.map((date) => {
+      const row: Record<string, string | number> = { date };
+      for (const fid of top5Ids) {
+        row[fid] = trendMap[date]?.[fid] ?? 0;
+      }
+      return row;
+    });
+
+    // Severity distribution: low (0–39), medium (40–59), high (60–79), critical (80+)
+    const severityDist = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (const row of byFriction) {
+      const count = row.detections;
+      const sev = row.severity;
+      if (sev < 40) severityDist.low += count;
+      else if (sev < 60) severityDist.medium += count;
+      else if (sev < 80) severityDist.high += count;
+      else severityDist.critical += count;
+    }
+
+    res.json({ byFriction, trend, top5Ids, severityDistribution: severityDist });
   } catch (error) {
     console.error("[Analytics] Friction analytics error:", error);
     res.status(500).json({ error: "Failed to compute friction analytics" });
@@ -555,6 +607,11 @@ export async function getRevenueAttribution(req: Request, res: Response): Promis
       }))
       .sort((a, b) => b.totalLift - a.totalLift);
 
+    // Control group session count — used for conversionLiftVsControl display
+    const controlGroupSessions = siteUrl
+      ? await prisma.session.count({ where: { siteUrl, isControlSession: true } })
+      : 0;
+
     res.json({
       totalAttributedRevenue: Math.round(totalAttributedRevenue * 100) / 100,
       totalConvertedInterventions: converted.length,
@@ -562,6 +619,7 @@ export async function getRevenueAttribution(req: Request, res: Response): Promis
         converted.length > 0
           ? Math.round((totalAttributedRevenue / converted.length) * 100) / 100
           : 0,
+      controlGroupSessions,
       byFriction,
     });
   } catch (error) {

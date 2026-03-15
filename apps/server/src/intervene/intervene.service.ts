@@ -158,6 +158,16 @@ export async function recordInterventionOutcome(
     await SessionRepo.incrementDismissals(intervention.sessionId);
   } else if (effectiveStatus === "converted") {
     await SessionRepo.incrementConversions(intervention.sessionId);
+    // Revenue attribution: compute cart lift and add to session.attributedRevenue
+    const cartAtFire = (intervention as Record<string, unknown>).cartValueAtFire as number | null ?? null;
+    if (cartAtFire != null) {
+      const session = await SessionRepo.getSession(intervention.sessionId);
+      const cartNow = session?.cartValue ?? cartAtFire;
+      const lift = Math.max(0, cartNow - cartAtFire);
+      if (lift > 0) {
+        SessionRepo.addAttributedRevenue(intervention.sessionId, lift).catch(() => {});
+      }
+    }
   }
 
   // Capture training datapoint on terminal outcomes (non-blocking)

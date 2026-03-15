@@ -183,15 +183,27 @@ export interface VoiceAnalytics {
 export interface FrictionAnalyticsRow {
   frictionId: string;
   category: string;
+  severity: number;
   detections: number;
   interventionsFired: number;
   conversions: number;
   dismissals: number;
   resolutionRate: number;
+  avgMswimAtDetection: number | null;
+}
+
+export interface FrictionSeverityDistribution {
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
 }
 
 export interface FrictionAnalytics {
   byFriction: FrictionAnalyticsRow[];
+  trend: Array<Record<string, string | number>>;
+  top5Ids: string[];
+  severityDistribution: FrictionSeverityDistribution;
 }
 
 // ── Revenue Attribution (from REST API) ──────────────────────
@@ -206,6 +218,7 @@ export interface RevenueAttribution {
   totalAttributedRevenue: number;
   totalConvertedInterventions: number;
   avgLiftPerConversion: number;
+  controlGroupSessions?: number;
   byFriction: RevenueAttributionRow[];
 }
 

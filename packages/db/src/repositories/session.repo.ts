@@ -97,6 +97,28 @@ export async function incrementConversions(id: string) {
   });
 }
 
+/**
+ * Add cart lift to Session.attributedRevenue.
+ * Called when an intervention converts — adds the delta (cartNow - cartAtFire).
+ */
+export async function addAttributedRevenue(id: string, lift: number) {
+  if (lift <= 0) return;
+  return prisma.session.update({
+    where: { id },
+    data: { attributedRevenue: { increment: lift } },
+  });
+}
+
+/**
+ * Mark session as part of the 5% control group (no interventions fired).
+ */
+export async function markControlSession(id: string) {
+  return prisma.session.update({
+    where: { id },
+    data: { isControlSession: true },
+  });
+}
+
 export async function setSuppressNonPassive(id: string, suppress: boolean) {
   return prisma.session.update({
     where: { id },

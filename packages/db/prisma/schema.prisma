@@ -39,6 +39,10 @@ model Session {
   totalVoiceInterventionsFired Int     @default(0)
   voiceMuted                   Boolean @default(false)
 
+  // Revenue attribution (Story 5)
+  attributedRevenue   Float   @default(0)   // sum of cart lift from converted interventions
+  isControlSession    Boolean @default(false) // 5% holdout — no interventions fired
+
   // Analytics fields (Phase 1 — all nullable for safe migration)
   endedAt           DateTime?
   totalPageViews    Int       @default(0)
@@ -700,6 +704,27 @@ model WebhookDelivery {
   @@index([sessionId])
   @@index([siteUrl, status, createdAt])
   @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// VisitorAddress — server-persisted shipping address for repeat-visitor autofill
+// (Story 3). No PII: no name, email, or phone. Scoped to visitorKey + siteUrl.
+// Only written when shopper explicitly confirms. Deleted on "forget" request.
+// ---------------------------------------------------------------------------
+model VisitorAddress {
+  id           String   @id @default(uuid())
+  visitorKey   String
+  siteUrl      String
+  addressLine1 String
+  addressLine2 String   @default("")
+  city         String
+  state        String
+  postalCode   String
+  country      String   @default("US")
+  lastUsedAt   DateTime @default(now())
+
+  @@unique([visitorKey, siteUrl])
+  @@index([visitorKey, siteUrl])
 }
 
 // ---------------------------------------------------------------------------

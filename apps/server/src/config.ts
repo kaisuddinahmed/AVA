@@ -67,6 +67,11 @@ export const config = {
     enabled: process.env.EXPERIMENTS_ENABLED !== "false",
   },
 
+  // Revenue attribution control group (Story 5)
+  // CONTROL_GROUP_PCT % of sessions receive no interventions — used as baseline.
+  // Deterministic: SHA-256(sessionId) % 100 < pct → control.
+  controlGroupPct: Number(process.env.CONTROL_GROUP_PCT ?? 5),
+
   // Voice interventions (Deepgram TTS — server sends voice_script; widget synthesizes audio)
   voice: {
     deepgramApiKey: process.env.DEEPGRAM_API_KEY ?? "",

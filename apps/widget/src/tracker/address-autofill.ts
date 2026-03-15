@@ -1,93 +1,59 @@
 // ============================================================================
-// Address Autofill — localStorage-backed address memory for checkout pages.
+// Address Autofill — server-persisted shipping address for repeat visitors.
 //
-// Detects checkout form fields (Shopify, WooCommerce, and generic patterns),
-// reads any previously saved address from localStorage, and pre-fills the
-// detected inputs. On form submit, captures the filled values and persists
-// them for future visits.
+// Flow:
+//   1. On checkout page, fetch saved address from server (visitorKey + siteUrl)
+//   2. If address found AND isRepeatVisitor: show offer banner
+//   3. Shopper taps "Yes, fill it in" or says "yes" → autofill fields
+//   4. On form submit: capture non-PII fields, POST to server (explicit save)
+//   5. "Forget my address" → DELETE from server
 //
-// Zero external dependencies — vanilla DOM + localStorage only.
+// No PII stored: no name, email, phone. Scoped to visitorKey + siteUrl.
+// Zero external dependencies — vanilla DOM + fetch only.
 // ============================================================================
 
-const STORAGE_KEY_PREFIX = "ava:addr:";
+const SERVER_BASE: string =
+  (window as Window & { __AVA_CONFIG__?: { serverUrl?: string } }).__AVA_CONFIG__?.serverUrl ?? "";
+
+// ── Address shape (no PII) ─────────────────────────────────────────────────
 
 export interface SavedAddress {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  address1?: string;
-  address2?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
   country?: string;
+  lastUsedAt?: string;
 }
 
 // ── Field selector map ─────────────────────────────────────────────────────
-// Each entry maps a logical address field to an ordered list of CSS selectors.
-// The first matching selector wins. Covers Shopify, WooCommerce, and generic
-// checkout forms found in the wild.
 
-const FIELD_SELECTORS: Record<keyof SavedAddress, string[]> = {
-  firstName: [
-    'input[name="checkout[shipping_address][first_name]"]', // Shopify
-    'input[name="billing_first_name"]',                     // WooCommerce
-    'input[name="billing[first_name]"]',
-    'input[autocomplete="given-name"]',
-    'input[name*="first_name"]',
-    'input[id*="first-name"]',
-    'input[id*="firstName"]',
-    'input[placeholder*="First name"]',
-  ],
-  lastName: [
-    'input[name="checkout[shipping_address][last_name]"]',
-    'input[name="billing_last_name"]',
-    'input[name="billing[last_name]"]',
-    'input[autocomplete="family-name"]',
-    'input[name*="last_name"]',
-    'input[id*="last-name"]',
-    'input[id*="lastName"]',
-    'input[placeholder*="Last name"]',
-  ],
-  email: [
-    'input[type="email"]',
-    'input[name="email"]',
-    'input[name="checkout[email]"]',
-    'input[autocomplete="email"]',
-    'input[id*="email"]',
-  ],
-  phone: [
-    'input[type="tel"]',
-    'input[name="phone"]',
-    'input[autocomplete="tel"]',
-    'input[name*="phone"]',
-    'input[id*="phone"]',
-  ],
-  address1: [
+type AddressField = "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country";
+
+const FIELD_SELECTORS: Record<AddressField, string[]> = {
+  addressLine1: [
     'input[name="checkout[shipping_address][address1]"]',
     'input[name="billing_address_1"]',
     'input[name="billing[address_line1]"]',
     'input[autocomplete="address-line1"]',
-    'input[name*="address_1"]',
     'input[name*="address1"]',
-    'input[id*="address-1"]',
+    'input[name*="address_line_1"]',
     'input[id*="address1"]',
     'input[placeholder*="Address"]',
   ],
-  address2: [
+  addressLine2: [
     'input[name="checkout[shipping_address][address2]"]',
     'input[name="billing_address_2"]',
-    'input[name="billing[address_line2]"]',
     'input[autocomplete="address-line2"]',
-    'input[name*="address_2"]',
     'input[name*="address2"]',
-    'input[id*="address-2"]',
+    'input[name*="address_line_2"]',
+    'input[id*="address2"]',
+    'input[placeholder*="Apartment"]',
   ],
   city: [
     'input[name="checkout[shipping_address][city]"]',
     'input[name="billing_city"]',
-    'input[name="billing[city]"]',
     'input[autocomplete="address-level2"]',
     'input[name*="city"]',
     'input[id*="city"]',
@@ -96,67 +62,34 @@ const FIELD_SELECTORS: Record<keyof SavedAddress, string[]> = {
   state: [
     'select[name="checkout[shipping_address][province]"]',
     'select[name="billing_state"]',
-    'select[name="billing[state]"]',
-    'input[autocomplete="address-level1"]',
     'select[autocomplete="address-level1"]',
+    'input[autocomplete="address-level1"]',
     'select[name*="state"]',
     'select[name*="province"]',
     'input[name*="state"]',
     'input[id*="state"]',
   ],
-  zip: [
+  postalCode: [
     'input[name="checkout[shipping_address][zip]"]',
     'input[name="billing_postcode"]',
-    'input[name="billing[postal_code]"]',
     'input[autocomplete="postal-code"]',
     'input[name*="zip"]',
-    'input[name*="postcode"]',
+    'input[name*="postal"]',
     'input[id*="zip"]',
     'input[id*="postal"]',
+    'input[placeholder*="ZIP"]',
+    'input[placeholder*="Postal"]',
   ],
   country: [
     'select[name="checkout[shipping_address][country]"]',
     'select[name="billing_country"]',
-    'select[name="billing[country]"]',
     'select[autocomplete="country"]',
     'select[name*="country"]',
+    'input[autocomplete="country"]',
   ],
 };
 
-// ── Storage helpers ────────────────────────────────────────────────────────
-
-function storageKey(): string {
-  return STORAGE_KEY_PREFIX + (window.location.origin ?? "unknown");
-}
-
-export function loadSavedAddress(): SavedAddress | null {
-  try {
-    const raw = localStorage.getItem(storageKey());
-    if (!raw) return null;
-    return JSON.parse(raw) as SavedAddress;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAddress(addr: SavedAddress): void {
-  try {
-    // Only save non-empty fields
-    const clean: SavedAddress = {};
-    for (const [k, v] of Object.entries(addr)) {
-      if (v && String(v).trim()) {
-        (clean as Record<string, string>)[k] = String(v).trim();
-      }
-    }
-    if (Object.keys(clean).length > 0) {
-      localStorage.setItem(storageKey(), JSON.stringify(clean));
-    }
-  } catch {
-    // localStorage may be disabled (private mode, quota exceeded) — fail silently
-  }
-}
-
-// ── Field detection ────────────────────────────────────────────────────────
+// ── DOM helpers ────────────────────────────────────────────────────────────
 
 function findField(selectors: string[]): HTMLInputElement | HTMLSelectElement | null {
   for (const sel of selectors) {
@@ -166,16 +99,24 @@ function findField(selectors: string[]): HTMLInputElement | HTMLSelectElement | 
   return null;
 }
 
+function setFieldValue(el: HTMLInputElement | HTMLSelectElement, value: string): void {
+  const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  const nativeSelectSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+  if (el instanceof HTMLSelectElement) {
+    nativeSelectSetter?.call(el, value);
+  } else {
+    nativeInputSetter?.call(el, value);
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function findCheckoutForm(): HTMLFormElement | null {
-  // Prefer forms with checkout-related names/ids/actions
   const candidates = Array.from(document.querySelectorAll("form"));
   for (const form of candidates) {
     const attr = `${form.id} ${form.name} ${form.action}`.toLowerCase();
-    if (attr.includes("checkout") || attr.includes("billing") || attr.includes("shipping")) {
-      return form;
-    }
+    if (attr.includes("checkout") || attr.includes("billing") || attr.includes("shipping")) return form;
   }
-  // Fallback: the form containing the most address-like inputs
   return candidates
     .map((f) => ({
       form: f,
@@ -191,66 +132,137 @@ function findCheckoutForm(): HTMLFormElement | null {
     .find(({ score }) => score >= 2)?.form ?? null;
 }
 
-// ── Autofill ───────────────────────────────────────────────────────────────
+// ── Server API ─────────────────────────────────────────────────────────────
 
-function setFieldValue(el: HTMLInputElement | HTMLSelectElement, value: string): void {
-  // React and Vue intercept native value changes via property descriptors;
-  // fire both the setter and an input/change event so framework state syncs.
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  const nativeSelectValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLSelectElement.prototype,
-    "value",
-  )?.set;
-
-  if (el instanceof HTMLSelectElement) {
-    nativeSelectValueSetter?.call(el, value);
-  } else {
-    nativeInputValueSetter?.call(el, value);
+async function fetchSavedAddress(visitorKey: string, siteUrl: string): Promise<SavedAddress | null> {
+  try {
+    const resp = await fetch(
+      `${SERVER_BASE}/api/address?visitorKey=${encodeURIComponent(visitorKey)}&siteUrl=${encodeURIComponent(siteUrl)}`,
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json() as { address: SavedAddress | null };
+    return data.address;
+  } catch {
+    return null;
   }
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-/**
- * Attempt to autofill checkout form fields from the saved address.
- * Returns true if at least one field was filled.
- */
-export function autofillCheckout(saved: SavedAddress): boolean {
+async function persistAddress(visitorKey: string, siteUrl: string, addr: SavedAddress): Promise<void> {
+  try {
+    await fetch(`${SERVER_BASE}/api/address`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorKey, siteUrl, ...addr }),
+    });
+  } catch {
+    // fire-and-forget
+  }
+}
+
+/** Called from widget settings panel — removes address from server. */
+export async function forgetAddress(visitorKey: string, siteUrl: string): Promise<void> {
+  try {
+    await fetch(
+      `${SERVER_BASE}/api/address?visitorKey=${encodeURIComponent(visitorKey)}&siteUrl=${encodeURIComponent(siteUrl)}`,
+      { method: "DELETE" },
+    );
+  } catch {
+    // fire-and-forget
+  }
+}
+
+// ── Autofill ───────────────────────────────────────────────────────────────
+
+function autofillCheckout(saved: SavedAddress): boolean {
   let filled = 0;
-
-  for (const [field, selectors] of Object.entries(FIELD_SELECTORS) as Array<[keyof SavedAddress, string[]]>) {
-    const value = saved[field];
+  for (const [field, selectors] of Object.entries(FIELD_SELECTORS) as Array<[AddressField, string[]]>) {
+    const value = saved[field as AddressField];
     if (!value) continue;
-
     const el = findField(selectors);
     if (!el) continue;
-
-    // Don't overwrite values the user has already typed
-    if (el.value && el.value.trim()) continue;
-
+    if (el.value && el.value.trim()) continue; // don't overwrite existing input
     setFieldValue(el, value);
     filled++;
   }
-
   return filled > 0;
 }
 
-// ── Capture on submit ──────────────────────────────────────────────────────
-
-function captureFromForm(_form: HTMLFormElement): SavedAddress {
-  const addr: SavedAddress = {};
-
-  for (const [field, selectors] of Object.entries(FIELD_SELECTORS) as Array<[keyof SavedAddress, string[]]>) {
+function captureFromForm(): SavedAddress | null {
+  const addr: Partial<SavedAddress> = {};
+  for (const [field, selectors] of Object.entries(FIELD_SELECTORS) as Array<[AddressField, string[]]>) {
     const el = findField(selectors);
     if (el?.value?.trim()) {
       (addr as Record<string, string>)[field] = el.value.trim();
     }
   }
+  if (!addr.addressLine1 || !addr.city || !addr.postalCode) return null;
+  return addr as SavedAddress;
+}
 
-  return addr;
+// ── Offer banner ───────────────────────────────────────────────────────────
+
+let _offerEl: HTMLElement | null = null;
+
+function showOfferBanner(onAccept: () => void, onDecline: () => void): void {
+  if (_offerEl) return;
+
+  const banner = document.createElement("div");
+  banner.setAttribute("data-ava-autofill-offer", "1");
+  banner.style.cssText = [
+    "position:fixed", "bottom:80px", "right:20px", "z-index:2147483647",
+    "background:#0d1f27", "border:1px solid rgba(232,155,59,0.5)",
+    "border-radius:8px", "padding:12px 16px", "max-width:280px",
+    "font-family:system-ui,sans-serif", "box-shadow:0 4px 16px rgba(0,0,0,0.4)",
+  ].join(";");
+
+  banner.innerHTML = `
+    <div style="font-size:12px;color:#e89b3b;font-weight:700;margin-bottom:6px;">AVA</div>
+    <div style="font-size:11px;color:#ccc;line-height:1.4;margin-bottom:10px;">
+      Want me to fill in your shipping address from last time?
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button data-ava-accept style="flex:1;background:#e89b3b;color:#000;border:none;
+        border-radius:4px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">
+        Yes, fill it in
+      </button>
+      <button data-ava-decline style="flex:1;background:transparent;color:#888;
+        border:1px solid #333;border-radius:4px;padding:6px 10px;font-size:11px;cursor:pointer;">
+        No thanks
+      </button>
+    </div>`;
+
+  banner.querySelector("[data-ava-accept]")?.addEventListener("click", () => {
+    onAccept();
+    banner.remove();
+    _offerEl = null;
+  });
+  banner.querySelector("[data-ava-decline]")?.addEventListener("click", () => {
+    onDecline();
+    banner.remove();
+    _offerEl = null;
+  });
+
+  document.body.appendChild(banner);
+  _offerEl = banner;
+}
+
+export function dismissOfferBanner(): void {
+  _offerEl?.remove();
+  _offerEl = null;
+}
+
+// ── Voice confirmation hook ────────────────────────────────────────────────
+// voice-responder checks getPendingAddressAccept() when transcript is "yes"
+// and the offer banner is shown.
+
+let _pendingAccept: (() => void) | null = null;
+
+export function getPendingAddressAccept(): (() => void) | null {
+  return _pendingAccept;
+}
+
+export function clearPendingAddressAccept(): void {
+  _pendingAccept = null;
 }
 
 // ── Main entry ─────────────────────────────────────────────────────────────
@@ -258,14 +270,17 @@ function captureFromForm(_form: HTMLFormElement): SavedAddress {
 let _attached = false;
 
 /**
- * Initialize address memory for the current page.
+ * Initialize address autofill for the current page.
  *
- * - On checkout pages: loads saved address and autofills detected fields.
- * - Attaches a submit listener to the checkout form to capture and persist
- *   the address for future visits.
- * - Idempotent — safe to call multiple times; only initialises once per page.
+ * @param visitorKey      Anonymous visitor fingerprint (no PII)
+ * @param siteUrl         Merchant site URL — scopes the address server-side
+ * @param isRepeatVisitor Whether this visitor has checked out before
  */
-export function initAddressAutofill(): void {
+export async function initAddressAutofill(
+  visitorKey: string,
+  siteUrl: string,
+  isRepeatVisitor: boolean,
+): Promise<void> {
   if (_attached) return;
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
@@ -276,16 +291,15 @@ export function initAddressAutofill(): void {
     !!document.querySelector('[data-page-type="checkout"]');
 
   if (!isCheckout) {
-    // Not a checkout page — attach a lightweight MutationObserver to detect
-    // if the page transitions to checkout (SPA navigation).
+    // Watch for SPA navigation to checkout
     const observer = new MutationObserver(() => {
       if (
         window.location.pathname.includes("checkout") ||
         window.location.pathname.includes("billing")
       ) {
         observer.disconnect();
-        _attached = false; // allow re-init on the new page
-        initAddressAutofill();
+        _attached = false;
+        initAddressAutofill(visitorKey, siteUrl, isRepeatVisitor);
       }
     });
     observer.observe(document.body, { childList: true, subtree: false });
@@ -294,24 +308,37 @@ export function initAddressAutofill(): void {
 
   _attached = true;
 
-  // Wait a tick so the form is in the DOM (SPA transitions paint on next frame)
-  const tryInit = () => {
-    const saved = loadSavedAddress();
-    if (saved) {
-      autofillCheckout(saved);
+  const tryInit = async () => {
+    if (isRepeatVisitor) {
+      const saved = await fetchSavedAddress(visitorKey, siteUrl);
+      if (saved) {
+        const doFill = () => {
+          autofillCheckout(saved);
+        };
+
+        // Register for voice "yes" confirmation
+        _pendingAccept = () => { doFill(); _pendingAccept = null; };
+
+        showOfferBanner(
+          () => { doFill(); _pendingAccept = null; },
+          () => { _pendingAccept = null; },
+        );
+      }
     }
 
+    // Attach form submit listener — captures and persists on explicit checkout
     const form = findCheckoutForm();
     if (form && !form.dataset.avaAutofillAttached) {
       form.dataset.avaAutofillAttached = "1";
       form.addEventListener("submit", () => {
-        const captured = captureFromForm(form);
-        saveAddress(captured);
+        const captured = captureFromForm();
+        if (captured) {
+          persistAddress(visitorKey, siteUrl, captured);
+        }
       }, { once: false });
     }
   };
 
-  // Try immediately, then retry after 500ms in case form renders async
-  tryInit();
+  await tryInit();
   setTimeout(tryInit, 500);
 }
