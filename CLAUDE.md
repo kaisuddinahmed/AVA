@@ -23,11 +23,12 @@ Turborepo monorepo. Key workspaces:
 
 | Path | Role | Port |
 |---|---|---|
-| `apps/server` | Express + WebSocket API | 8080 / 8081 |
+| `apps/server` | Express HTTP API | 8080 |
+| `apps/server` | WebSocket server | 8081 |
 | `apps/dashboard` | React + Vite merchant UI | 3000 |
-| `apps/widget` | Vanilla TS IIFE, Shadow DOM | 5173 (dev) |
-| `apps/demo` | Integration wizard + three-panel demo | 4002 |
 | `apps/store` | Static demo store | 3001 |
+| `apps/demo` | Integration wizard + three-panel demo | 3002 |
+| `apps/widget` | Vanilla TS IIFE, Shadow DOM | — |
 | `packages/shared` | All shared types + catalogs | — |
 | `packages/db` | Prisma ORM + all repositories | — |
 
@@ -97,8 +98,8 @@ npm run dev                  # All apps
 npm run dev:server           # Backend only (:8080 + WS :8081)
 npm run dev:demo             # Server + store + wizard
 npm run dev:dashboard        # Dashboard (:3000)
-npm run dev:widget           # Widget (:5173)
-npm run dev:integration      # Integration wizard only (:4002)
+npm run dev:widget           # Widget
+npm run dev:integration      # Integration wizard only (:3002)
 
 # Database
 npm run db:push              # Apply schema + generate Prisma client
