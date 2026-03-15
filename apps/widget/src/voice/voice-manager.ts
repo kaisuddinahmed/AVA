@@ -17,6 +17,15 @@ export class VoiceManager {
   private currentObjectUrl: string | null = null;
 
   /**
+   * Browser autoplay policy: audio.play() is blocked until the user has
+   * interacted with the page (click, keydown, touchstart).
+   * _userActivated becomes true on the first such gesture, at which point any
+   * pending script is drained.
+   */
+  private _userActivated = false;
+  private _pendingScript: string | null = null;
+
+  /**
    * Called when the user taps mute — receives the intervention_id of the
    * intervention that was playing when mute was triggered.
    * index.ts uses this to send a "voice_muted" outcome to the server.
@@ -34,6 +43,28 @@ export class VoiceManager {
     this.serverUrl = opts.serverUrl.replace(/\/$/, ""); // strip trailing slash
     this.model = opts.deepgramModel ?? "aura-asteria-en";
     this._onMuted = opts.onMuted;
+    this._listenForUserGesture();
+  }
+
+  /**
+   * Register a one-time listener for the first user gesture.
+   * Once activated, drain any pending script immediately.
+   */
+  private _listenForUserGesture(): void {
+    const activate = () => {
+      if (this._userActivated) return;
+      this._userActivated = true;
+      // Drain pending script from the first proactive intervention
+      if (this._pendingScript && this.canSpeak) {
+        const script = this._pendingScript;
+        this._pendingScript = null;
+        this._playSpeech(script).catch(() => {});
+      }
+    };
+    // Use capture phase so we hear it even inside shadow DOM
+    document.addEventListener("click", activate, { once: true, capture: true });
+    document.addEventListener("keydown", activate, { once: true, capture: true });
+    document.addEventListener("touchstart", activate, { once: true, capture: true });
   }
 
   // ── Public getters ──────────────────────────────────────────────────────────
@@ -54,13 +85,29 @@ export class VoiceManager {
   // ── Public methods ──────────────────────────────────────────────────────────
 
   /**
-   * Synthesise and play `script` using Deepgram TTS.
-   * Resolves immediately if voice is disabled, muted, or over budget.
+   * Synthesise and play `script` using Deepgram TTS via the AVA server proxy.
+   *
+   * If the browser has not yet received a user gesture (autoplay policy),
+   * the script is queued and plays automatically on the next click/key/touch.
+   * Only one pending script is kept — a newer proactive intervention replaces
+   * an older unplayed one.
+   *
    * Errors are silently swallowed — voice is enhancement, never critical.
    */
   async speak(script: string): Promise<void> {
     if (!this.canSpeak) return;
 
+    if (!this._userActivated) {
+      // Park the script — it will drain on the next user gesture
+      this._pendingScript = script;
+      return;
+    }
+
+    await this._playSpeech(script);
+  }
+
+  /** Internal: fetch TTS audio and play it. Assumes user has already gestured. */
+  private async _playSpeech(script: string): Promise<void> {
     try {
       this.stopCurrent();
 
@@ -71,7 +118,7 @@ export class VoiceManager {
       });
 
       if (!resp.ok) {
-        console.warn(`[AVA Voice] Deepgram TTS error ${resp.status}: ${resp.statusText}`);
+        console.warn(`[AVA Voice] TTS proxy error ${resp.status}: ${resp.statusText}`);
         return;
       }
 
@@ -117,6 +164,7 @@ export class VoiceManager {
    * Used when an intervention is dismissed.
    */
   stopCurrent(): void {
+    this._pendingScript = null; // cancel any queued-but-not-yet-played script
     if (this.currentAudio) {
       this.currentAudio.pause();
       this.currentAudio.src = "";
