@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import type { InterventionData, OverviewAnalytics, SessionSummary, VoiceAnalytics } from "../types";
+import type { InterventionData, OverviewAnalytics, SessionSummary, VoiceAnalytics, WebhookStatsResponse } from "../types";
 import { useApi, apiFetch } from "../hooks/use-api";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 
@@ -10,6 +10,7 @@ interface Props {
   sessions: SessionSummary[];
   /** Pre-built query string (e.g. "?siteUrl=...&since=...") matching other analytics hooks */
   analyticsParams?: string;
+  webhookStats: WebhookStatsResponse | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ function SystemSection({ title, badge, children, defaultOpen = false }: {
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
-export function InterventionsTab({ interventions, selectedSession, overview, sessions, analyticsParams = "" }: Props) {
+export function InterventionsTab({ interventions, selectedSession, overview, sessions, analyticsParams = "", webhookStats }: Props) {
   const filtered = useMemo(
     () => selectedSession ? interventions.filter((i) => i.session_id === selectedSession) : interventions,
     [interventions, selectedSession]
@@ -711,6 +712,59 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
               </div>
             ))}
           </div>
+        )}
+      </SystemSection>
+
+      {/* Webhook Deliveries */}
+      <SystemSection title="Webhook Deliveries" badge={webhookStats ? `${fmtPct(webhookStats.stats.successRate)} success` : undefined}>
+        {webhookStats ? (
+          <>
+            <div className="grid-4" style={{ marginBottom: 12 }}>
+              <div className="metric-box">
+                <div className="label">Total</div>
+                <div className="value">{fmtNum(webhookStats.stats.total)}</div>
+                <div className="sub">session-exit hooks</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Delivered</div>
+                <div className="value" style={{ color: "var(--accent)" }}>{fmtNum(webhookStats.stats.delivered)}</div>
+                <div className="sub">{fmtPct(webhookStats.stats.successRate)}</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Failed</div>
+                <div className="value" style={{ color: webhookStats.stats.failed > 0 ? "var(--tier-escalate)" : "var(--muted)" }}>
+                  {fmtNum(webhookStats.stats.failed)}
+                </div>
+                <div className="sub">after retries</div>
+              </div>
+              <div className="metric-box">
+                <div className="label">Pending</div>
+                <div className="value" style={{ color: webhookStats.stats.pending > 0 ? "var(--warn)" : "var(--muted)" }}>
+                  {fmtNum(webhookStats.stats.pending)}
+                </div>
+                <div className="sub">queued</div>
+              </div>
+            </div>
+            {webhookStats.recent.length > 0 && (
+              <div className="scroll-list" style={{ maxHeight: 200 }}>
+                {webhookStats.recent.map((rec) => (
+                  <div key={rec.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    <span style={{ fontSize: 9, minWidth: 52, padding: "2px 5px", borderRadius: 3,
+                      background: rec.status === "delivered" ? "rgba(107,201,160,0.15)" : rec.status === "failed" ? "rgba(220,80,80,0.15)" : "rgba(255,255,255,0.06)",
+                      color: rec.status === "delivered" ? "var(--accent)" : rec.status === "failed" ? "var(--tier-escalate)" : "var(--muted)" }}>
+                      {rec.status}
+                    </span>
+                    <span className="mono muted" style={{ fontSize: 9, flex: 1 }}>{rec.sessionId.slice(0, 8)}…</span>
+                    <span className="mono muted" style={{ fontSize: 9 }}>{rec.attempts} att</span>
+                    {rec.responseCode && <span className="mono" style={{ fontSize: 9, color: rec.responseCode < 300 ? "var(--accent)" : "var(--warn)" }}>{rec.responseCode}</span>}
+                    <span className="mono muted" style={{ fontSize: 9 }}>{fmtTime(rec.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No webhook data — configure a webhook URL in site settings.</p></div>
         )}
       </SystemSection>
 

@@ -44,6 +44,7 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
         intervention_type: result.interventionType,
         decision_reasoning: result.reasoning,
         engine: result.engine,
+        abandonment_score: result.abandonmentScore,
       },
     });
 

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { SessionRepo } from "@ava/db";
 import { prisma } from "@ava/db";
+import { emitSessionExitWebhook } from "../webhooks/webhook.service.js";
 
 export async function listSessions(req: Request, res: Response) {
   try {
@@ -48,7 +49,10 @@ export async function getSession(req: Request, res: Response) {
 
 export async function endSession(req: Request, res: Response) {
   try {
-    await SessionRepo.endSession(String(req.params.id));
+    const sessionId = String(req.params.id);
+    await SessionRepo.endSession(sessionId);
+    // Fire-and-forget session exit webhook (only fires if site has webhookUrl + no conversion)
+    emitSessionExitWebhook(sessionId).catch(() => {});
     res.json({ ok: true });
   } catch (error) {
     console.error("[API] End session error:", error);

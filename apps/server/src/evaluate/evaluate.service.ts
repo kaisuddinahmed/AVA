@@ -24,6 +24,7 @@ export interface EvaluationResult {
   recommendedAction: string;
   engine: "llm" | "fast";
   gateOverride?: string | null;
+  abandonmentScore?: number;
 }
 
 // ── Tier helpers ──────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ async function evaluateFast(
   sessionId: string,
   eventIds: string[]
 ): Promise<EvaluationResult | null> {
-  const { sessionCtx, frictionIds, detectedPatterns } = await buildSessionAndFrictions(sessionId, eventIds);
+  const { sessionCtx, frictionIds, detectedPatterns, context } = await buildSessionAndFrictions(sessionId, eventIds);
   if (!sessionCtx) return null;
 
   const fastResult = await runFastEvaluation({
@@ -133,9 +134,10 @@ async function evaluateFast(
     detectedFrictionIds: frictionIds,
     pageType: sessionCtx.pageType,
     eventCount: sessionCtx.eventCount,
+    ...extractAbandonmentSignals(context),
   });
 
-  const { mswimResult, narrative, reasoning } = fastResult;
+  const { mswimResult, narrative, reasoning, abandonmentScore } = fastResult;
   const tierLabel = TIER_LABELS[mswimResult.tier];
   const interventionType = INTERVENTION_TYPE_MAP[mswimResult.tier];
 
@@ -157,6 +159,7 @@ async function evaluateFast(
     interventionType: interventionType ?? undefined,
     reasoning,
     detectedBehaviors: detectedPatterns.length > 0 ? JSON.stringify(detectedPatterns) : undefined,
+    abandonmentScore,
   });
 
   return {
@@ -172,6 +175,7 @@ async function evaluateFast(
     recommendedAction: mapTierToDefaultAction(tierLabel),
     engine: "fast",
     gateOverride: mswimResult.gate_override?.toString() ?? null,
+    abandonmentScore,
   };
 }
 
@@ -190,6 +194,7 @@ async function evaluateAuto(
     detectedFrictionIds: frictionIds,
     pageType: sessionCtx.pageType,
     eventCount: sessionCtx.eventCount,
+    ...extractAbandonmentSignals(context),
   });
 
   // 2. Check if we should escalate to LLM
@@ -199,7 +204,7 @@ async function evaluateAuto(
   }
 
   // 3. Use fast result
-  const { mswimResult, narrative, reasoning } = fastResult;
+  const { mswimResult, narrative, reasoning, abandonmentScore } = fastResult;
   const tierLabel = TIER_LABELS[mswimResult.tier];
   const interventionType = INTERVENTION_TYPE_MAP[mswimResult.tier];
 
@@ -221,6 +226,7 @@ async function evaluateAuto(
     interventionType: interventionType ?? undefined,
     reasoning,
     detectedBehaviors: detectedPatterns.length > 0 ? JSON.stringify(detectedPatterns) : undefined,
+    abandonmentScore,
   });
 
   return {
@@ -236,6 +242,7 @@ async function evaluateAuto(
     recommendedAction: mapTierToDefaultAction(tierLabel),
     engine: "fast",
     gateOverride: mswimResult.gate_override?.toString() ?? null,
+    abandonmentScore,
   };
 }
 
@@ -471,6 +478,41 @@ async function loadInterventionHistory(sessionId: string): Promise<InterventionH
 }
 
 import type { EvaluationContext } from "./context-builder.js";
+
+/**
+ * Extract signals needed for abandonment score computation from the event context.
+ */
+function extractAbandonmentSignals(context: EvaluationContext | null): {
+  latestScrollDepthPct: number;
+  latestSessionSequence: number;
+  priorExitIntentCount: number;
+} {
+  if (!context) return { latestScrollDepthPct: 0, latestSessionSequence: 0, priorExitIntentCount: 0 };
+  const events = context.newEvents;
+  const lastScrollEvent = [...events].reverse().find((e) => {
+    const r = e.rawSignals as Record<string, unknown> | undefined;
+    return r?.depth_pct != null || r?.scrollDepthPct != null;
+  });
+  const latestScrollDepthPct = lastScrollEvent
+    ? Number((lastScrollEvent.rawSignals as Record<string, unknown>)?.depth_pct
+        ?? (lastScrollEvent.rawSignals as Record<string, unknown>)?.scrollDepthPct ?? 0)
+    : 0;
+
+  const lastSeqEvent = [...events].reverse().find((e) => {
+    const r = e.rawSignals as Record<string, unknown> | undefined;
+    return r?.session_sequence_number != null;
+  });
+  const latestSessionSequence = lastSeqEvent
+    ? Number((lastSeqEvent.rawSignals as Record<string, unknown>)?.session_sequence_number ?? 0)
+    : 0;
+
+  const allEvents = [...context.eventHistory, ...context.newEvents];
+  const priorExitIntentCount = allEvents.filter(
+    (e) => (e.eventType as string) === "exit_intent" || (e.eventType as string) === "exit_intent_with_cart"
+  ).length;
+
+  return { latestScrollDepthPct, latestSessionSequence, priorExitIntentCount };
+}
 
 /**
  * Build session context + extract friction IDs from events.

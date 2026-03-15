@@ -30,6 +30,9 @@ export type CreateEvaluationInput = {
 
   // Detected behavior patterns (JSON: DetectedBehaviorPattern[])
   detectedBehaviors?: string;
+
+  // Predictive abandonment score (0–100)
+  abandonmentScore?: number;
 };
 
 // ---------------------------------------------------------------------------

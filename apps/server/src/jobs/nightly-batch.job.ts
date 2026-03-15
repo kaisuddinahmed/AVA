@@ -4,7 +4,10 @@
 // ============================================================================
 
 import { DriftSnapshotRepo, JobRunRepo } from "@ava/db";
+import { prisma } from "@ava/db";
 import type { NightlyBatchResult, SubtaskResult } from "@ava/shared";
+import { generateInsightSnapshot } from "../insights/insights.service.js";
+import { runCROAnalysis } from "../insights/cro-analysis.service.js";
 import { getQualityStats } from "../training/training-quality.service.js";
 import {
   loadTestSet,
@@ -48,6 +51,12 @@ export async function runNightlyBatch(): Promise<NightlyBatchResult> {
 
   // 7. Cleanup stale data
   subtasks.push(await runSubtask("cleanup", cleanupStaleData));
+
+  // 8. Generate merchant insight snapshots for all active sites
+  subtasks.push(await runSubtask("merchant_insights", generateMerchantInsights));
+
+  // 9. Run CRO analysis for all active sites
+  subtasks.push(await runSubtask("cro_analysis", runCROAnalysisBatch));
 
   // Collect errors
   for (const st of subtasks) {
@@ -189,6 +198,55 @@ async function generateDailySummary(): Promise<Record<string, unknown>> {
     previousRunStatus: lastRun?.status ?? null,
     generatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Generate merchant insight snapshots (weekly digest + AI recommendations)
+ * for all active sites that have sessions in the last 7 days.
+ */
+async function generateMerchantInsights(): Promise<Record<string, unknown>> {
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const activeSites = await prisma.session.findMany({
+    where: { startedAt: { gte: since7d } },
+    select: { siteUrl: true },
+    distinct: ["siteUrl"],
+  });
+
+  let generated = 0;
+  for (const { siteUrl } of activeSites) {
+    try {
+      await generateInsightSnapshot(siteUrl);
+      generated++;
+    } catch (err) {
+      console.error(`[NightlyBatch] Insight generation failed for ${siteUrl}:`, err);
+    }
+  }
+  return { sitesProcessed: activeSites.length, snapshotsGenerated: generated };
+}
+
+/**
+ * Run CRO structural analysis for all active sites.
+ */
+async function runCROAnalysisBatch(): Promise<Record<string, unknown>> {
+  const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const activeSites = await prisma.session.findMany({
+    where: { startedAt: { gte: since30d } },
+    select: { siteUrl: true },
+    distinct: ["siteUrl"],
+  });
+
+  let analyzed = 0;
+  let totalFindings = 0;
+  for (const { siteUrl } of activeSites) {
+    try {
+      const findings = await runCROAnalysis(siteUrl);
+      totalFindings += findings.length;
+      analyzed++;
+    } catch (err) {
+      console.error(`[NightlyBatch] CRO analysis failed for ${siteUrl}:`, err);
+    }
+  }
+  return { sitesAnalyzed: analyzed, totalFindingsGenerated: totalFindings };
 }
 
 /**

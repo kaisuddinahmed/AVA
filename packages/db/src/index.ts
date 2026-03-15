@@ -25,3 +25,5 @@ export * as DriftSnapshotRepo from "./repositories/drift-snapshot.repo.js";
 export * as DriftAlertRepo from "./repositories/drift-alert.repo.js";
 export * as ExperimentRepo from "./repositories/experiment.repo.js";
 export * as RolloutRepo from "./repositories/rollout.repo.js";
+export * as InsightSnapshotRepo from "./repositories/insight-snapshot.repo.js";
+export * as WebhookDeliveryRepo from "./repositories/webhook-delivery.repo.js";

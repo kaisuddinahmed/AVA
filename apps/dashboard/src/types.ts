@@ -73,6 +73,7 @@ export interface EvaluationData {
   decision_reasoning: string;
   engine?: "llm" | "fast";
   behavior_patterns?: DetectedBehaviorPattern[];
+  abandonment_score?: number; // 0–100 predictive abandonment risk
 }
 
 // ── Intervention ─────────────────────────────────────────────
@@ -207,6 +208,76 @@ export interface RevenueAttribution {
   avgLiftPerConversion: number;
   byFriction: RevenueAttributionRow[];
 }
+
+// ── Merchant Insights (from REST API) ────────────────────────
+export interface InsightRecommendation {
+  frictionId: string;
+  page: string;
+  impactEstimate: string;
+  fixText: string;
+  confidence: "high" | "medium" | "low";
+  sampleSize: number;
+}
+
+export interface InsightSnapshot {
+  id: string;
+  createdAt: string;
+  periodStart: string;
+  periodEnd: string;
+  sessionsAnalyzed: number;
+  frictionsCaught: number;
+  attributedRevenue: number;
+  topFrictionTypes: string[];
+  wowDeltaPct: number | null;
+  recommendations: InsightRecommendation[];
+}
+
+export interface InsightsResponse {
+  snapshot: InsightSnapshot | null;
+}
+
+// ── CRO Findings (from REST API) ─────────────────────────────
+export interface CROFinding {
+  frictionId: string;
+  page: string;
+  eventCount: number;
+  avgSeverity: number;
+  sessionsImpacted: number;
+  suggestion: string;
+}
+
+export interface CROResponse {
+  generatedAt: string;
+  findings: CROFinding[];
+}
+
+// ── Webhook Delivery Stats (from REST API) ───────────────────
+export interface WebhookStats {
+  total: number;
+  delivered: number;
+  failed: number;
+  pending: number;
+  successRate: number;
+}
+
+export interface WebhookDeliveryRecord {
+  id: string;
+  sessionId: string;
+  status: string;
+  attempts: number;
+  responseCode: number | null;
+  createdAt: string;
+  lastAttemptAt: string | null;
+  errorMessage: string | null;
+}
+
+export interface WebhookStatsResponse {
+  stats: WebhookStats;
+  recent: WebhookDeliveryRecord[];
+}
+
+// ── Evaluation with abandonment score ────────────────────────
+export type AbandonmentScore = number; // 0–100
 
 // ── Tab Type ─────────────────────────────────────────────────
 export type TabId = "track" | "evaluate" | "intervene";

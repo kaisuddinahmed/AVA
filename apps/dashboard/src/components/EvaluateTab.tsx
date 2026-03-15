@@ -326,6 +326,14 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
                       <span className="signal-value">{fmtScore(val)}</span>
                     </span>
                   ))}
+                  {ev.abandonment_score != null && (
+                    <span className="signal-chip" style={{
+                      borderColor: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)",
+                    }}>
+                      <span className="signal-label" style={{ color: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)" }}>abd</span>
+                      <span className="signal-value" style={{ color: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)" }}>{ev.abandonment_score}</span>
+                    </span>
+                  )}
                 </div>
                 {ev.frictions_found.length > 0 && (
                   <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>

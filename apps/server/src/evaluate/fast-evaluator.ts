@@ -30,6 +30,10 @@ export interface FastEvalInput {
   detectedFrictionIds: string[];
   pageType: string;
   eventCount: number;
+  /** Optional scroll depth and session sequence from the most recent event */
+  latestScrollDepthPct?: number;
+  latestSessionSequence?: number;
+  priorExitIntentCount?: number;
 }
 
 export interface FastEvalResult {
@@ -38,6 +42,7 @@ export interface FastEvalResult {
   narrative: string;
   reasoning: string;
   engine: "fast";
+  abandonmentScore: number;
 }
 
 /**
@@ -47,7 +52,8 @@ export interface FastEvalResult {
 export async function runFastEvaluation(
   input: FastEvalInput
 ): Promise<FastEvalResult> {
-  const { sessionCtx, detectedFrictionIds, pageType, eventCount } = input;
+  const { sessionCtx, detectedFrictionIds, pageType, eventCount,
+          latestScrollDepthPct = 0, latestSessionSequence = 0, priorExitIntentCount = 0 } = input;
 
   // ── 1. Synthesize intent hint ──────────────────────────────────────────
   let syntheticIntent = SYNTHETIC_INTENT_BASE[pageType] ?? 10;
@@ -97,7 +103,20 @@ export async function runFastEvaluation(
   // ── 7. Run MSWIM engine ────────────────────────────────────────────────
   const mswimResult = await runMSWIM(syntheticHints, sessionCtx);
 
-  // ── 8. Build rule-based narrative and reasoning ────────────────────────
+  // ── 8. Compute predictive abandonment score ────────────────────────────
+  const abandonmentScore = computeAbandonmentScore({
+    sessionAgeSec: sessionCtx.sessionAgeSec,
+    pageType,
+    cartValue: sessionCtx.cartValue,
+    cartItemCount: sessionCtx.cartItemCount,
+    scrollDepthPct: latestScrollDepthPct,
+    sessionSequence: latestSessionSequence,
+    priorExitIntentCount,
+    detectedFrictionIds,
+    compositeScore: mswimResult.composite_score,
+  });
+
+  // ── 9. Build rule-based narrative and reasoning ────────────────────────
   const narrative = buildFastNarrative(sessionCtx, detectedFrictionIds, mswimResult);
   const reasoning = buildFastReasoning(mswimResult, detectedFrictionIds);
 
@@ -107,6 +126,7 @@ export async function runFastEvaluation(
     narrative,
     reasoning,
     engine: "fast",
+    abandonmentScore,
   };
 }
 
@@ -117,7 +137,7 @@ export async function runFastEvaluation(
 export function shouldEscalateToLLM(
   fastResult: FastEvalResult
 ): boolean {
-  const { mswimResult, syntheticHints } = fastResult;
+  const { mswimResult, syntheticHints, abandonmentScore } = fastResult;
 
   // Escalate if composite score is in ACTIVE+ range — LLM provides
   // better narrative for high-stakes interventions
@@ -132,7 +152,72 @@ export function shouldEscalateToLLM(
   // Escalate if a gate forced escalation
   if (mswimResult.gate_override?.startsWith("FORCE_ESCALATE")) return true;
 
+  // Escalate on imminent abandonment risk — high-value moment requires LLM nuance
+  if (abandonmentScore >= 80) return true;
+
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Abandonment Score
+// ---------------------------------------------------------------------------
+
+interface AbandonmentInput {
+  sessionAgeSec: number;
+  pageType: string;
+  cartValue: number;
+  cartItemCount: number;
+  scrollDepthPct: number;
+  sessionSequence: number;
+  priorExitIntentCount: number;
+  detectedFrictionIds: string[];
+  compositeScore: number;
+}
+
+/**
+ * Compute a 0–100 abandonment risk score from session behavioural signals.
+ * Higher = more likely to abandon. Does NOT call LLM.
+ */
+export function computeAbandonmentScore(input: AbandonmentInput): number {
+  let score = 0;
+
+  // Session age without conversion — long browsing without action is risky
+  if (input.sessionAgeSec > 600) score += 20;       // 10+ min
+  else if (input.sessionAgeSec > 300) score += 10;   // 5+ min
+  else if (input.sessionAgeSec > 180) score += 5;    // 3+ min
+
+  // Cart state: value in cart but not checking out is a strong signal
+  if (input.cartItemCount > 0 && input.pageType !== "checkout") {
+    score += 15;
+    if (input.cartValue > 0) score += 5; // has monetary value
+  }
+
+  // Page type — some pages have higher inherent abandonment risk
+  const pageRisk: Record<string, number> = {
+    cart: 15,
+    checkout: 10,
+    pdp: 5,
+    category: 3,
+  };
+  score += pageRisk[input.pageType] ?? 0;
+
+  // Exit intent events are very strong signals
+  score += Math.min(input.priorExitIntentCount * 15, 30);
+
+  // Low scroll depth on a product page = shallow engagement
+  if (input.pageType === "pdp" && input.scrollDepthPct < 30) score += 8;
+
+  // Minimal events = low engagement
+  if (input.sessionSequence < 3) score += 10;
+  else if (input.sessionSequence < 6) score += 5;
+
+  // Friction detected amplifies abandonment risk
+  score += Math.min(input.detectedFrictionIds.length * 5, 15);
+
+  // High MSWIM composite already captures intervention need; add moderate weight
+  if (input.compositeScore >= 50) score += 5;
+
+  return clamp(score);
 }
 
 function buildFastNarrative(

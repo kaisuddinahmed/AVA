@@ -9,7 +9,7 @@ import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
 import { InterventionsTab } from "./components/InterventionsTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
-import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution } from "./types";
+import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse } from "./types";
 
 export function App() {
   const { activated, activatedAt } = useActivation();
@@ -88,6 +88,23 @@ export function App() {
     { pollMs: 30000 }
   );
 
+  // Poll insights for Track tab — lazy, only when Track tab is active
+  const { data: insightsData } = useApi<InsightsResponse>(
+    activated && isTrackTab && activeSiteUrl ? `/insights/latest?siteUrl=${encodeURIComponent(activeSiteUrl)}` : null,
+    { pollMs: 60000 }
+  );
+  const { data: croData } = useApi<CROResponse>(
+    activated && isTrackTab && activeSiteUrl ? `/insights/cro?siteUrl=${encodeURIComponent(activeSiteUrl)}` : null,
+    { pollMs: 60000 }
+  );
+
+  // Poll webhook stats for Intervene/Operate tab
+  const isInterveneTab = state.activeTab === "intervene";
+  const { data: webhookStats } = useApi<WebhookStatsResponse>(
+    activated && isInterveneTab && activeSiteUrl ? `/webhooks/stats?siteUrl=${encodeURIComponent(activeSiteUrl)}` : null,
+    { pollMs: 30000 }
+  );
+
   return (
     <div className="dashboard-shell">
       <Header connected={connected} activated={activated} />
@@ -121,6 +138,8 @@ export function App() {
               flowData={flowData?.flows ?? null}
               pageStatsData={pageStatsData?.pages ?? null}
               clickPoints={clickData?.points ?? null}
+              insightsSnapshot={insightsData?.snapshot ?? null}
+              croFindings={croData?.findings ?? null}
             />
           )}
 
@@ -143,6 +162,7 @@ export function App() {
               overview={overview ?? null}
               sessions={sessions}
               analyticsParams={analyticsParams}
+              webhookStats={webhookStats ?? null}
             />
           )}
         </>

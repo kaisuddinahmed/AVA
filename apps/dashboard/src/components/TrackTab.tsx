@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { TrackEventData, OverviewAnalytics } from "../types";
+import type { TrackEventData, OverviewAnalytics, InsightSnapshot, CROFinding, InsightRecommendation } from "../types";
 import { fmtTime, fmtNum, fmtPct } from "../lib/format";
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   flowData: any[] | null;
   pageStatsData: any[] | null;
   clickPoints: Array<{ xPct: number; yPct: number; pageUrl: string }> | null;
+  insightsSnapshot: InsightSnapshot | null;
+  croFindings: CROFinding[] | null;
 }
 
 /** Parse raw_signals JSON and build a human-readable one-liner. */
@@ -221,7 +223,11 @@ function AnalyticsSection({ title, children, defaultOpen = true }: {
   );
 }
 
-export function TrackTab({ events, selectedSession, overview, trafficData, deviceData, funnelData, flowData, pageStatsData, clickPoints }: Props) {
+function confidenceColor(c: InsightRecommendation["confidence"]): string {
+  return c === "high" ? "var(--accent)" : c === "medium" ? "var(--tier-nudge)" : "var(--muted)";
+}
+
+export function TrackTab({ events, selectedSession, overview, trafficData, deviceData, funnelData, flowData, pageStatsData, clickPoints, insightsSnapshot, croFindings }: Props) {
   const filtered = useMemo(
     () => selectedSession ? events.filter((e) => e.session_id === selectedSession) : events,
     [events, selectedSession]
@@ -248,6 +254,85 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
 
   return (
     <div className="tab-content">
+
+      {/* ═══════════════════════════════════════════════════════════
+          INSIGHTS — Weekly merchant digest + AI recommendations
+          First section — most actionable view for merchants.
+      ═══════════════════════════════════════════════════════════ */}
+      {(insightsSnapshot || croFindings) && (
+        <div style={{ marginBottom: 12 }}>
+          {insightsSnapshot && (
+            <AnalyticsSection title="AVA Insights — Weekly Summary" defaultOpen={true}>
+              {/* Digest row */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                {[
+                  { label: "Sessions", value: fmtNum(insightsSnapshot.sessionsAnalyzed) },
+                  { label: "Frictions Caught", value: fmtNum(insightsSnapshot.frictionsCaught) },
+                  { label: "Attributed Revenue", value: `$${insightsSnapshot.attributedRevenue.toFixed(2)}` },
+                  ...(insightsSnapshot.wowDeltaPct != null
+                    ? [{ label: "WoW Sessions", value: `${insightsSnapshot.wowDeltaPct >= 0 ? "+" : ""}${insightsSnapshot.wowDeltaPct.toFixed(1)}%` }]
+                    : []),
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: "rgba(8,26,34,0.5)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "6px 12px", flex: "1 1 120px" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Top friction types */}
+              {insightsSnapshot.topFrictionTypes.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 4 }}>Top Friction Types This Week</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {insightsSnapshot.topFrictionTypes.map((fid) => (
+                      <span key={fid} style={{ fontSize: 10, padding: "2px 8px", background: "rgba(232,155,59,0.12)", color: "var(--accent)", border: "1px solid rgba(232,155,59,0.3)", borderRadius: 3, fontWeight: 700 }}>
+                        {fid}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* AI Recommendations */}
+              {insightsSnapshot.recommendations.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 8 }}>AVA Recommendations</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {insightsSnapshot.recommendations.map((rec, i) => (
+                      <div key={i} style={{ padding: "8px 10px", background: "rgba(8,26,34,0.4)", borderLeft: `3px solid ${confidenceColor(rec.confidence)}`, borderRadius: "0 4px 4px 0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, color: "var(--info)", fontWeight: 700 }}>{rec.frictionId} — {rec.page}</span>
+                          <span style={{ fontSize: 9, color: confidenceColor(rec.confidence), textTransform: "capitalize" }}>
+                            {rec.confidence} confidence ({fmtNum(rec.sampleSize)})
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.4 }}>{rec.fixText}</div>
+                        <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{rec.impactEstimate}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </AnalyticsSection>
+          )}
+
+          {croFindings && croFindings.length > 0 && (
+            <AnalyticsSection title={`CRO Analysis — ${croFindings.length} Structural Issues`} defaultOpen={false}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {croFindings.map((finding, i) => (
+                  <div key={i} style={{ padding: "8px 10px", background: "rgba(8,26,34,0.4)", borderRadius: 4, borderLeft: "3px solid rgba(255,255,255,0.1)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 10, color: "var(--warn)", fontWeight: 700 }}>{finding.frictionId} — {finding.page}</span>
+                      <span style={{ fontSize: 9, color: "var(--muted)" }}>{fmtNum(finding.eventCount)} events · {fmtNum(finding.sessionsImpacted)} sessions · sev {finding.avgSeverity}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.4 }}>{finding.suggestion}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 8 }}>AVA suggestion — not auto-applied. Review before making site changes.</div>
+            </AnalyticsSection>
+          )}
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════
           ROW 1 — KPI HERO STRIP
