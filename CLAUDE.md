@@ -27,7 +27,8 @@ Turborepo monorepo. Key workspaces:
 | `apps/server` | WebSocket server | 8081 |
 | `apps/dashboard` | React + Vite merchant UI | 3000 |
 | `apps/store` | Static demo store | 3001 |
-| `apps/demo` | Integration wizard + three-panel demo | 3002 |
+| `apps/wizard` | Integration wizard standalone | 3002 |
+| `apps/demo` | Three-panel demo (wizard + store + dashboard) | 4002 |
 | `apps/widget` | Vanilla TS IIFE, Shadow DOM | — |
 | `packages/shared` | All shared types + catalogs | — |
 | `packages/db` | Prisma ORM + all repositories | — |
@@ -96,10 +97,10 @@ Weights always load from `ScoringConfig` table — never hardcoded.
 # Dev
 npm run dev                  # All apps
 npm run dev:server           # Backend only (:8080 + WS :8081)
-npm run dev:demo             # Server + store + wizard
+npm run dev:demo             # Three-panel demo: wizard + store + dashboard (:4002)
+npm run dev:integration      # Integration wizard standalone (:3002)
 npm run dev:dashboard        # Dashboard (:3000)
 npm run dev:widget           # Widget
-npm run dev:integration      # Integration wizard only (:3002)
 
 # Database
 npm run db:push              # Apply schema + generate Prisma client
