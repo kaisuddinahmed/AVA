@@ -16,6 +16,7 @@ export * from "./constants/severity-scores.js";
 export * from "./constants/intervention-types.js";
 export * from "./constants/mswim-defaults.js";
 export * from "./constants/behavior-pattern-catalog.js";
+export * from "./constants/behavior-pattern-groups.js";
 
 // Utils
 export * from "./utils/mswim.js";

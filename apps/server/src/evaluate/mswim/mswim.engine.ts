@@ -1,4 +1,4 @@
-import type { MSWIMSignals, MSWIMResult, MSWIMDecision } from "@ava/shared";
+import type { MSWIMSignals, MSWIMResult, MSWIMDecision, BehaviorGroup } from "@ava/shared";
 import { ScoreTier } from "@ava/shared";
 import { computeComposite } from "@ava/shared";
 import { adjustIntent } from "./signals/intent.signal.js";
@@ -56,6 +56,10 @@ export interface SessionContext {
   hasCheckoutTimeout: boolean;
   hasHelpSearch: boolean;
 
+  // Behavior pattern detection results
+  detectedBehaviorPatternIds: string[];
+  activeBehaviorGroups: BehaviorGroup[];
+
   // Experiment override — loads a specific ScoringConfig instead of the active one
   scoringConfigId?: string;
 }
@@ -79,12 +83,14 @@ export async function runMSWIM(
       isRepeatVisitor: sessionCtx.isRepeatVisitor,
       cartValue: sessionCtx.cartValue,
       cartItemCount: sessionCtx.cartItemCount,
+      activeBehaviorGroups: sessionCtx.activeBehaviorGroups,
     }),
     friction: adjustFriction(llmOutput.friction, llmOutput.detectedFrictionIds),
     clarity: adjustClarity(llmOutput.clarity, {
       sessionAgeSec: sessionCtx.sessionAgeSec,
       eventCount: sessionCtx.eventCount,
       ruleBasedCorroboration: sessionCtx.ruleBasedCorroboration,
+      activeBehaviorGroups: sessionCtx.activeBehaviorGroups,
     }),
     receptivity: computeReceptivity(llmOutput.receptivity, {
       totalInterventionsFired: sessionCtx.totalInterventionsFired,

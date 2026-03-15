@@ -123,6 +123,7 @@ model Evaluation {
   gateOverride     String? // Which gate triggered, null if none
   interventionType String? // passive | nudge | active | escalate
   reasoning        String // Why
+  detectedBehaviors String? // JSON: DetectedBehaviorPattern[] — B-codes active during this eval
 
   intervention Intervention?
 

@@ -51,6 +51,16 @@ export interface FrictionDetection {
   source: "llm" | "rule" | "hybrid";
 }
 
+// ── Behavior Pattern Detection ───────────────────────────────
+export type BehaviorGroup = "HIGH_INTENT" | "COMPARISON" | "HESITATION" | "DISCOVERY" | "EXIT_RISK";
+
+export interface DetectedBehaviorPattern {
+  patternId: string;
+  group: BehaviorGroup;
+  confidence: number;
+  evidence: string[];
+}
+
 // ── Evaluation ───────────────────────────────────────────────
 export interface EvaluationData {
   evaluation_id: string;
@@ -62,6 +72,7 @@ export interface EvaluationData {
   intervention_type: string | null;
   decision_reasoning: string;
   engine?: "llm" | "fast";
+  behavior_patterns?: DetectedBehaviorPattern[];
 }
 
 // ── Intervention ─────────────────────────────────────────────

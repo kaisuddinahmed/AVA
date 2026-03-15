@@ -150,6 +150,11 @@ function buildFastNarrative(
   if (ctx.isRepeatVisitor) parts.push("Returning visitor.");
   if (ctx.cartValue > 0) parts.push(`Cart: $${ctx.cartValue.toFixed(2)}.`);
 
+  // Behavior groups
+  if (ctx.activeBehaviorGroups.length > 0) {
+    parts.push(`Behavior: ${ctx.activeBehaviorGroups.join(", ")}.`);
+  }
+
   // Friction
   if (frictionIds.length > 0) {
     parts.push(`Detected friction: ${frictionIds.join(", ")}.`);

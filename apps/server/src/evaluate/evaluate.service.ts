@@ -1,4 +1,4 @@
-import { EvaluationRepo, InterventionRepo, SessionRepo } from "@ava/db";
+import { EvaluationRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
 import { buildContext } from "./context-builder.js";
 import { evaluateWithLLM } from "./analyst.js";
 import { runMSWIM, type SessionContext } from "./mswim/mswim.engine.js";
@@ -9,6 +9,7 @@ import { logShadowComparison } from "./shadow-logger.js";
 import { runFastEvaluation, shouldEscalateToLLM, inferFrictionFromContext } from "./fast-evaluator.js";
 import { resolveExperimentOverrides } from "../experiment/experiment-resolver.js";
 import type { ExperimentOverrides } from "@ava/shared";
+import { detectBehaviorPatterns, extractActiveGroups, type DetectedBehaviorPattern } from "./behavior-pattern-matcher.js";
 
 export interface EvaluationResult {
   evaluationId: string;
@@ -124,7 +125,7 @@ async function evaluateFast(
   sessionId: string,
   eventIds: string[]
 ): Promise<EvaluationResult | null> {
-  const { sessionCtx, frictionIds } = await buildSessionAndFrictions(sessionId, eventIds);
+  const { sessionCtx, frictionIds, detectedPatterns } = await buildSessionAndFrictions(sessionId, eventIds);
   if (!sessionCtx) return null;
 
   const fastResult = await runFastEvaluation({
@@ -155,6 +156,7 @@ async function evaluateFast(
     gateOverride: mswimResult.gate_override?.toString() ?? undefined,
     interventionType: interventionType ?? undefined,
     reasoning,
+    detectedBehaviors: detectedPatterns.length > 0 ? JSON.stringify(detectedPatterns) : undefined,
   });
 
   return {
@@ -179,7 +181,7 @@ async function evaluateAuto(
   sessionId: string,
   eventIds: string[]
 ): Promise<EvaluationResult | null> {
-  const { sessionCtx, frictionIds, context } = await buildSessionAndFrictions(sessionId, eventIds);
+  const { sessionCtx, frictionIds, context, detectedPatterns } = await buildSessionAndFrictions(sessionId, eventIds);
   if (!sessionCtx) return null;
 
   // 1. Run fast engine
@@ -218,6 +220,7 @@ async function evaluateAuto(
     gateOverride: mswimResult.gate_override?.toString() ?? undefined,
     interventionType: interventionType ?? undefined,
     reasoning,
+    detectedBehaviors: detectedPatterns.length > 0 ? JSON.stringify(detectedPatterns) : undefined,
   });
 
   return {
@@ -262,10 +265,24 @@ async function evaluateLLM(
     loadInterventionHistory(sessionId),
   ]);
   if (!session) return null;
+  const siteConfig = await SiteConfigRepo.getSiteConfigByUrl(session.siteUrl).catch(() => null);
 
   const sessionAgeSec = Math.floor(
     (Date.now() - session.startedAt.getTime()) / 1000
   );
+
+  // Detect behavior patterns from the event batch (non-blocking)
+  const detectedPatterns = await detectBehaviorPatterns(
+    context.newEvents.map((e) => ({
+      category: (e.category as string) ?? "unknown",
+      eventType: (e.eventType as string) ?? "unknown",
+      frictionId: e.frictionId as string | null,
+      rawSignals: e.rawSignals as Record<string, unknown> | undefined,
+      pageType: e.pageType as string | undefined,
+    })),
+    siteConfig?.id ?? ""
+  );
+  const activeBehaviorGroups = extractActiveGroups(detectedPatterns);
 
   const sessionCtx: SessionContext = {
     sessionId,
@@ -304,6 +321,8 @@ async function evaluateLLM(
     ),
     hasCheckoutTimeout: llmOutput.detected_frictions.includes("F112"),
     hasHelpSearch: llmOutput.detected_frictions.includes("F036"),
+    detectedBehaviorPatternIds: detectedPatterns.map((p) => p.patternId),
+    activeBehaviorGroups,
     scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
@@ -351,6 +370,7 @@ async function evaluateLLM(
     gateOverride: mswimResult.gate_override?.toString() ?? undefined,
     interventionType: interventionType ?? undefined,
     reasoning: mswimResult.reasoning,
+    detectedBehaviors: detectedPatterns.length > 0 ? JSON.stringify(detectedPatterns) : undefined,
   });
 
   // === SHADOW MODE: Run MSWIM-no-LLM in background (non-blocking) ===
@@ -463,6 +483,7 @@ async function buildSessionAndFrictions(
   sessionCtx: SessionContext | null;
   frictionIds: string[];
   context: EvaluationContext | null;
+  detectedPatterns: DetectedBehaviorPattern[];
 }> {
   const [context, session, history] = await Promise.all([
     buildContext(sessionId, eventIds),
@@ -472,9 +493,9 @@ async function buildSessionAndFrictions(
 
   if (!context) {
     console.error(`[Evaluate] Session ${sessionId} not found`);
-    return { sessionCtx: null, frictionIds: [], context: null };
+    return { sessionCtx: null, frictionIds: [], context: null, detectedPatterns: [] };
   }
-  if (!session) return { sessionCtx: null, frictionIds: [], context: null };
+  if (!session) return { sessionCtx: null, frictionIds: [], context: null, detectedPatterns: [] };
 
   // Extract friction IDs from events (client-reported)
   const frictionIds = [
@@ -488,6 +509,20 @@ async function buildSessionAndFrictions(
   const sessionAgeSec = Math.floor(
     (Date.now() - session.startedAt.getTime()) / 1000
   );
+
+  // Detect behavior patterns (non-blocking — resolves before MSWIM but never throws)
+  const siteConfig = await SiteConfigRepo.getSiteConfigByUrl(session.siteUrl).catch(() => null);
+  const detectedPatterns = await detectBehaviorPatterns(
+    context.newEvents.map((e) => ({
+      category: (e.category as string) ?? "unknown",
+      eventType: (e.eventType as string) ?? "unknown",
+      frictionId: e.frictionId as string | null,
+      rawSignals: e.rawSignals as Record<string, unknown> | undefined,
+      pageType: e.pageType as string | undefined,
+    })),
+    siteConfig?.id ?? ""
+  );
+  const activeBehaviorGroups = extractActiveGroups(detectedPatterns);
 
   const sessionCtx: SessionContext = {
     sessionId,
@@ -526,6 +561,8 @@ async function buildSessionAndFrictions(
     ),
     hasCheckoutTimeout: frictionIds.includes("F112"),
     hasHelpSearch: frictionIds.includes("F036"),
+    detectedBehaviorPatternIds: detectedPatterns.map((p) => p.patternId),
+    activeBehaviorGroups,
     scoringConfigId: _experimentConfigOverrides.get(sessionId),
   };
 
@@ -537,5 +574,5 @@ async function buildSessionAndFrictions(
       ? frictionIds
       : [inferFrictionFromContext(sessionCtx)];
 
-  return { sessionCtx, frictionIds: effectiveFrictionIds, context };
+  return { sessionCtx, frictionIds: effectiveFrictionIds, context, detectedPatterns };
 }

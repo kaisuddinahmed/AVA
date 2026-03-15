@@ -1,8 +1,16 @@
 import { useMemo, useState } from "react";
-import type { EvaluationData, OverviewAnalytics, ScoreTier } from "../types";
+import type { BehaviorGroup, EvaluationData, OverviewAnalytics, ScoreTier } from "../types";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 import { SignalBars } from "./SignalBars";
 import { CompositeRing } from "./CompositeRing";
+
+const BEHAVIOR_GROUP_COLOR: Record<BehaviorGroup, string> = {
+  HIGH_INTENT: "#22c55e",
+  COMPARISON:  "#38bdf8",
+  HESITATION:  "#f59e0b",
+  DISCOVERY:   "#6b7280",
+  EXIT_RISK:   "#ef4444",
+};
 
 interface Props {
   evaluations: EvaluationData[];
@@ -324,6 +332,33 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
                         {f.friction_id} ({(f.confidence * 100).toFixed(0)}%)
                       </span>
                     ))}
+                  </div>
+                )}
+                {ev.behavior_patterns && ev.behavior_patterns.length > 0 && (
+                  <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginRight: 2 }}>behavior:</span>
+                    {/* Deduplicate groups and show color-coded chips */}
+                    {[...new Map(ev.behavior_patterns.map((p) => [p.group, p])).values()].map((p) => (
+                      <span
+                        key={p.group}
+                        title={`${p.group}: ${ev.behavior_patterns!.filter((x) => x.group === p.group).map((x) => `${x.patternId} (${(x.confidence * 100).toFixed(0)}%)`).join(", ")}`}
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: 10,
+                          border: `1px solid ${BEHAVIOR_GROUP_COLOR[p.group]}`,
+                          color: BEHAVIOR_GROUP_COLOR[p.group],
+                          background: `${BEHAVIOR_GROUP_COLOR[p.group]}14`,
+                          cursor: "default",
+                        }}
+                      >
+                        {p.group.replace("_", " ")}
+                      </span>
+                    ))}
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 2 }}>
+                      ({ev.behavior_patterns.length} pattern{ev.behavior_patterns.length !== 1 ? "s" : ""})
+                    </span>
                   </div>
                 )}
                 {ev.narrative && <div className="narrative">{ev.narrative}</div>}

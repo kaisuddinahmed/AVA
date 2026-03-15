@@ -27,6 +27,9 @@ export type CreateEvaluationInput = {
   gateOverride?: string;
   interventionType?: string;
   reasoning: string;
+
+  // Detected behavior patterns (JSON: DetectedBehaviorPattern[])
+  detectedBehaviors?: string;
 };
 
 // ---------------------------------------------------------------------------

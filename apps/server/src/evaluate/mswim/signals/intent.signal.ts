@@ -1,4 +1,4 @@
-import { INTENT_FUNNEL_SCORES, INTENT_BOOSTS } from "@ava/shared";
+import { INTENT_FUNNEL_SCORES, INTENT_BOOSTS, type BehaviorGroup, BEHAVIOR_GROUP_DEFINITIONS } from "@ava/shared";
 
 /**
  * Adjust the LLM's raw intent score using server-side signals.
@@ -14,6 +14,7 @@ export function adjustIntent(
     isRepeatVisitor: boolean;
     cartValue: number;
     cartItemCount: number;
+    activeBehaviorGroups?: BehaviorGroup[];
   }
 ): number {
   let score = llmRaw;
@@ -33,6 +34,16 @@ export function adjustIntent(
     score += INTENT_BOOSTS.CART_HAS_ITEMS;
     if (ctx.cartValue > 100) score += 5;
     if (ctx.cartValue > 250) score += 5;
+  }
+
+  // Behavior group intent boosts
+  if (ctx.activeBehaviorGroups?.length) {
+    let behaviorBoost = 0;
+    for (const g of ctx.activeBehaviorGroups) {
+      behaviorBoost += BEHAVIOR_GROUP_DEFINITIONS[g].intentBoost;
+    }
+    // Cap combined boost to ±20
+    score += Math.max(-20, Math.min(20, behaviorBoost));
   }
 
   return Math.max(0, Math.min(100, Math.round(score)));
