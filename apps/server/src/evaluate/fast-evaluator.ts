@@ -11,6 +11,7 @@
 import { getSeverity } from "@ava/shared";
 import { runMSWIM, type LLMOutput, type SessionContext } from "./mswim/mswim.engine.js";
 import type { MSWIMResult } from "@ava/shared";
+import { NetworkPatternRepo } from "@ava/db";
 
 // Synthetic intent base scores by page type (intentionally low —
 // adjustIntent() adds INTENT_FUNNEL_SCORES on top)
@@ -34,6 +35,26 @@ export interface FastEvalInput {
   latestScrollDepthPct?: number;
   latestSessionSequence?: number;
   priorExitIntentCount?: number;
+  /**
+   * Total session count for this site (Story 10 network prior).
+   * When < 50, the fast evaluator falls back to network-learned priors
+   * for friction severity instead of the local catalog defaults.
+   */
+  siteTotalSessions?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Network prior — fetches cross-merchant severity for a friction ID.
+// Used as a fallback when a site has fewer than 50 sessions of its own data.
+// ---------------------------------------------------------------------------
+
+async function getNetworkPriorSeverity(frictionId: string): Promise<number | null> {
+  try {
+    const pattern = await NetworkPatternRepo.getNetworkPattern(frictionId);
+    return pattern ? pattern.avgSeverity : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface FastEvalResult {
@@ -53,7 +74,8 @@ export async function runFastEvaluation(
   input: FastEvalInput
 ): Promise<FastEvalResult> {
   const { sessionCtx, detectedFrictionIds, pageType, eventCount,
-          latestScrollDepthPct = 0, latestSessionSequence = 0, priorExitIntentCount = 0 } = input;
+          latestScrollDepthPct = 0, latestSessionSequence = 0, priorExitIntentCount = 0,
+          siteTotalSessions = 9999 } = input;
 
   // ── 1. Synthesize intent hint ──────────────────────────────────────────
   let syntheticIntent = SYNTHETIC_INTENT_BASE[pageType] ?? 10;
@@ -63,10 +85,24 @@ export async function runFastEvaluation(
   syntheticIntent = clamp(syntheticIntent);
 
   // ── 2. Synthesize friction hint ────────────────────────────────────────
+  // For new sites (< 50 sessions), fall back to cross-merchant network priors
+  // for a more accurate severity estimate than the static catalog defaults.
+  const USE_NETWORK_PRIORS = siteTotalSessions < 50 && detectedFrictionIds.length > 0;
   let syntheticFriction = 10;
   if (detectedFrictionIds.length > 0) {
-    const severities = detectedFrictionIds.map((id) => getSeverity(id));
-    syntheticFriction = Math.max(...severities);
+    if (USE_NETWORK_PRIORS) {
+      // Attempt to load network priors; fall back to catalog severity if unavailable
+      const priorSeverities = await Promise.all(
+        detectedFrictionIds.map(async (id) => {
+          const prior = await getNetworkPriorSeverity(id);
+          return prior ?? getSeverity(id);
+        })
+      );
+      syntheticFriction = Math.max(...priorSeverities);
+    } else {
+      const severities = detectedFrictionIds.map((id) => getSeverity(id));
+      syntheticFriction = Math.max(...severities);
+    }
   }
   syntheticFriction = clamp(syntheticFriction);
 

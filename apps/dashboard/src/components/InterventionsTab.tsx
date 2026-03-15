@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import type { InterventionData, OverviewAnalytics, SessionSummary, VoiceAnalytics, WebhookStatsResponse } from "../types";
+import type { InterventionData, OverviewAnalytics, SessionSummary, VoiceAnalytics, WebhookStatsResponse, NetworkStatus } from "../types";
 import { useApi, apiFetch } from "../hooks/use-api";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 
@@ -11,6 +11,7 @@ interface Props {
   /** Pre-built query string (e.g. "?siteUrl=...&since=...") matching other analytics hooks */
   analyticsParams?: string;
   webhookStats: WebhookStatsResponse | null;
+  networkStatus: NetworkStatus | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ function SystemSection({ title, badge, children, defaultOpen = false }: {
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
-export function InterventionsTab({ interventions, selectedSession, overview, sessions, analyticsParams = "", webhookStats }: Props) {
+export function InterventionsTab({ interventions, selectedSession, overview, sessions, analyticsParams = "", webhookStats, networkStatus }: Props) {
   const filtered = useMemo(
     () => selectedSession ? interventions.filter((i) => i.session_id === selectedSession) : interventions,
     [interventions, selectedSession]
@@ -765,6 +766,41 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           </>
         ) : (
           <div className="empty-state" style={{ padding: 16 }}><p className="muted">No webhook data — configure a webhook URL in site settings.</p></div>
+        )}
+      </SystemSection>
+
+      {/* Network Learning (Story 10) */}
+      <SystemSection title="Network Learning"
+        badge={networkStatus ? `${networkStatus.totalPatterns} patterns` : undefined}>
+        {networkStatus ? (
+          <div className="grid-4" style={{ marginBottom: 12 }}>
+            <div className="metric-box">
+              <div className="label">Network Patterns</div>
+              <div className="value" style={{ color: "var(--accent)" }}>{fmtNum(networkStatus.totalPatterns)}</div>
+              <div className="sub">cross-merchant priors</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Your Contribution</div>
+              <div className="value">{fmtNum(networkStatus.site?.contributionSessions ?? 0)}</div>
+              <div className="sub">sessions (30d)</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Opt-In Status</div>
+              <div className="value" style={{ color: networkStatus.site?.networkOptIn ? "var(--accent)" : "var(--warn)", fontSize: 13 }}>
+                {networkStatus.site?.networkOptIn ? "Opted In" : "Opted Out"}
+              </div>
+              <div className="sub">{networkStatus.site?.networkOptIn ? "contributing + benefiting" : "benefiting only"}</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Prior Active</div>
+              <div className="value" style={{ color: "var(--info)", fontSize: 13 }}>
+                {(networkStatus.site?.contributionSessions ?? 0) < 50 ? "Yes" : "No"}
+              </div>
+              <div className="sub">{(networkStatus.site?.contributionSessions ?? 0) < 50 ? "< 50 sessions" : "site data sufficient"}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">Loading network status...</p></div>
         )}
       </SystemSection>
 

@@ -279,5 +279,15 @@ export interface WebhookStatsResponse {
 // ── Evaluation with abandonment score ────────────────────────
 export type AbandonmentScore = number; // 0–100
 
+// ── Network Flywheel (Story 10) ───────────────────────────────
+export interface NetworkStatus {
+  totalPatterns: number;
+  site: {
+    siteUrl: string;
+    networkOptIn: boolean;
+    contributionSessions: number;
+  } | null;
+}
+
 // ── Tab Type ─────────────────────────────────────────────────
 export type TabId = "track" | "evaluate" | "intervene";

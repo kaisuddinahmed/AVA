@@ -3,6 +3,8 @@ import Groq from "groq-sdk";
 import { config } from "../config.js";
 import { SessionRepo, EvaluationRepo, InterventionRepo } from "@ava/db";
 import { broadcastToSession } from "../broadcast/broadcast.service.js";
+import { isShoppingRequest } from "../agent/intent-parser.js";
+import { handleShoppingQuery, broadcastAgentResponse } from "../agent/shopping-agent.service.js";
 
 const VOICE_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.15, receptivity: 0.20, value: 0.15 });
 
@@ -44,11 +46,15 @@ function appendToHistory(
 }
 
 /**
- * Clear the conversation history for a session.
+ * Clear the conversation history and agent state for a session.
  * Called externally when a session ends or the widget reloads.
  */
 export function clearConversationHistory(sessionId: string): void {
   conversationHistories.delete(sessionId);
+  // Also clear shopping agent state (last search results, etc.)
+  import("../agent/shopping-agent.service.js")
+    .then(({ clearAgentState }) => clearAgentState(sessionId))
+    .catch(() => {});
 }
 
 // ── Page context helpers ──────────────────────────────────────────────────────
@@ -113,13 +119,29 @@ export async function handleVoiceQuery(
 
   // 2. Session voice state
   let voicePlayback = true;
+  let siteUrl = "";
   try {
     const session = await SessionRepo.getSession(sessionId);
     if (session?.voiceMuted) {
       voicePlayback = false; // user muted this session — reply text-only
     }
+    siteUrl = session?.siteUrl ?? "";
   } catch {
     // DB unavailable — continue without mute check
+  }
+
+  // 2b. Shopping agent dispatch — intercept product searches, comparisons, add-to-cart
+  if (isShoppingRequest(transcript)) {
+    try {
+      const agentCtx = { ...pageCtx, siteUrl };
+      const agentResponse = await handleShoppingQuery(sessionId, transcript, agentCtx);
+      const interventionId = await broadcastAgentResponse(sessionId, agentResponse, voicePlayback);
+      ws.send(JSON.stringify({ type: "voice_query_ack", intervention_id: interventionId, status: "ok" }));
+      return;
+    } catch (err) {
+      console.error("[VoiceResponder] Shopping agent error (falling through to LLM):", err);
+      // Fall through to general LLM path on error
+    }
   }
 
   // 3. Build Groq messages with history

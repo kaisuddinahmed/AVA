@@ -229,6 +229,13 @@ model SiteConfig {
   // Webhook for session-exit behavioral triggers (Story 9)
   webhookUrl          String?
   webhookSecret       String?
+  // Network flywheel opt-in (Story 10): opted-in merchants contribute anonymized
+  // aggregated patterns to the network; all merchants benefit from priors regardless.
+  networkOptIn        Boolean                  @default(true)
+  // Shopify integration (Story 11)
+  shopifyShop         String?                  // mystore.myshopify.com
+  shopifyAccessToken  String?                  // Shopify Admin API token (encrypted)
+  shopifyScriptTagId  Int?                     // ScriptTag resource ID for uninstall cleanup
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
@@ -693,4 +700,26 @@ model WebhookDelivery {
   @@index([sessionId])
   @@index([siteUrl, status, createdAt])
   @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// NetworkPattern — anonymized cross-merchant behavioral pattern aggregates
+// (Story 10). Computed weekly across opted-in merchants. No session data.
+// No site URLs. Strictly aggregate-level only.
+// ---------------------------------------------------------------------------
+model NetworkPattern {
+  id          String   @id @default(uuid())
+  updatedAt   DateTime @updatedAt
+  frictionId  String   @unique // e.g. "F068"
+  category    String   // friction category label
+  avgSeverity Float    // mean severity across opted-in merchants
+  // avg conversion rate when this friction was followed by an intervention
+  avgConversionImpact Float
+  // how many merchants contributed data (k-anonymity: minimum 3 to publish)
+  merchantCount       Int
+  // total sessions analyzed across all contributing merchants
+  totalSessions       Int
+
+  @@index([category])
+  @@index([avgSeverity])
 }

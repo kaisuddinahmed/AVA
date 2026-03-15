@@ -9,7 +9,7 @@ import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
 import { InterventionsTab } from "./components/InterventionsTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
-import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse } from "./types";
+import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse, NetworkStatus } from "./types";
 
 export function App() {
   const { activated, activatedAt } = useActivation();
@@ -105,6 +105,12 @@ export function App() {
     { pollMs: 30000 }
   );
 
+  // Poll network flywheel status for Intervene/Operate tab
+  const { data: networkStatus } = useApi<NetworkStatus>(
+    activated && isInterveneTab ? `/network/status${activeSiteUrl ? `?siteUrl=${encodeURIComponent(activeSiteUrl)}` : ""}` : null,
+    { pollMs: 60000 }
+  );
+
   return (
     <div className="dashboard-shell">
       <Header connected={connected} activated={activated} />
@@ -163,6 +169,7 @@ export function App() {
               sessions={sessions}
               analyticsParams={analyticsParams}
               webhookStats={webhookStats ?? null}
+              networkStatus={networkStatus ?? null}
             />
           )}
         </>

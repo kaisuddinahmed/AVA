@@ -8,6 +8,7 @@ import { prisma } from "@ava/db";
 import type { NightlyBatchResult, SubtaskResult } from "@ava/shared";
 import { generateInsightSnapshot } from "../insights/insights.service.js";
 import { runCROAnalysis } from "../insights/cro-analysis.service.js";
+import { runNetworkFlywheel } from "./network-flywheel.job.js";
 import { getQualityStats } from "../training/training-quality.service.js";
 import {
   loadTestSet,
@@ -57,6 +58,13 @@ export async function runNightlyBatch(): Promise<NightlyBatchResult> {
 
   // 9. Run CRO analysis for all active sites
   subtasks.push(await runSubtask("cro_analysis", runCROAnalysisBatch));
+
+  // 10. Network flywheel — weekly cross-merchant pattern aggregation
+  // Only runs on Sundays (day 0) to reduce load; other days it's a no-op.
+  const dayOfWeek = new Date().getDay();
+  if (dayOfWeek === 0) {
+    subtasks.push(await runSubtask("network_flywheel", runFlywheelAggregation));
+  }
 
   // Collect errors
   for (const st of subtasks) {
@@ -269,5 +277,18 @@ async function cleanupStaleData(): Promise<Record<string, unknown>> {
     prunedSnapshots: snapshotResult.count,
     prunedJobRuns: jobRunResult.count,
     snapshotRetentionDays: config.drift.snapshotRetentionDays,
+  };
+}
+
+/**
+ * Weekly network flywheel — aggregate anonymized cross-merchant patterns.
+ */
+async function runFlywheelAggregation(): Promise<Record<string, unknown>> {
+  const result = await runNetworkFlywheel();
+  return {
+    patternsUpdated: result.patternsUpdated,
+    patternsSkipped: result.patternsSkipped,
+    merchantsContributing: result.merchantsContributing,
+    totalSessionsAnalyzed: result.totalSessionsAnalyzed,
   };
 }

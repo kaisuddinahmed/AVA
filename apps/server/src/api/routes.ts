@@ -15,6 +15,8 @@ import * as rolloutsApi from "./rollouts.api.js";
 import * as voiceProxyApi from "../voice/voice-proxy.api.js";
 import * as insightsApi from "./insights.api.js";
 import * as webhooksApi from "./webhooks.api.js";
+import * as networkApi from "./network.api.js";
+import * as shopifyApi from "./shopify.api.js";
 
 export const apiRouter = Router();
 
@@ -119,6 +121,18 @@ apiRouter.get("/insights/cro", insightsApi.getCROFindings);
 // Webhooks (Session-exit behavioral triggers)
 apiRouter.get("/webhooks/stats", webhooksApi.getWebhookStats);
 apiRouter.put("/webhooks/config", webhooksApi.updateWebhookConfig);
+
+// Network Flywheel (Cross-merchant behavioral priors)
+apiRouter.get("/network/status", networkApi.getNetworkStatus);
+apiRouter.put("/network/opt-in", networkApi.updateNetworkOptIn);
+
+// Shopify Native App (OAuth + GDPR)
+apiRouter.get("/shopify/install", shopifyApi.install);
+apiRouter.get("/shopify/callback", shopifyApi.callback);
+apiRouter.post("/shopify/webhooks/uninstall", raw({ type: "*/*" }), shopifyApi.webhookUninstall);
+apiRouter.post("/shopify/webhooks/gdpr/customers/data_request", raw({ type: "*/*" }), shopifyApi.webhookCustomersDataRequest);
+apiRouter.post("/shopify/webhooks/gdpr/customers/redact", raw({ type: "*/*" }), shopifyApi.webhookCustomersRedact);
+apiRouter.post("/shopify/webhooks/gdpr/shop/redact", raw({ type: "*/*" }), shopifyApi.webhookShopRedact);
 
 // Rollouts (Gradual Config Changes)
 apiRouter.get("/rollouts", rolloutsApi.list);
