@@ -8,16 +8,92 @@ const VOICE_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.
 
 const groq = new Groq({ apiKey: config.groq.apiKey });
 
+// ── Conversation history ─────────────────────────────────────────────────────
+// Keyed by sessionId. Each entry is the alternating user/assistant turn pairs
+// sent to Groq (excludes the system prompt). Max MAX_TURNS pairs retained.
+
+const MAX_TURNS = 10; // 10 user turns + 10 assistant turns = 20 messages
+
+interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const conversationHistories = new Map<string, ConversationTurn[]>();
+
+function getHistory(sessionId: string): ConversationTurn[] {
+  if (!conversationHistories.has(sessionId)) {
+    conversationHistories.set(sessionId, []);
+  }
+  return conversationHistories.get(sessionId)!;
+}
+
+function appendToHistory(
+  sessionId: string,
+  userTurn: string,
+  assistantTurn: string,
+): void {
+  const history = getHistory(sessionId);
+  history.push({ role: "user", content: userTurn });
+  history.push({ role: "assistant", content: assistantTurn });
+
+  // Trim to MAX_TURNS pairs (oldest turns evicted first)
+  if (history.length > MAX_TURNS * 2) {
+    history.splice(0, history.length - MAX_TURNS * 2);
+  }
+}
+
+/**
+ * Clear the conversation history for a session.
+ * Called externally when a session ends or the widget reloads.
+ */
+export function clearConversationHistory(sessionId: string): void {
+  conversationHistories.delete(sessionId);
+}
+
+// ── Page context helpers ──────────────────────────────────────────────────────
+
+interface PageContext {
+  page_type?: string;
+  page_url?: string;
+}
+
+function buildSystemPrompt(pageCtx?: PageContext): string {
+  let prompt =
+    "You are AVA, a friendly personal shopping assistant embedded on an e-commerce site. " +
+    "Answer the shopper's question in 1-2 concise sentences. " +
+    "Be warm, direct, and helpful. Keep your reply under 60 words. " +
+    "Do not use markdown, bullet points, or lists — plain prose only. " +
+    "You have memory of this conversation — use it to give contextual follow-up answers.";
+
+  if (pageCtx?.page_type && pageCtx.page_type !== "other") {
+    prompt += ` The shopper is currently on the ${pageCtx.page_type} page.`;
+  }
+  if (pageCtx?.page_url) {
+    // Strip query params / hash for brevity
+    try {
+      const url = new URL(pageCtx.page_url);
+      prompt += ` Page URL: ${url.pathname}.`;
+    } catch {
+      // Non-parseable URL — skip
+    }
+  }
+
+  return prompt;
+}
+
 /**
  * Handle a voice_query from the widget ASR pipeline.
  *
  * Flow:
  *  1. Check voice is globally enabled on this deployment.
  *  2. Load session to check voice budget / mute state.
- *  3. Ask Groq for a short, warm shopping-assistant reply.
- *  4. Broadcast an "active" intervention back to the widget with
+ *  3. Build Groq messages array from system prompt + conversation history.
+ *  4. Ask Groq for a short, warm shopping-assistant reply.
+ *  5. Persist the new turn in conversationHistories.
+ *  6. Broadcast an "active" intervention back to the widget with
  *     voice_enabled + voice_script so the TTS manager picks it up.
- *  5. Ack the sender's WS connection.
+ *  7. Ack the sender's WS connection.
  *
  * Voice budget enforcement is intentionally lenient here: voice queries
  * are user-initiated, so we allow one extra reply even when the proactive
@@ -27,6 +103,7 @@ export async function handleVoiceQuery(
   ws: WebSocket,
   sessionId: string,
   transcript: string,
+  pageCtx?: PageContext,
 ): Promise<void> {
   // 1. Global toggle
   if (!config.voice.enabled) {
@@ -45,7 +122,11 @@ export async function handleVoiceQuery(
     // DB unavailable — continue without mute check
   }
 
-  // 3. Groq LLM — short spoken reply
+  // 3. Build Groq messages with history
+  const history = getHistory(sessionId);
+  const systemPrompt = buildSystemPrompt(pageCtx);
+
+  // 4. Groq LLM — short spoken reply (with conversation context)
   let answer =
     "Great question! Let me help you find exactly what you need.";
   let voiceScript = "Let me help you find exactly what you need.";
@@ -54,18 +135,9 @@ export async function handleVoiceQuery(
     const completion = await groq.chat.completions.create({
       model: config.groq.model,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are AVA, a friendly personal shopping assistant embedded on an e-commerce site. " +
-            "Answer the shopper's question in 1-2 concise sentences. " +
-            "Be warm, direct, and helpful. Keep your reply under 60 words. " +
-            "Do not use markdown, bullet points, or lists — plain prose only.",
-        },
-        {
-          role: "user",
-          content: transcript,
-        },
+        { role: "system", content: systemPrompt },
+        ...history,
+        { role: "user", content: transcript },
       ],
       max_tokens: 120,
       temperature: 0.65,
@@ -85,7 +157,10 @@ export async function handleVoiceQuery(
     // Fall through with the default answer — don't reject the user
   }
 
-  // 4. Persist a minimal evaluation + intervention so outcomes can be recorded
+  // 5. Persist this turn to conversation history
+  appendToHistory(sessionId, transcript, answer);
+
+  // 6. Persist a minimal evaluation + intervention so outcomes can be recorded
   const payload = {
     type: "active" as const,
     action_code: "VOICE_REPLY",
@@ -137,19 +212,20 @@ export async function handleVoiceQuery(
 
   const broadcastPayload = { ...payload, intervention_id: interventionId };
 
-  // 5. Broadcast "active" intervention to the widget for this session
+  // 7. Broadcast "active" intervention to the widget for this session
   broadcastToSession("widget", sessionId, {
     type: "intervention",
     sessionId,
     payload: broadcastPayload,
   });
 
+  const turnCount = getHistory(sessionId).length / 2;
   console.log(
-    `[VoiceResponder] Replied to session ${sessionId}: "${answer.slice(0, 60)}…"` +
+    `[VoiceResponder] Replied to session ${sessionId} (turn ${turnCount}): "${answer.slice(0, 60)}…"` +
     ` (voice=${voicePlayback})`,
   );
 
-  // 6. Ack to the widget's WS connection
+  // 8. Ack to the widget's WS connection
   ws.send(
     JSON.stringify({
       type: "voice_query_ack",

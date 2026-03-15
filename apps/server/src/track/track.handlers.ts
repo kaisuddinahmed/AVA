@@ -24,10 +24,10 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
       // Maybe it's a voice query (Phase 2 ASR)
       const voiceQueryResult = validatePayload(WsVoiceQuerySchema, raw);
       if (voiceQueryResult.success) {
-        const { session_id, transcript } = voiceQueryResult.data;
+        const { session_id, transcript, page_context } = voiceQueryResult.data;
         console.log(`[Track] Voice query from session ${session_id}: "${transcript.slice(0, 60)}"`);
 
-        handleVoiceQuery(ws, session_id, transcript)
+        handleVoiceQuery(ws, session_id, transcript, page_context)
           .catch((error) => {
             console.error("[Track] Voice query error:", error);
             ws.send(

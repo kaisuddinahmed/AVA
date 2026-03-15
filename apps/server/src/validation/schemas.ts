@@ -84,6 +84,11 @@ export const WsVoiceQuerySchema = z.object({
   session_id: z.string(),
   transcript: z.string().min(1).max(2000),
   timestamp: z.number(),
+  /** Optional page context — enriches the LLM system prompt for more relevant replies */
+  page_context: z.object({
+    page_type: z.string().optional(),
+    page_url: z.string().optional(),
+  }).optional(),
 });
 
 // ============================================================================

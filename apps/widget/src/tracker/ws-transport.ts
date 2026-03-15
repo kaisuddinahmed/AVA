@@ -127,15 +127,21 @@ export class FISMBridge {
   }
 
   /**
-   * Send a voice query (transcript from ASR) to the server.
-   * Server schema: { type: "voice_query", session_id, transcript, timestamp }
+   * Send a voice query (transcript from ASR or text input) to the server.
+   * Includes optional page context so the server can give more relevant replies.
+   * Server schema: { type: "voice_query", session_id, transcript, timestamp, page_context? }
    */
-  sendVoiceQuery(transcript: string): void {
+  sendVoiceQuery(transcript: string, pageContext?: { page_type?: string; page_url?: string }): void {
+    const w = typeof window !== "undefined" ? window : undefined;
     const msg: Record<string, unknown> = {
       type: "voice_query",
       session_id: this.sessionId,
       transcript,
       timestamp: Date.now(),
+      page_context: {
+        page_url: pageContext?.page_url ?? w?.location?.href,
+        ...(pageContext?.page_type ? { page_type: pageContext.page_type } : {}),
+      },
     };
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
