@@ -264,7 +264,7 @@ function FrictionSection({ analytics }: { analytics: FrictionAnalytics }) {
 
       {/* ── Severity distribution ── */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Severity Distribution (by detection volume)</div>
+        <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Severity Distribution (by detection volume)</div>
         <div style={{ display: "flex", gap: 4, height: 20 }}>
           {[
             { label: "Critical", value: sev.critical, color: "var(--tier-escalate)" },
@@ -313,7 +313,7 @@ function FrictionSection({ analytics }: { analytics: FrictionAnalytics }) {
       {/* ── 30-day trend sparkline ── */}
       {trend.length > 0 && top5Ids.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
             30-Day Detection Trend — Top {top5Ids.length} Frictions
           </div>
           <div style={{ display: "flex", gap: 1, alignItems: "flex-end", height: 40 }}>
@@ -344,7 +344,7 @@ function FrictionSection({ analytics }: { analytics: FrictionAnalytics }) {
       {/* ── Category heatmap ── */}
       {catEntries.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Category Heatmap</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Category Heatmap</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {catEntries.map(([cat, count]) => {
               const intensity = count / maxCat;
@@ -371,7 +371,7 @@ function FrictionSection({ analytics }: { analytics: FrictionAnalytics }) {
       )}
 
       {/* ── Top 10 friction list with expandable rows ── */}
-      <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>Top 10 Frictions</div>
+      <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Top 10 Frictions</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {top10.map((row) => (
           <div key={row.frictionId}>
@@ -459,7 +459,7 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
           {insightsSnapshot && (
             <AnalyticsSection title="AVA Insights — Weekly Summary" defaultOpen={true}>
               {/* Digest row */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
                 {[
                   { label: "Sessions", value: fmtNum(insightsSnapshot.sessionsAnalyzed) },
                   { label: "Frictions Caught", value: fmtNum(insightsSnapshot.frictionsCaught) },
@@ -468,16 +468,16 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
                     ? [{ label: "WoW Sessions", value: `${insightsSnapshot.wowDeltaPct >= 0 ? "+" : ""}${insightsSnapshot.wowDeltaPct.toFixed(1)}%` }]
                     : []),
                 ].map(({ label, value }) => (
-                  <div key={label} style={{ background: "rgba(8,26,34,0.5)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, padding: "6px 12px", flex: "1 1 120px" }}>
-                    <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{label}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>{value}</div>
+                  <div key={label} style={{ background: "rgba(6,20,30,0.6)", boxShadow: "0 0 0 1px rgba(255,255,255,0.05)", borderRadius: 8, padding: "10px 16px", flex: "1 1 130px" }}>
+                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)", lineHeight: 1.1 }}>{value}</div>
                   </div>
                 ))}
               </div>
               {/* Top friction types */}
               {insightsSnapshot.topFrictionTypes.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 4 }}>Top Friction Types This Week</div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Top Friction Types This Week</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {insightsSnapshot.topFrictionTypes.map((fid) => (
                       <span key={fid} style={{ fontSize: 10, padding: "2px 8px", background: "rgba(232,155,59,0.12)", color: "var(--accent)", border: "1px solid rgba(232,155,59,0.3)", borderRadius: 3, fontWeight: 700 }}>
@@ -490,18 +490,18 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
               {/* AI Recommendations */}
               {insightsSnapshot.recommendations.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", marginBottom: 8 }}>AVA Recommendations</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>AVA Recommendations</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {insightsSnapshot.recommendations.map((rec, i) => (
-                      <div key={i} style={{ padding: "8px 10px", background: "rgba(8,26,34,0.4)", borderLeft: `3px solid ${confidenceColor(rec.confidence)}`, borderRadius: "0 4px 4px 0" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                          <span style={{ fontSize: 10, color: "var(--info)", fontWeight: 700 }}>{rec.frictionId} — {rec.page}</span>
-                          <span style={{ fontSize: 9, color: confidenceColor(rec.confidence), textTransform: "capitalize" }}>
+                      <div key={i} style={{ padding: "10px 14px", background: "rgba(6,20,30,0.5)", borderLeft: `3px solid ${confidenceColor(rec.confidence)}`, borderRadius: "0 6px 6px 0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: "var(--info)", fontWeight: 700 }}>{rec.frictionId} — {rec.page}</span>
+                          <span style={{ fontSize: 11, color: confidenceColor(rec.confidence), textTransform: "capitalize" }}>
                             {rec.confidence} confidence ({fmtNum(rec.sampleSize)})
                           </span>
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.4 }}>{rec.fixText}</div>
-                        <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{rec.impactEstimate}</div>
+                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{rec.fixText}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{rec.impactEstimate}</div>
                       </div>
                     ))}
                   </div>
@@ -514,12 +514,12 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
             <AnalyticsSection title={`CRO Analysis — ${croFindings.length} Structural Issues`} defaultOpen={false}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {croFindings.map((finding, i) => (
-                  <div key={i} style={{ padding: "8px 10px", background: "rgba(8,26,34,0.4)", borderRadius: 4, borderLeft: "3px solid rgba(255,255,255,0.1)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span style={{ fontSize: 10, color: "var(--warn)", fontWeight: 700 }}>{finding.frictionId} — {finding.page}</span>
-                      <span style={{ fontSize: 9, color: "var(--muted)" }}>{fmtNum(finding.eventCount)} events · {fmtNum(finding.sessionsImpacted)} sessions · sev {finding.avgSeverity}</span>
+                  <div key={i} style={{ padding: "10px 14px", background: "rgba(6,20,30,0.5)", borderRadius: 6, borderLeft: "3px solid rgba(255,157,101,0.3)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: "var(--warn)", fontWeight: 700 }}>{finding.frictionId} — {finding.page}</span>
+                      <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtNum(finding.eventCount)} events · {fmtNum(finding.sessionsImpacted)} sessions · sev {finding.avgSeverity}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.4 }}>{finding.suggestion}</div>
+                    <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{finding.suggestion}</div>
                   </div>
                 ))}
               </div>
@@ -541,7 +541,7 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
           ROW 1 — KPI HERO STRIP
           Four numbers a business owner reads in 3 seconds.
       ═══════════════════════════════════════════════════════════ */}
-      <div className={revenueAttribution ? "grid-5" : "grid-4"} style={{ marginBottom: 12 }}>
+      <div className={revenueAttribution ? "grid-5" : "grid-4"} style={{ marginBottom: 16 }}>
         <div className="metric-box">
           <div className="label">Active Sessions</div>
           <div className="value accent">{fmtNum(overview?.activeSessions ?? 0)}</div>
@@ -585,7 +585,7 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
           ROW 2 — LIVE EVENT FEED  (primary content — what's happening NOW)
           This is AVA's live pulse — better than any session recording tool.
       ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
           <span>
             Live Event Feed
@@ -683,12 +683,12 @@ export function TrackTab({ events, selectedSession, overview, trafficData, devic
       {hasAnalytics && (
         <div>
           <div style={{
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: 700,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
             color: "var(--muted)",
-            marginBottom: 8,
+            marginBottom: 12,
             paddingLeft: 2,
           }}>
             Behaviour Analytics

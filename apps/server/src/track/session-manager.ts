@@ -23,10 +23,17 @@ export async function getOrCreateSession(
   // Check cache first
   const cached = sessionCache.get(visitorKey);
   if (cached && Date.now() - cached.lastActivity < 30 * 60 * 1000) {
-    // Update last activity
-    cached.lastActivity = Date.now();
-    await SessionRepo.touchSession(cached.sessionId);
-    return cached.sessionId;
+    try {
+      // Update last activity — throws P2025 if the session was deleted from DB
+      // (e.g. after db:setup / db:seed while the server stayed running).
+      cached.lastActivity = Date.now();
+      await SessionRepo.touchSession(cached.sessionId);
+      return cached.sessionId;
+    } catch {
+      // Session no longer in DB — evict the stale entry and fall through to
+      // create a fresh session below.
+      sessionCache.delete(visitorKey);
+    }
   }
 
   // Create new session

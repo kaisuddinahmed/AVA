@@ -28,6 +28,23 @@ export class BehaviorCollector {
     this.bridge = bridge;
   }
 
+  /**
+   * Extract the current (discounted) price from a price element.
+   * When a product is on sale the store renders both prices inside one element:
+   *   <span id="modal-price">
+   *     <span class="text-red-600">$94.00</span>
+   *     <span class="line-through">$110.00</span>
+   *   </span>
+   * Using `textContent` naïvely produces "$94.00$110.00".
+   * This helper clones the element, strips any line-through children, then
+   * returns the remaining trimmed text — which is always the current price.
+   */
+  private extractCurrentPrice(el: HTMLElement): string {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll<HTMLElement>("[class*='line-through']").forEach((s) => s.remove());
+    return clone.textContent?.trim() ?? "";
+  }
+
   startCollecting(): void {
     this.emitPageView();
     this.trackProductViews();
@@ -97,8 +114,10 @@ export class BehaviorCollector {
       // Use specific IDs — avoids mis-matching category span as price (both are span.font-bold)
       const name = (modal.querySelector("#modal-title") as HTMLElement)?.textContent?.trim()
         || modal.querySelector("h2")?.textContent?.trim();
-      const price = (modal.querySelector("#modal-price") as HTMLElement)?.textContent?.trim()
-        || modal.querySelector("[data-analyze='price'], .price-tag")?.textContent?.trim();
+      const modalPriceEl = modal.querySelector("#modal-price") as HTMLElement | null;
+      const price = modalPriceEl
+        ? this.extractCurrentPrice(modalPriceEl)
+        : (modal.querySelector("[data-analyze='price'], .price-tag") as HTMLElement | null)?.textContent?.trim();
       const category = (modal.querySelector("#modal-category") as HTMLElement)?.textContent?.trim();
       return {
         product_name: name || null,
@@ -142,8 +161,11 @@ export class BehaviorCollector {
         // Modal visible — extract product info
         setTimeout(() => {
           const name = modal.querySelector("h2")?.textContent?.trim();
-          const price = modal.querySelector("[data-analyze='price'], .price-tag")?.textContent?.trim()
-            || modal.querySelector(".font-bold.text-2xl, .font-bold.text-xl")?.textContent?.trim();
+          const modalPriceEl = modal.querySelector("#modal-price") as HTMLElement | null;
+          const price = modalPriceEl
+            ? this.extractCurrentPrice(modalPriceEl)
+            : (modal.querySelector("[data-analyze='price'], .price-tag") as HTMLElement | null)?.textContent?.trim()
+              || (modal.querySelector(".font-bold.text-2xl, .font-bold.text-xl") as HTMLElement | null)?.textContent?.trim();
           const category = modal.querySelector("[class*='text-amber']")?.textContent?.trim();
 
           const productKey = name || "";

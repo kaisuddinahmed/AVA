@@ -136,6 +136,8 @@ export async function handleVoiceQuery(
       const agentCtx = { ...pageCtx, siteUrl };
       const agentResponse = await handleShoppingQuery(sessionId, transcript, agentCtx);
       const interventionId = await broadcastAgentResponse(sessionId, agentResponse, voicePlayback);
+      // Add shopping turn to history so follow-up general questions have context
+      appendToHistory(sessionId, transcript, agentResponse.message);
       ws.send(JSON.stringify({ type: "voice_query_ack", intervention_id: interventionId, status: "ok" }));
       return;
     } catch (err) {

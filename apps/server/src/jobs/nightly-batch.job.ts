@@ -155,6 +155,31 @@ async function runEvalHarnessCheck(): Promise<Record<string, unknown>> {
     { sampling: "stratified", since: yesterday.toISOString() },
   );
 
+  // Abandonment prediction accuracy: % of sessions with abandonmentScore ≥80
+  // in last 24h that ended without a conversion (true positives for abandonment).
+  const highAbandonmentEvals = await prisma.evaluation.findMany({
+    where: {
+      timestamp: { gte: yesterday },
+      abandonmentScore: { gte: 80 },
+    },
+    select: { sessionId: true },
+    distinct: ["sessionId"],
+  });
+
+  let abandonmentPredictionAccuracy: number | null = null;
+  if (highAbandonmentEvals.length > 0) {
+    const sessionIds = highAbandonmentEvals.map((e) => e.sessionId);
+    const actuallyAbandoned = await prisma.session.count({
+      where: {
+        id: { in: sessionIds },
+        totalConversions: 0,
+        status: "ended",
+      },
+    });
+    abandonmentPredictionAccuracy =
+      Math.round((actuallyAbandoned / highAbandonmentEvals.length) * 100) / 100;
+  }
+
   return {
     totalEvaluated: report.overall.totalEvaluated,
     interventionEffectiveness: report.tierAccuracy.interventionEffectiveness,
@@ -162,6 +187,9 @@ async function runEvalHarnessCheck(): Promise<Record<string, unknown>> {
     fireDismissalRate: report.decisionMetrics.fireDismissalRate,
     regressionDetected: report.regressionFlags.detected,
     regressionIssues: report.regressionFlags.issues,
+    // Story 7: abandonment-score ≥80 prediction accuracy
+    highAbandonmentScoreSessions: highAbandonmentEvals.length,
+    abandonmentPredictionAccuracy,
   };
 }
 

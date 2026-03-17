@@ -14,7 +14,7 @@
 
 import Groq from "groq-sdk";
 import { config } from "../config.js";
-import { EvaluationRepo, InterventionRepo, SessionRepo } from "@ava/db";
+import { EvaluationRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
 import { broadcastToSession } from "../broadcast/broadcast.service.js";
 import {
   parseIntent,
@@ -49,6 +49,7 @@ export interface AgentResponse {
   comparison?: ComparisonCard;
   action_code: string;
   intervention_type: "nudge" | "active";
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -72,7 +73,7 @@ export async function handleShoppingQuery(
       return handleCompare(sessionId, intent);
 
     case "add_to_cart":
-      return handleAddToCart(sessionId, intent);
+      return handleAddToCart(sessionId, intent, siteUrl);
 
     default:
       // Shouldn't reach here — caller checks isShoppingRequest() first
@@ -165,7 +166,7 @@ async function handleCompare(sessionId: string, intent: ShoppingIntent): Promise
   };
 }
 
-async function handleAddToCart(sessionId: string, intent: ShoppingIntent): Promise<AgentResponse> {
+async function handleAddToCart(sessionId: string, intent: ShoppingIntent, siteUrl?: string): Promise<AgentResponse> {
   const previous = lastSearchResults.get(sessionId) ?? [];
   const targetIdx = (intent.referenceIndex ?? 1) - 1;
   const product = previous[targetIdx];
@@ -179,13 +180,27 @@ async function handleAddToCart(sessionId: string, intent: ShoppingIntent): Promi
     };
   }
 
-  // Widget receives this and fires an add-to-cart action using verified selectors
+  // Resolve verified add-to-cart selector from onboarding trackingConfig
+  let addToCartSelector: string | undefined;
+  if (siteUrl) {
+    try {
+      const tc = await SiteConfigRepo.getTrackingConfig(siteUrl) as Record<string, unknown> | null;
+      const selectors = (tc?.selectors as Record<string, unknown> | undefined);
+      const atcSelectors = selectors?.addToCart as string[] | undefined;
+      addToCartSelector = atcSelectors?.[0];
+    } catch {
+      // Non-critical — widget falls back to heuristics
+    }
+  }
+
+  // Widget receives this, shows a confirmation card, then fires DOM click on the store button
   return {
     message: `Adding ${product.title} to your cart now.`,
     voice_script: `Adding ${product.title.slice(0, 40)} to your cart.`,
     products: [product],  // single product = widget knows to ATC it
     action_code: "AGENT_ADD_TO_CART",
     intervention_type: "active",
+    meta: addToCartSelector ? { addToCartSelector } : undefined,
   };
 }
 
@@ -257,6 +272,7 @@ export async function broadcastAgentResponse(
     comparison: response.comparison,
     voice_enabled: voicePlayback,
     voice_script: voicePlayback ? response.voice_script : undefined,
+    meta: response.meta,
   };
 
   let interventionId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

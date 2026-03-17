@@ -18,7 +18,7 @@
     "db:push": "prisma db push --schema packages/db/prisma/schema.prisma",
     "db:push:fast": "prisma db push --skip-generate --schema packages/db/prisma/schema.prisma",
     "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
-    "db:seed": "tsx scripts/seed-friction-catalog.ts && tsx scripts/seed-mswim-defaults.ts",
+    "db:seed": "tsx scripts/seed-friction-catalog.ts && tsx scripts/seed-mswim-defaults.ts && tsx scripts/seed-demo-site.ts",
     "db:setup": "npm run db:generate && npm run db:push && npm run db:seed",
     "simulate": "tsx scripts/simulate-sessions.ts",
     "simulate:large": "tsx scripts/simulate-sessions.ts --sessions 50 --concurrency 5",

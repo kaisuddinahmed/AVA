@@ -208,27 +208,27 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           ROW 1 — REVENUE RECOVERY HERO
           The $$ number that closes deals.
       ═══════════════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 16 }}>
         {/* Hero revenue card */}
-        <div className="card" style={{ marginBottom: 8, background: "linear-gradient(135deg, rgba(107,201,160,0.08) 0%, rgba(8,26,34,0.95) 100%)", border: "1px solid rgba(107,201,160,0.2)" }}>
-          <div className="card-body" style={{ padding: "18px 20px" }}>
+        <div className="card" style={{ marginBottom: 12, background: "linear-gradient(135deg, rgba(53,211,161,0.08) 0%, var(--card) 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35), 0 0 0 1px rgba(53,211,161,0.12)" }}>
+          <div className="card-body" style={{ padding: "22px 24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
               {/* Main revenue number */}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
                   Est. Revenue Recovered Today
                 </div>
                 {estimatedRevenue !== null ? (
                   <>
-                    <div style={{ fontSize: 36, fontWeight: 800, color: "var(--accent)", lineHeight: 1.1, letterSpacing: "-0.02em" }}>
+                    <div style={{ fontSize: 44, fontWeight: 800, color: "var(--accent)", lineHeight: 1.05, letterSpacing: "-0.02em" }}>
                       ${estimatedRevenue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                    <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
                       {conversionsCount} conversions × ${avgCartValue.toFixed(0)} avg order value
                     </div>
                   </>
                 ) : (
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--muted)", lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "var(--muted)", lineHeight: 1.2 }}>
                     {conversionsCount > 0
                       ? `${conversionsCount} sale${conversionsCount !== 1 ? "s" : ""} recovered`
                       : totalOutcomes === 0
@@ -242,17 +242,17 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
 
               {/* Supporting metrics */}
               <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
-                <div className="metric-box" style={{ minWidth: 80, textAlign: "center" }}>
+                <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
                   <div className="label">Fired</div>
                   <div className="value">{fmtNum(eff?.fired ?? totalOutcomes)}</div>
                   <div className="sub">interventions</div>
                 </div>
-                <div className="metric-box" style={{ minWidth: 80, textAlign: "center" }}>
+                <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
                   <div className="label">Conversion</div>
                   <div className="value accent">{totalOutcomes > 0 ? fmtPct(conversionRate) : "—"}</div>
                   <div className="sub">rate</div>
                 </div>
-                <div className="metric-box" style={{ minWidth: 80, textAlign: "center" }}>
+                <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
                   <div className="label">Dismissed</div>
                   <div className="value warn">{totalOutcomes > 0 ? fmtPct(dismissalRate) : "—"}</div>
                   <div className="sub">rate</div>
@@ -265,8 +265,8 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
         {/* Outcome breakdown bar */}
         {totalOutcomes > 0 && (
           <div className="card">
-            <div className="card-body" style={{ padding: "10px 16px" }}>
-              <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+            <div className="card-body" style={{ padding: "12px 18px" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>
                 Outcome Breakdown — {fmtNum(totalOutcomes)} total
               </div>
               <div className="outcome-bar" style={{ marginBottom: 6, height: 10, borderRadius: 5, overflow: "hidden" }}>
@@ -299,7 +299,7 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           Voice vs text conversion lift + mute rate.
       ═══════════════════════════════════════════════════════════ */}
       {voiceData && voiceData.voice.fired > 0 && (
-        <div className="card" style={{ marginBottom: 12, border: "1px solid rgba(91,155,213,0.2)", background: "linear-gradient(135deg, rgba(91,155,213,0.06) 0%, rgba(8,26,34,0.95) 100%)" }}>
+        <div className="card" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(89,184,230,0.07) 0%, var(--card) 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35), 0 0 0 1px rgba(89,184,230,0.12)" }}>
           <div className="card-head">
             <span>🔊 Voice Performance</span>
             <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, color: "var(--info)" }}>
@@ -362,7 +362,7 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           ROW 2 — LIVE INTERVENTION FEED
           The story: what AVA did, to whom, and what happened.
       ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
           <span>
             Intervention Feed
@@ -467,12 +467,12 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           Contains all previous Operate tab content.
       ═══════════════════════════════════════════════════════════ */}
       <div style={{
-        fontSize: 9,
+        fontSize: 11,
         fontWeight: 700,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
         color: "var(--muted)",
-        marginBottom: 8,
+        marginBottom: 10,
         paddingLeft: 2,
         display: "flex",
         alignItems: "center",

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useActivation } from "./hooks/use-activation";
 import { useWS } from "./hooks/use-ws";
 import { useDashboardStore } from "./hooks/use-dashboard-store";
@@ -14,10 +15,19 @@ import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttri
 export function App() {
   const { activated, activatedAt } = useActivation();
   const { state, dispatch, handleWSMessage } = useDashboardStore();
-  const { connected } = useWS(handleWSMessage, activated);
+  // Always connect WS — do NOT gate on `activated`.
+  // Gating caused a timing gap: widget sends first events immediately on store
+  // load, but the dashboard WS only connected after the activation React
+  // re-render, so those early events were broadcast to an empty channel.
+  const { connected } = useWS(handleWSMessage);
 
-  // Build since query so we only fetch data created after activation
-  const sinceQuery = activatedAt ? `since=${encodeURIComponent(activatedAt)}` : "";
+  // Build since query for analytics — use a 24h lookback window so charts
+  // show meaningful data even on first activation. The Live Feed uses the
+  // real activatedAt (no backdate) so it only shows THIS session's events.
+  const analyticsLookback = activatedAt
+    ? new Date(Math.min(Date.now() - 24 * 60 * 60 * 1000, new Date(activatedAt).getTime())).toISOString()
+    : null;
+  const sinceQuery = analyticsLookback ? `since=${encodeURIComponent(analyticsLookback)}` : "";
   const sinceSuffix = sinceQuery ? `?${sinceQuery}` : "";
 
   // Poll sessions every 5s — only when activated
@@ -26,6 +36,54 @@ export function App() {
     { pollMs: 5000 }
   );
   const sessions = sessionsResp?.sessions ?? [];
+
+  // One-time backfill: when sessions first arrive after activation, pull the
+  // last 50 events per session from the DB so the Live Event Feed is populated
+  // even for events that landed before the dashboard WS was connected.
+  const hasBackfilledRef = useRef(false);
+  useEffect(() => {
+    if (!activated || sessions.length === 0 || hasBackfilledRef.current) return;
+    hasBackfilledRef.current = true;
+
+    (async () => {
+      const API_BASE = "http://localhost:8080/api";
+      const allEvents: import("./types").TrackEventData[] = [];
+
+      // Only backfill sessions started in the last 5 minutes — this covers the
+      // WS timing gap (widget fires events before dashboard WS connects) without
+      // pulling in events from previous demo runs / yesterday's sessions.
+      const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+      const recentSessions = sessions.filter((s) => {
+        const t = s.startedAt ? new Date(s.startedAt).getTime() : 0;
+        return t > fiveMinAgo;
+      });
+
+      for (const session of recentSessions.slice(0, 5)) {
+        try {
+          const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(session.id)}/events?limit=50`);
+          if (!res.ok) continue;
+          const data = (await res.json()) as { events: Array<Record<string, unknown>> };
+          for (const ev of data.events ?? []) {
+            allEvents.push({
+              id: String(ev.id ?? ""),
+              session_id: String(ev.sessionId ?? session.id),
+              category: String(ev.category ?? "unknown"),
+              eventType: String(ev.eventType ?? ev.event_type ?? "unknown"),
+              frictionId: ev.frictionId ? String(ev.frictionId) : undefined,
+              pageType: ev.pageType ? String(ev.pageType) : undefined,
+              pageUrl: ev.pageUrl ? String(ev.pageUrl) : undefined,
+              rawSignals: typeof ev.rawSignals === "string" ? ev.rawSignals : JSON.stringify(ev.rawSignals ?? {}),
+              timestamp: ev.timestamp ? new Date(ev.timestamp as string).getTime() : Date.now(),
+            });
+          }
+        } catch { /* server not ready yet — harmless */ }
+      }
+
+      if (allEvents.length > 0) {
+        dispatch({ type: "BACKFILL_EVENTS", events: allEvents });
+      }
+    })();
+  }, [activated, sessions, dispatch]);
 
   // Determine siteUrl from first active session (for analytics queries)
   const activeSiteUrl = sessions[0]?.siteUrl ?? "";

@@ -17,8 +17,11 @@ export function initShopAssist(config: Partial<WidgetConfig>): {
   const collector = new BehaviorCollector(bridge, fullConfig.sessionId, fullConfig.userId);
   collector.startCollecting();
 
-  // Address memory: autofill checkout forms from localStorage on checkout pages
-  initAddressAutofill();
+  // Address memory: autofill checkout forms on checkout pages for known visitors
+  const visitorKey = fullConfig.userId ?? fullConfig.sessionId;
+  const siteUrl = fullConfig.siteUrl ?? (typeof window !== "undefined" ? window.location.origin : "");
+  const isRepeatVisitor = !!fullConfig.userId;
+  initAddressAutofill(visitorKey, siteUrl, isRepeatVisitor).catch(() => {});
 
   return { bridge, collector };
 }

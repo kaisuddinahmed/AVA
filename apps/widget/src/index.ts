@@ -51,8 +51,39 @@ async function checkActivationGate(
   }
 }
 
+/**
+ * Generate or retrieve a persistent anonymous visitor ID for this browser.
+ * Stored in localStorage so the same visitor is recognised across page loads.
+ * Falls back to a one-time random ID when localStorage is unavailable.
+ * No PII — purely an anonymous fingerprint.
+ */
+function getOrCreateVisitorId(): string {
+  const KEY = "ava_visitor_id";
+  try {
+    const stored = localStorage.getItem(KEY);
+    if (stored) return stored;
+    const id = "vis_" + Array.from(crypto.getRandomValues(new Uint8Array(12)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    localStorage.setItem(KEY, id);
+    return id;
+  } catch {
+    // Private browsing / blocked storage — ephemeral ID for this page load
+    return "vis_" + Array.from(crypto.getRandomValues(new Uint8Array(12)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+}
+
 async function init(config: Partial<WidgetConfig>): Promise<{ widget: AVAWidget | null }> {
   const fullConfig: WidgetConfig = { ...DEFAULT_CONFIG, ...config };
+
+  // Ensure every visitor gets a stable anonymous ID. Never ship with the empty
+  // default — an empty sessionId causes all visitors to share the same server
+  // session cache entry, breaking session isolation and event attribution.
+  if (!fullConfig.sessionId) {
+    fullConfig.sessionId = getOrCreateVisitorId();
+  }
 
   // ── Activation gate ──────────────────────────────────────────────────────────
   // If serverUrl is configured, always check activation.

@@ -32,6 +32,7 @@ type Action =
   | { type: "ADD_EVALUATION"; evaluation: EvaluationData; sessionId: string }
   | { type: "ADD_INTERVENTION"; intervention: InterventionData; sessionId: string }
   | { type: "SELECT_SESSION"; sessionId: string | null }
+  | { type: "BACKFILL_EVENTS"; events: TrackEventData[] }
   | { type: "CLEAR" };
 
 function reducer(state: DashboardState, action: Action): DashboardState {
@@ -40,12 +41,27 @@ function reducer(state: DashboardState, action: Action): DashboardState {
       return { ...state, activeTab: action.tab };
 
     case "ADD_EVENT": {
+      // Deduplicate by id to prevent double-counting between WS and backfill
+      if (action.event.id && state.events.some((e) => e.id === action.event.id)) {
+        return state;
+      }
       const eventWithSession = {
         ...action.event,
         session_id: action.event.session_id ?? action.sessionId,
       };
       const events = [eventWithSession, ...state.events].slice(0, MAX_ITEMS);
       return { ...state, events, eventCount: state.eventCount + 1 };
+    }
+
+    case "BACKFILL_EVENTS": {
+      // Batch-insert historical events (oldest first so newest end up at top)
+      // Skip any that already exist in the store (WS may have delivered them)
+      const existingIds = new Set(state.events.map((e) => e.id).filter(Boolean));
+      const fresh = action.events.filter((e) => !e.id || !existingIds.has(e.id));
+      if (fresh.length === 0) return state;
+      // Merge: live WS events (already in state) stay at the top; backfill below
+      const events = [...state.events, ...fresh].slice(0, MAX_ITEMS);
+      return { ...state, events, eventCount: state.eventCount + fresh.length };
     }
 
     case "ADD_EVALUATION": {

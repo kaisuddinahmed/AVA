@@ -103,20 +103,20 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
           ROW 1 — AI SUMMARY CARD  (plain English for business owners)
           "Here's what AVA's AI is seeing right now."
       ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-body" style={{ padding: "14px 16px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+      <div className="card" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(53,211,161,0.07) 0%, var(--card) 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35), 0 0 0 1px rgba(53,211,161,0.1)" }}>
+        <div className="card-body" style={{ padding: "20px 22px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
             {/* Left: headline summary */}
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
                 AVA Intelligence Summary
               </div>
               {totalEvals === 0 ? (
-                <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.5 }}>
+                <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.5 }}>
                   Waiting for sessions to evaluate...
                 </div>
               ) : (
-                <div style={{ fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>
+                <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.65 }}>
                   <span style={{ color: "var(--accent)", fontWeight: 700 }}>{fmtNum(totalEvals)}</span> sessions evaluated today
                   {atRiskCount > 0 ? (
                     <>
@@ -142,7 +142,7 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
                 </div>
               )}
               {latest && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+                <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
                   Latest session classified as{" "}
                   <span style={{ color: tierColor(latest.mswim.tier), fontWeight: 700 }}>{latest.mswim.tier}</span>
                   {" "}— {TIER_PLAIN[latest.mswim.tier as ScoreTier] ?? "unknown"}.
@@ -154,14 +154,14 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
             </div>
             {/* Right: current composite + avg */}
             <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
-              <div className="metric-box" style={{ minWidth: 80, textAlign: "center" }}>
+              <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
                 <div className="label">Now</div>
                 <div className="value" style={{ color: latest ? tierColor(latest.mswim.tier) : undefined }}>
                   {latest ? fmtScore(latest.mswim.composite_score) : "—"}
                 </div>
                 <div className="sub">{latest?.mswim.tier ?? "waiting"}</div>
               </div>
-              <div className="metric-box" style={{ minWidth: 80, textAlign: "center" }}>
+              <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
                 <div className="label">Avg Score</div>
                 <div className="value" style={{ color: tierColor(compositeToTier(avgComposite)) }}>
                   {totalEvals > 0 ? fmtScore(avgComposite) : "—"}
@@ -177,7 +177,7 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
           ROW 2 — SIGNAL STATE + TIER DISTRIBUTION
           The MSWIM scoring view — how AVA is weighing each signal.
       ═══════════════════════════════════════════════════════════ */}
-      <div className="grid-2" style={{ marginBottom: 12 }}>
+      <div className="grid-2" style={{ marginBottom: 16 }}>
         {/* MSWIM Composite + Signal Bars */}
         <div className="card">
           <div className="card-head">Current MSWIM Signal State</div>
@@ -252,7 +252,7 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
           What's blocking conversion across all sessions.
       ═══════════════════════════════════════════════════════════ */}
       {overview?.frictionHotspots && overview.frictionHotspots.length > 0 && (
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-head">
             Friction Hotspots
             <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, marginLeft: 8, opacity: 0.6 }}>
@@ -273,11 +273,11 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
                 }}>
                   <span style={{ fontSize: 9, color: "var(--muted)", minWidth: 16, textAlign: "right", opacity: 0.5 }}>#{i + 1}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--warn)" }}>{f.frictionId}</div>
-                    <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "capitalize" }}>{f.category}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)" }}>{f.frictionId}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>{f.category}</div>
                   </div>
                   <span style={{
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: 700,
                     color: f.count >= 10 ? "var(--tier-escalate)" : f.count >= 5 ? "var(--warn)" : "var(--muted)",
                   }}>{f.count}×</span>
@@ -292,7 +292,7 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
           ROW 4 — EVALUATION FEED
           The AI's running commentary on each session.
       ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
           <span>AI Evaluation Feed</span>
           <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10 }}>{filtered.length} evaluations</span>

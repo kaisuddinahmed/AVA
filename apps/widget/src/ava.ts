@@ -509,7 +509,10 @@ export class AVAWidget {
                 config: this.config,
                 card,
                 index: idx,
-                onAddToCart: (productId) => this.handleAddToCart(productId),
+                onAddToCart: (productId) => this.handleAddToCart(
+                  productId,
+                  msg.payload?.action_code === "AGENT_ADD_TO_CART" ? msg.payload.meta : undefined,
+                ),
                 onMoreLikeThis: (productId) => {
                   if (msg.payload) {
                     this.onMicroOutcome(msg.payload.intervention_id, "more_like_this");
@@ -698,7 +701,13 @@ export class AVAWidget {
     this.render();
   }
 
-  private handleAddToCart(productId: string): void {
+  private handleAddToCart(productId: string, meta?: Record<string, unknown>): void {
+    // Fire the DOM click on the store's add-to-cart button when this came from
+    // the shopping agent (AGENT_ADD_TO_CART) — this is the "shopper confirmation" step:
+    // the user already confirmed by clicking "Add to Cart" in the panel.
+    if (meta) {
+      this.tryClickStoreAddToCart(productId, meta.addToCartSelector as string | undefined);
+    }
     this.onUserAction("add_to_cart", { product_id: productId });
     this.messages.push({
       id: `msg_${Date.now()}`,
@@ -708,6 +717,48 @@ export class AVAWidget {
     });
     this.render();
     this.scrollMessages();
+  }
+
+  /**
+   * Locate and click the host store's add-to-cart button after shopper confirmation.
+   * Tries the verified selector from onboarding first, then common heuristics.
+   * Silent on failure — cart action is best-effort; shopper can always click manually.
+   */
+  private tryClickStoreAddToCart(productId: string, verifiedSelector?: string): void {
+    // 1. Verified selector from onboarding trackingConfig (most reliable)
+    if (verifiedSelector) {
+      const el = document.querySelector(verifiedSelector) as HTMLElement | null;
+      if (el) { el.click(); return; }
+    }
+
+    // 2. Product-scoped selector: find the container for this product_id then its ATC button
+    const productContainers = [
+      `[data-product-id="${productId}"]`,
+      `[data-product="${productId}"]`,
+      `[data-id="${productId}"]`,
+    ];
+    for (const containerSel of productContainers) {
+      const container = document.querySelector(containerSel);
+      if (container) {
+        const btn = container.querySelector("button[type='submit'], [data-action='add-to-cart'], .add-to-cart") as HTMLElement | null;
+        if (btn) { btn.click(); return; }
+      }
+    }
+
+    // 3. Generic heuristics for common e-commerce platforms
+    const heuristics = [
+      "[data-action='add-to-cart']",
+      "button[name='add']",
+      "form[action*='/cart'] button[type='submit']",
+      ".add-to-cart",
+      "#AddToCart",
+      ".btn-add-to-cart",
+      "[data-add-to-cart]",
+    ];
+    for (const sel of heuristics) {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (el) { el.click(); return; }
+    }
   }
 
   private handleSendMessage(): void {
