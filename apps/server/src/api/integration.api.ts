@@ -14,10 +14,15 @@ import {
   FULL_ACTIVE_THRESHOLDS,
   verifyIntegrationReadiness,
 } from "../onboarding/integration-verifier.js";
+import { runAnalyzerPipeline } from "../onboarding/analyzer-runner.js";
 import {
+
   IntegrationActivateSchema,
   IntegrationVerifySchema,
 } from "../validation/schemas.js";
+
+import { logger } from "../logger.js";
+const log = logger.child({ service: "api" });
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -50,7 +55,7 @@ export async function generateIntegration(req: Request, res: Response) {
       scriptUrl,
     });
   } catch (error) {
-    console.error("[API] generateIntegration error:", error);
+    log.error("[API] generateIntegration error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -115,7 +120,7 @@ export async function getInstallStatus(req: Request, res: Response) {
       siteId: site.id,
     });
   } catch (error) {
-    console.error("[API] getInstallStatus error:", error);
+    log.error("[API] getInstallStatus error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -159,7 +164,7 @@ export async function serveWidget(req: Request, res: Response) {
     res.setHeader("Cache-Control", "public, max-age=60");
     res.send(widgetJs);
   } catch (error) {
-    console.error("[API] serveWidget error:", error);
+    log.error("[API] serveWidget error:", error);
     res.status(500).send("// Internal server error");
   }
 }
@@ -241,7 +246,7 @@ export async function verifyIntegration(req: Request, res: Response) {
       recommendedMode: verification.recommendedMode,
     });
   } catch (error) {
-    console.error("[API] Verify integration error:", error);
+    log.error("[API] Verify integration error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -282,7 +287,25 @@ export async function activateIntegration(req: Request, res: Response) {
       avgConfidence: policy?.minConfidence ?? FULL_ACTIVE_THRESHOLDS.avgConfidence,
     };
 
-    const latestRun = await AnalyzerRunRepo.getLatestAnalyzerRunBySite(siteId);
+    let latestRun = await AnalyzerRunRepo.getLatestAnalyzerRunBySite(siteId);
+
+    // Auto-bootstrap: if no analyzer run exists, create one and run the pipeline
+    // so FrictionMapping + BehaviorPatternMapping rows are populated before gate checks.
+    if (!latestRun) {
+      log.info("[API] No analyzer run found for site %s — bootstrapping pipeline", siteId);
+      const bootstrapRun = await AnalyzerRunRepo.createAnalyzerRun({
+        siteConfigId: siteId,
+        status: "pending",
+        phase: "bootstrap",
+      });
+      try {
+        await runAnalyzerPipeline(bootstrapRun.id);
+      } catch (pipelineErr) {
+        log.warn("[API] Bootstrap pipeline error (non-fatal):", pipelineErr);
+      }
+      latestRun = await AnalyzerRunRepo.getLatestAnalyzerRunBySite(siteId);
+    }
+
     const verification = latestRun
       ? await verifyIntegrationReadiness({
           analyzerRunId: latestRun.id,
@@ -362,7 +385,7 @@ export async function activateIntegration(req: Request, res: Response) {
       runId: latestRun?.id ?? null,
     });
   } catch (error) {
-    console.error("[API] Activate integration error:", error);
+    log.error("[API] Activate integration error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -388,7 +411,7 @@ export async function resetSiteStatus(req: Request, res: Response) {
     await SiteConfigRepo.setIntegrationStatus(site.id, "analyzing", null);
     res.json({ status: "analyzing", reset: true });
   } catch (error) {
-    console.error("[API] resetSiteStatus error:", error);
+    log.error("[API] resetSiteStatus error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -445,7 +468,7 @@ export async function getSiteStatus(req: Request, res: Response) {
       site.integrationStatus === "limited_active";
     res.json({ status: site.integrationStatus, activated });
   } catch (error) {
-    console.error("[API] getSiteStatus error:", error);
+    log.error("[API] getSiteStatus error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }

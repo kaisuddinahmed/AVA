@@ -5,15 +5,21 @@
 // This is fire-and-forget. Errors are caught and logged, never propagated.
 // ============================================================================
 
-import { ShadowComparisonRepo } from "@ava/db";
+import { DriftAlertRepo, ShadowComparisonRepo } from "@ava/db";
 import type { MSWIMResult } from "@ava/shared";
 import { tierToString } from "./mswim/tier-resolver.js";
 import type { LLMOutput } from "./mswim/mswim.engine.js";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
+
+const DRIFT_DIVERGENCE_THRESHOLD = 15; // composite points
+
+const log = logger.child({ service: "evaluate" });
 
 export interface ComparisonInput {
   sessionId: string;
   evaluationId: string;
+  siteUrl?: string;
   prodResult: MSWIMResult;
   shadowResult: MSWIMResult;
   syntheticHints: LLMOutput;
@@ -51,7 +57,7 @@ export async function logShadowComparison(input: ComparisonInput): Promise<void>
 
     if (config.shadow.logToConsole) {
       const symbol = tierMatch && decisionMatch ? "=" : "!";
-      console.log(
+      log.info(
         `[Shadow ${symbol}] session=${sessionId.slice(0, 8)} ` +
           `prod=${prodTierStr}/${prodResult.decision}(${prodResult.composite_score.toFixed(1)}) ` +
           `shadow=${shadowTierStr}/${shadowResult.decision}(${shadowResult.composite_score.toFixed(1)}) ` +
@@ -94,8 +100,37 @@ export async function logShadowComparison(input: ComparisonInput): Promise<void>
 
       syntheticHints: JSON.stringify(syntheticHints),
     });
+
+    // Create a DriftAlert when divergence exceeds threshold or tier disagrees.
+    // Deduplicate within 6-hour window per CLAUDE.md spec.
+    if (compositeDivergence > DRIFT_DIVERGENCE_THRESHOLD || !tierMatch) {
+      const alertType = !tierMatch ? "tier_mismatch" : "composite_divergence";
+      const siteUrl = input.siteUrl ?? null;
+      const alreadyAlerted = await DriftAlertRepo.hasRecentAlert(
+        alertType, "session", siteUrl, 6
+      );
+      if (!alreadyAlerted) {
+        await DriftAlertRepo.createAlert({
+          siteUrl,
+          alertType,
+          severity: compositeDivergence > 25 || !tierMatch ? "high" : "medium",
+          windowType: "session",
+          metric: "composite_divergence",
+          expected: prodResult.composite_score,
+          actual: shadowResult.composite_score,
+          message:
+            `Session ${sessionId.slice(0, 8)}: prod=${prodTierStr}(${prodResult.composite_score.toFixed(1)}) ` +
+            `vs shadow=${shadowTierStr}(${shadowResult.composite_score.toFixed(1)}), ` +
+            `divergence=${compositeDivergence.toFixed(1)}`,
+        });
+        log.warn(
+          `[Shadow] DriftAlert created: type=${alertType} div=${compositeDivergence.toFixed(1)} ` +
+          `tierMatch=${tierMatch} site=${siteUrl ?? "unknown"}`
+        );
+      }
+    }
   } catch (error) {
     // Shadow logging must NEVER crash the production path
-    console.error("[Shadow] Failed to log comparison:", error);
+    log.error("[Shadow] Failed to log comparison:", error);
   }
 }

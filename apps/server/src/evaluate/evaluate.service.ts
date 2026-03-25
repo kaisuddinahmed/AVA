@@ -103,8 +103,12 @@ export async function evaluateEventBatch(
   if (overrides?.scoringConfigId) {
     _experimentConfigOverrides.set(sessionId, overrides.scoringConfigId);
   }
+  // Store model override for LLM calls
+  if (overrides?.modelId) {
+    _experimentModelOverrides.set(sessionId, overrides.modelId);
+  }
 
-  console.log(`[Evaluate] Starting evaluation for session ${sessionId}, engine=${engine}, events=${eventIds.length}`);
+  log.info(`[Evaluate] Starting evaluation for session ${sessionId}, engine=${engine}, events=${eventIds.length}`);
   try {
     if (engine === "fast") {
       return await evaluateFast(sessionId, eventIds);
@@ -117,11 +121,12 @@ export async function evaluateEventBatch(
     // Default: "llm"
     return await evaluateLLM(sessionId, eventIds);
   } catch (err) {
-    console.error(`[Evaluate] ❌ Engine error (${engine}) for session ${sessionId}:`, err);
+    log.error(`[Evaluate] ❌ Engine error (${engine}) for session ${sessionId}:`, err);
     throw err;
   } finally {
-    // Clean up per-session override
+    // Clean up per-session overrides
     _experimentConfigOverrides.delete(sessionId);
+    _experimentModelOverrides.delete(sessionId);
   }
 }
 
@@ -130,6 +135,12 @@ export async function evaluateEventBatch(
  * cleaned up after evaluation completes. Thread-safe for single-threaded Node.
  */
 export const _experimentConfigOverrides = new Map<string, string>();
+
+/**
+ * Per-session experiment model overrides. Threads modelId from experiment
+ * variant to the LLM call for model A/B testing.
+ */
+export const _experimentModelOverrides = new Map<string, string>();
 
 /**
  * Get the experiment scoring config override for a session, if any.
@@ -180,6 +191,30 @@ async function evaluateFast(
     abandonmentScore,
   });
 
+  // === SHADOW MODE: Compare fast result against shadow (non-blocking) ===
+  if (config.shadow.enabled) {
+    runShadowEvaluation({
+      sessionCtx,
+      detectedFrictionIds: frictionIds,
+      pageType: sessionCtx.pageType,
+      eventCount: sessionCtx.eventCount,
+    })
+      .then((shadow) =>
+        logShadowComparison({
+          sessionId,
+          evaluationId: evaluation.id,
+          siteUrl: sessionCtx.siteUrl,
+          prodResult: mswimResult,
+          shadowResult: shadow.shadowResult,
+          syntheticHints: shadow.syntheticHints,
+          pageType: sessionCtx.pageType,
+          eventCount: sessionCtx.eventCount,
+          cartValue: sessionCtx.cartValue,
+        })
+      )
+      .catch((err) => log.error("[Shadow] Fast path failed (non-blocking):", err));
+  }
+
   return {
     evaluationId: evaluation.id,
     decision: mswimResult.decision,
@@ -217,7 +252,7 @@ async function evaluateAuto(
 
   // 2. Check if we should escalate to LLM
   if (shouldEscalateToLLM(fastResult) && context) {
-    console.log(`[Evaluate:auto] Escalating to LLM for session ${sessionId} (composite=${fastResult.mswimResult.composite_score.toFixed(1)})`);
+    log.info(`[Evaluate:auto] Escalating to LLM for session ${sessionId} (composite=${fastResult.mswimResult.composite_score.toFixed(1)})`);
     return evaluateLLM(sessionId, eventIds);
   }
 
@@ -247,6 +282,30 @@ async function evaluateAuto(
     abandonmentScore,
   });
 
+  // === SHADOW MODE: Compare auto-fast result against shadow (non-blocking) ===
+  if (config.shadow.enabled) {
+    runShadowEvaluation({
+      sessionCtx,
+      detectedFrictionIds: frictionIds,
+      pageType: sessionCtx.pageType,
+      eventCount: sessionCtx.eventCount,
+    })
+      .then((shadow) =>
+        logShadowComparison({
+          sessionId,
+          evaluationId: evaluation.id,
+          siteUrl: sessionCtx.siteUrl,
+          prodResult: mswimResult,
+          shadowResult: shadow.shadowResult,
+          syntheticHints: shadow.syntheticHints,
+          pageType: sessionCtx.pageType,
+          eventCount: sessionCtx.eventCount,
+          cartValue: sessionCtx.cartValue,
+        })
+      )
+      .catch((err) => log.error("[Shadow] Auto path failed (non-blocking):", err));
+  }
+
   return {
     evaluationId: evaluation.id,
     decision: mswimResult.decision,
@@ -271,18 +330,19 @@ async function evaluateLLM(
   eventIds: string[]
 ): Promise<EvaluationResult | null> {
   // 1. Build context
-  console.log(`[Evaluate:llm] Building context for session ${sessionId}`);
+  log.info(`[Evaluate:llm] Building context for session ${sessionId}`);
   const context = await buildContext(sessionId, eventIds);
   if (!context) {
-    console.error(`[Evaluate:llm] Session ${sessionId} not found — buildContext returned null`);
+    log.error(`[Evaluate:llm] Session ${sessionId} not found — buildContext returned null`);
     return null;
   }
-  console.log(`[Evaluate:llm] Context built — ${context.newEvents.length} new events, ${context.eventHistory.length} history events`);
+  log.info(`[Evaluate:llm] Context built — ${context.newEvents.length} new events, ${context.eventHistory.length} history events`);
 
-  // 2. Call LLM
-  console.log(`[Evaluate:llm] Calling Groq LLM for session ${sessionId}...`);
-  const llmOutput = await evaluateWithLLM(context);
-  console.log(`[Evaluate:llm] LLM response received — tier signals: I=${llmOutput.signals.intent} F=${llmOutput.signals.friction}`);
+  // 2. Call LLM (with optional model override from experiment)
+  const modelOverride = _experimentModelOverrides.get(sessionId);
+  log.info(`[Evaluate:llm] Calling Groq LLM for session ${sessionId}${modelOverride ? ` (model: ${modelOverride})` : ""}...`);
+  const llmOutput = await evaluateWithLLM(context, modelOverride);
+  log.info(`[Evaluate:llm] LLM response received — tier signals: I=${llmOutput.signals.intent} F=${llmOutput.signals.friction}`);
 
   // 3. Build session context for MSWIM
   const [session, history] = await Promise.all([
@@ -332,8 +392,7 @@ async function evaluateLLM(
     secondsSinceLastNudge: history.secondsSinceLastNudge,
     secondsSinceLastDismissal: history.secondsSinceLastDismissal,
     frictionIdsAlreadyIntervened: history.frictionIdsAlreadyIntervened,
-    widgetOpenedVoluntarily: false, // TODO: surface from widget open events
-    idleSeconds: 0, // TODO: surface from idle_time events
+    ...extractSessionFlags(context),
     hasTechnicalError: llmOutput.detected_frictions.some(
       (id) => id >= "F161" && id <= "F177"
     ),
@@ -417,6 +476,7 @@ async function evaluateLLM(
         logShadowComparison({
           sessionId,
           evaluationId: evaluation.id,
+          siteUrl: sessionCtx.siteUrl,
           prodResult: mswimResult,
           shadowResult: shadow.shadowResult,
           syntheticHints: shadow.syntheticHints,
@@ -426,7 +486,7 @@ async function evaluateLLM(
         })
       )
       .catch((err) =>
-        console.error("[Shadow] Failed (non-blocking):", err)
+        log.error("[Shadow] Failed (non-blocking):", err)
       );
   }
 
@@ -496,6 +556,9 @@ async function loadInterventionHistory(sessionId: string): Promise<InterventionH
 }
 
 import type { EvaluationContext } from "./context-builder.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "evaluate" });
 
 /**
  * Extract signals needed for abandonment score computation from the event context.
@@ -533,6 +596,43 @@ function extractAbandonmentSignals(context: EvaluationContext | null): {
 }
 
 /**
+ * Derive receptivity-relevant session flags from the event log.
+ * These replace the earlier TODO stubs for widgetOpenedVoluntarily / idleSeconds.
+ */
+function extractSessionFlags(context: EvaluationContext | null): {
+  widgetOpenedVoluntarily: boolean;
+  idleSeconds: number;
+  hasRecentCheckoutAbandon: boolean;
+} {
+  if (!context) return { widgetOpenedVoluntarily: false, idleSeconds: 0, hasRecentCheckoutAbandon: false };
+
+  const allEvents = [...context.eventHistory, ...context.newEvents];
+
+  // idleSeconds: sum idle_ms from idle_with_cart events in this batch
+  const idleMs = context.newEvents
+    .filter((e) => (e.eventType as string) === "idle_with_cart")
+    .reduce((sum, e) => {
+      const r = e.rawSignals as Record<string, unknown> | undefined;
+      return sum + (Number(r?.idle_ms ?? 0));
+    }, 0);
+  const idleSeconds = Math.round(idleMs / 1000);
+
+  // widgetOpenedVoluntarily: true if a widget_open event exists (no SDK event yet — stays false)
+  const widgetOpenedVoluntarily = allEvents.some(
+    (e) => (e.eventType as string) === "widget_open"
+  );
+
+  // hasRecentCheckoutAbandon: exit-intent or exit-intent-with-cart in the session
+  const hasRecentCheckoutAbandon = allEvents.some(
+    (e) =>
+      (e.eventType as string) === "exit_intent" ||
+      (e.eventType as string) === "exit_intent_with_cart"
+  );
+
+  return { widgetOpenedVoluntarily, idleSeconds, hasRecentCheckoutAbandon };
+}
+
+/**
  * Build session context + extract friction IDs from events.
  * Shared by fast and auto engine paths.
  */
@@ -552,7 +652,7 @@ async function buildSessionAndFrictions(
   ]);
 
   if (!context) {
-    console.error(`[Evaluate] Session ${sessionId} not found`);
+    log.error(`[Evaluate] Session ${sessionId} not found`);
     return { sessionCtx: null, frictionIds: [], context: null, detectedPatterns: [] };
   }
   if (!session) return { sessionCtx: null, frictionIds: [], context: null, detectedPatterns: [] };
@@ -607,8 +707,7 @@ async function buildSessionAndFrictions(
     secondsSinceLastNudge: history.secondsSinceLastNudge,
     secondsSinceLastDismissal: history.secondsSinceLastDismissal,
     frictionIdsAlreadyIntervened: history.frictionIdsAlreadyIntervened,
-    widgetOpenedVoluntarily: false, // TODO: surface from widget open events
-    idleSeconds: 0, // TODO: surface from idle_time events
+    ...extractSessionFlags(context),
     hasTechnicalError: frictionIds.some(
       (id) => id >= "F161" && id <= "F177"
     ),

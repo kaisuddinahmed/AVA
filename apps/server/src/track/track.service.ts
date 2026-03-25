@@ -1,4 +1,4 @@
-import { EventRepo, SessionRepo } from "@ava/db";
+import { EventRepo, InterventionRepo, SessionRepo } from "@ava/db";
 import { EventBuffer } from "./event-buffer.js";
 import { normalizeEvent, extractUtmFields, type NormalizedEvent } from "./event-normalizer.js";
 import { getOrCreateSession, updateSessionCart, type SessionInitData } from "./session-manager.js";
@@ -6,14 +6,17 @@ import { evaluateEventBatch } from "../evaluate/evaluate.service.js";
 import { handleDecision } from "../intervene/intervene.service.js";
 import { makeDecision } from "../evaluate/decision-engine.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "track" });
 
 // Event buffer → flushes to evaluation pipeline
 const buffer = new EventBuffer(async (sessionId, eventIds) => {
-  console.log(`[Track] Buffer flushed for session ${sessionId} — ${eventIds.length} events`);
+  log.info(`[Track] Buffer flushed for session ${sessionId} — ${eventIds.length} events`);
   try {
     // Run evaluation
     const result = await evaluateEventBatch(sessionId, eventIds);
-    console.log(`[Track] Evaluation result for session ${sessionId}:`, result ? `tier=${result.tier} score=${result.compositeScore}` : "null");
+    log.info(`[Track] Evaluation result for session ${sessionId}:`, result ? `tier=${result.tier} score=${result.compositeScore}` : "null");
     if (!result) return;
 
     // Broadcast evaluation to dashboard (reshape to match dashboard EvaluationData)
@@ -94,10 +97,10 @@ const buffer = new EventBuffer(async (sessionId, eventIds) => {
       }
     }
   } catch (error) {
-    console.error(`[Track] ❌ Evaluation pipeline error for session ${sessionId}:`, error);
+    log.error(`[Track] ❌ Evaluation pipeline error for session ${sessionId}:`, error);
     if (error instanceof Error) {
-      console.error(`[Track] Error name: ${error.name}, message: ${error.message}`);
-      console.error(`[Track] Stack:`, error.stack);
+      log.error(`[Track] Error name: ${error.name}, message: ${error.message}`);
+      log.error(`[Track] Stack:`, error.stack);
     }
   }
 });
@@ -172,7 +175,25 @@ export async function processTrackEvent(
     },
   });
 
-  // 6. Buffer for evaluation
+  // 6. Implicit outcome attribution: purchase_complete / order_complete
+  //    Auto-attribute "converted" to the most recent intervention if fired ≤30 min ago.
+  if (
+    normalized.eventType === "purchase_complete" ||
+    normalized.eventType === "order_complete"
+  ) {
+    InterventionRepo.getRecentInterventionsBySession(sessionId, 1)
+      .then(([recent]) => {
+        if (!recent) return;
+        // Only attribute if within 30-minute window and not already resolved
+        const ageMs = Date.now() - new Date(recent.timestamp).getTime();
+        if (ageMs <= 30 * 60 * 1000 && recent.status === "delivered") {
+          recordInterventionOutcome(recent.id, "converted", "purchase_complete").catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
+  // 7. Buffer for evaluation
   buffer.add(sessionId, event.id);
 
   return { sessionId, eventId: event.id };

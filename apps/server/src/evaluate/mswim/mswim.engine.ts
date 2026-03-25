@@ -55,6 +55,7 @@ export interface SessionContext {
   hasPaymentFailure: boolean;
   hasCheckoutTimeout: boolean;
   hasHelpSearch: boolean;
+  hasRecentCheckoutAbandon: boolean;
 
   // Behavior pattern detection results
   detectedBehaviorPatternIds: string[];
@@ -99,6 +100,7 @@ export async function runMSWIM(
       isMobile: sessionCtx.deviceType === "mobile",
       widgetOpenedVoluntarily: sessionCtx.widgetOpenedVoluntarily,
       idleSeconds: sessionCtx.idleSeconds,
+      hasRecentCheckoutAbandon: sessionCtx.hasRecentCheckoutAbandon,
     }),
     value: computeValue(llmOutput.value, {
       cartValue: sessionCtx.cartValue,

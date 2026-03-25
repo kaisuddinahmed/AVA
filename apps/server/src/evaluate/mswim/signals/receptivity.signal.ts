@@ -17,6 +17,7 @@ export function computeReceptivity(
     isMobile: boolean;
     widgetOpenedVoluntarily: boolean;
     idleSeconds: number;
+    hasRecentCheckoutAbandon: boolean;
   }
 ): number {
   let score = RECEPTIVITY_BASE; // 80
@@ -34,6 +35,11 @@ export function computeReceptivity(
 
   if (ctx.isMobile) {
     score -= RECEPTIVITY_DECREMENTS.MOBILE_DEVICE; // -5
+  }
+
+  // Exit-intent during checkout or with cart — user is pulling away, lower receptivity
+  if (ctx.hasRecentCheckoutAbandon) {
+    score -= RECEPTIVITY_DECREMENTS.CHECKOUT_ABANDON; // -30
   }
 
   // Increments

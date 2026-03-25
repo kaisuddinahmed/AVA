@@ -102,6 +102,7 @@ export const RECEPTIVITY_DECREMENTS = {
   RECENT_INTERVENTION: 10,       // last intervention < 2 min ago
   RAPID_BROWSING: 10,            // < 5 sec per page
   MOBILE_DEVICE: 5,
+  CHECKOUT_ABANDON: 30,          // exit-intent while on checkout or with cart
 } as const;
 
 export const RECEPTIVITY_INCREMENTS = {
