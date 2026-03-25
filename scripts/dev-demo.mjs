@@ -153,16 +153,32 @@ async function ensureDatabase() {
   let needsInit = !existsSync(dbPath);
 
   if (!needsInit) {
-    // Also init if file exists but is empty (0 tables)
+    // Also init if file exists but is empty or has stale datetime format.
+    // Prisma WASM requires ISO 8601 (T-separator). SQLite CURRENT_TIMESTAMP
+    // produces "YYYY-MM-DD HH:MM:SS" (space). Re-bootstrap if stale.
     try {
       const { DatabaseSync } = await import("node:sqlite");
       const probe = new DatabaseSync(dbPath);
       const tables = probe.prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table'").get();
-      needsInit = tables.n === 0;
+      if (tables.n === 0) {
+        needsInit = true;
+      } else {
+        // Check datetime format on ScoringConfig — if space-separated, stale
+        const row = probe.prepare("SELECT createdAt FROM \"ScoringConfig\" LIMIT 1").get();
+        if (!row || !String(row.createdAt).includes("T")) {
+          needsInit = true;
+        }
+      }
       probe.close();
     } catch {
       needsInit = true;
     }
+  }
+
+  if (needsInit && existsSync(dbPath)) {
+    // Remove stale DB so we can create a fresh one
+    const { unlinkSync } = await import("node:fs");
+    try { unlinkSync(dbPath); } catch { /* ignore */ }
   }
 
   if (!needsInit) return;
