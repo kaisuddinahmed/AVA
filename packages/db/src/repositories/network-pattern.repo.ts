@@ -19,7 +19,14 @@ export interface NetworkPatternData {
  */
 export async function upsertNetworkPattern(data: NetworkPatternData) {
   if (data.merchantCount < 3) return null; // k-anonymity floor
-  return prisma.networkPattern.upsert({
+  // Avoid upsert — Prisma WASM crashes on upsert.
+  const _existing = await prisma.networkPattern.findUnique({ where: { frictionId: data.frictionId } });
+  if (_existing) {
+    return prisma.networkPattern.update({ where: { frictionId: data.frictionId }, data: { category: data.category, avgSeverity: data.avgSeverity, avgConversionImpact: data.avgConversionImpact, merchantCount: data.merchantCount, totalSessions: data.totalSessions } });
+  }
+  return prisma.networkPattern.create({ data });
+}
+export async function _DELETED_upsertNetworkPattern_STUB({
     where: { frictionId: data.frictionId },
     create: data,
     update: {
