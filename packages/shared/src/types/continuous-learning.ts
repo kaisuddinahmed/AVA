@@ -10,6 +10,7 @@ export interface ExperimentVariant {
   weight: number; // 0.0-1.0, must sum to 1.0 across variants
   scoringConfigId?: string;
   evalEngine?: "llm" | "fast" | "auto";
+  modelId?: string; // Fine-tuned model ID for A/B testing models
 }
 
 export interface ExperimentMetrics {
@@ -44,6 +45,7 @@ export interface ExperimentOverrides {
   variantId: string;
   evalEngine?: "llm" | "fast" | "auto";
   scoringConfigId?: string;
+  modelId?: string;
 }
 
 // ── Rollout Types ───────────────────────────────────────────────────────────

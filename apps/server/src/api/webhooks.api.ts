@@ -5,6 +5,9 @@
 import type { Request, Response } from "express";
 import { WebhookDeliveryRepo, SiteConfigRepo } from "@ava/db";
 import { prisma } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 function parseSiteUrl(req: Request): string | undefined {
   return req.query.siteUrl as string | undefined;
@@ -50,7 +53,7 @@ export async function getWebhookStats(req: Request, res: Response): Promise<void
       })),
     });
   } catch (err) {
-    console.error("[WebhooksAPI] getWebhookStats error:", err);
+    log.error("[WebhooksAPI] getWebhookStats error:", err);
     res.status(500).json({ error: "Failed to fetch webhook stats" });
   }
 }
@@ -84,7 +87,7 @@ export async function updateWebhookConfig(req: Request, res: Response): Promise<
 
     res.json({ success: true, siteUrl, webhookUrl: webhookUrl ?? siteConfig.webhookUrl });
   } catch (err) {
-    console.error("[WebhooksAPI] updateWebhookConfig error:", err);
+    log.error("[WebhooksAPI] updateWebhookConfig error:", err);
     res.status(500).json({ error: "Failed to update webhook config" });
   }
 }

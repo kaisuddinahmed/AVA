@@ -6,6 +6,7 @@
 // Prisma client
 export { prisma } from "./client.js";
 export type { PrismaClient } from "./client.js";
+export { Prisma } from "@prisma/client";
 
 // Repositories
 export * as SessionRepo from "./repositories/session.repo.js";
@@ -29,3 +30,6 @@ export * as InsightSnapshotRepo from "./repositories/insight-snapshot.repo.js";
 export * as WebhookDeliveryRepo from "./repositories/webhook-delivery.repo.js";
 export * as NetworkPatternRepo from "./repositories/network-pattern.repo.js";
 export * as VisitorAddressRepo from "./repositories/visitor-address.repo.js";
+export * as InterventionFeedbackRepo from "./repositories/intervention-feedback.repo.js";
+export * as ModelVersionRepo from "./repositories/model-version.repo.js";
+export * as RetrainTriggerRepo from "./repositories/retrain-trigger.repo.js";

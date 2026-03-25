@@ -335,6 +335,26 @@
         const submitBtn = document.getElementById('btn-submit');
         let step = 1;
 
+        window.useImageFallback = (img) => {
+            if (!(img instanceof HTMLImageElement)) return;
+            const fallback = img.dataset.fallbackSrc;
+            if (!fallback) return;
+            const activeSrc = img.currentSrc || img.src;
+            if (activeSrc === fallback) {
+                img.removeAttribute('data-fallback-src');
+                return;
+            }
+            img.removeAttribute('data-fallback-src');
+            img.src = fallback;
+        };
+
+        document.addEventListener('error', (event) => {
+            const target = event.target;
+            if (target instanceof HTMLImageElement) {
+                window.useImageFallback(target);
+            }
+        }, true);
+
         function renderCart() {
             const cart = getCart();
             cartContainer.innerHTML = '';
@@ -355,7 +375,7 @@
                 el.className = "flex gap-4 items-center bg-gray-50 border border-gray-200 p-3";
                 el.innerHTML = `
                     <div class="w-16 h-16 bg-gray-200 flex-shrink-0">
-                        <img src="${item.image}" class="w-full h-full object-cover">
+                        <img src="${item.image}" alt="${item.name}" data-fallback-src="${item.fallbackImage || item.image}" class="w-full h-full object-cover">
                     </div>
                     <div class="flex-grow">
                         <h4 class="font-bold text-sm line-clamp-1 text-black uppercase">${item.name}</h4>

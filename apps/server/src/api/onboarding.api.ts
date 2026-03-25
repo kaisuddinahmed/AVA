@@ -10,6 +10,9 @@ import {
   OnboardingStartSchema,
 } from "../validation/schemas.js";
 import { startOnboardingRun } from "../onboarding/onboarding.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 const TOTAL_BEHAVIOR_PATTERNS = 614;
 const TOTAL_FRICTION_SCENARIOS = 325;
@@ -32,7 +35,7 @@ export async function startOnboarding(req: Request, res: Response) {
     const result = await startOnboardingRun(parsed.data);
     res.status(201).json(result);
   } catch (error) {
-    console.error("[API] Start onboarding error:", error);
+    log.error("[API] Start onboarding error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     const statusCode = message === "Site config not found" ? 404 : 500;
     res.status(statusCode).json({ error: message });
@@ -97,7 +100,7 @@ export async function getOnboardingStatus(req: Request, res: Response) {
       latestStatus,
     });
   } catch (error) {
-    console.error("[API] Get onboarding status error:", error);
+    log.error("[API] Get onboarding status error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -180,7 +183,7 @@ export async function getOnboardingResults(req: Request, res: Response) {
       latestStatus,
     });
   } catch (error) {
-    console.error("[API] Get onboarding results error:", error);
+    log.error("[API] Get onboarding results error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }

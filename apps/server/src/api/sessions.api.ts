@@ -2,6 +2,9 @@ import type { Request, Response } from "express";
 import { SessionRepo } from "@ava/db";
 import { prisma } from "@ava/db";
 import { emitSessionExitWebhook } from "../webhooks/webhook.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 export async function listSessions(req: Request, res: Response) {
   try {
@@ -28,7 +31,7 @@ export async function listSessions(req: Request, res: Response) {
       : await SessionRepo.getRecentSessions(20);
     res.json({ sessions });
   } catch (error) {
-    console.error("[API] List sessions error:", error);
+    log.error("[API] List sessions error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -42,7 +45,7 @@ export async function getSession(req: Request, res: Response) {
     }
     res.json({ session });
   } catch (error) {
-    console.error("[API] Get session error:", error);
+    log.error("[API] Get session error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -55,7 +58,7 @@ export async function endSession(req: Request, res: Response) {
     emitSessionExitWebhook(sessionId).catch(() => {});
     res.json({ ok: true });
   } catch (error) {
-    console.error("[API] End session error:", error);
+    log.error("[API] End session error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }

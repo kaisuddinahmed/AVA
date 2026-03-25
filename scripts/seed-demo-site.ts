@@ -23,43 +23,32 @@ async function main() {
     where: { siteUrl: DEMO_SITE_URL },
   });
 
-  // Active statuses — do not downgrade if already fully activated
-  const ACTIVE_STATUSES = ["active", "limited_active"];
-
   if (existing) {
-    const needsKeyFix = existing.siteKey !== DEMO_SITE_KEY;
-    // Upgrade dormant/in-progress statuses to limited_active so the demo works
-    // without requiring the wizard to be re-run every time.
-    const needsStatusUpgrade = !ACTIVE_STATUSES.includes(existing.integrationStatus);
-
-    if (!needsKeyFix && !needsStatusUpgrade) {
+    if (existing.siteKey === DEMO_SITE_KEY) {
       console.log(`Demo site already seeded with correct siteKey (${DEMO_SITE_KEY})`);
       console.log(`  integrationStatus: ${existing.integrationStatus}`);
       console.log("\n⏭  Skipping seed (already correct).");
       return;
     }
-
+    // Key mismatch — update to the canonical demo key so the store snippet works.
+    // Never touch integrationStatus — that is owned by the wizard flow.
     await prisma.siteConfig.update({
       where: { siteUrl: DEMO_SITE_URL },
-      data: {
-        ...(needsKeyFix ? { siteKey: DEMO_SITE_KEY } : {}),
-        ...(needsStatusUpgrade ? { integrationStatus: "limited_active" } : {}),
-      },
+      data: { siteKey: DEMO_SITE_KEY },
     });
-    if (needsKeyFix) console.log(`✅ Updated demo site siteKey to ${DEMO_SITE_KEY} (was ${existing.siteKey})`);
-    if (needsStatusUpgrade) console.log(`✅ Upgraded integrationStatus: ${existing.integrationStatus} → limited_active`);
+    console.log(`✅ Updated demo site siteKey to ${DEMO_SITE_KEY} (was ${existing.siteKey})`);
     return;
   }
 
-  // Create the demo site config from scratch — pre-activate so the demo works
-  // immediately without requiring a full wizard run.
+  // Create the demo site config from scratch.
+  // Status starts as "pending" — the wizard owns the transition to active.
   const site = await prisma.siteConfig.create({
     data: {
       siteUrl: DEMO_SITE_URL,
       siteKey: DEMO_SITE_KEY,
       platform: "custom",
       trackingConfig: JSON.stringify({}),
-      integrationStatus: "limited_active",
+      integrationStatus: "pending",
     },
   });
 

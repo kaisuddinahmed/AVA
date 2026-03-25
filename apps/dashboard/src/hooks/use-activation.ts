@@ -28,10 +28,9 @@ const SERVER_POLL_MS = 5000;
  * All channels funnel into one idempotent `activate()` — the first one
  * that fires wins, subsequent calls are no-ops (via activatedRef guard).
  *
- * On mount the hook restores activation from localStorage (same-origin across
- * the standalone tab and the iframe embedded in 4002) so both instances stay
- * in sync automatically. activatedAt is reset to `now` on restore so the Live
- * Feed always starts fresh regardless of when the site was originally activated.
+ * The dashboard always starts inactive on page load. Activation is exclusively
+ * triggered by the integration wizard — never auto-restored from storage or
+ * inferred from server state on mount.
  */
 export function useActivation(): ActivationState {
   const [state, setState] = useState<ActivationState>({
@@ -58,16 +57,11 @@ export function useActivation(): ActivationState {
       }
     }
 
-    // ── Restore activation from localStorage on mount ──────────────────────
-    // localStorage is same-origin (localhost:3000), so the standalone dashboard
-    // and the 3000 iframe embedded in 4002 share the same key. Restoring here
-    // means both instances immediately reflect the same active state without
-    // waiting for a postMessage or server poll.
-    // Use `now` as activatedAt so the Live Feed always starts fresh (no old events).
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      activate(new Date().toISOString(), false); // restore only — don't re-broadcast
-    }
+    // ── Always start inactive — activation must come from the wizard ───────
+    // Clear any stale activation so every page load begins in the dormant state.
+    // The wizard fires the activation signal (Channel 1 postMessage in 4002,
+    // Channel 4 server poll for standalone 3000) — never auto-restore here.
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 
     // ── Channel 1: postMessage from demo wizard → embedded dashboard ──
     function onPostMessage(event: MessageEvent) {

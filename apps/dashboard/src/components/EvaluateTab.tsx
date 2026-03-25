@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { BehaviorGroup, EvaluationData, FrictionAnalytics, OverviewAnalytics, RevenueAttribution, ScoreTier } from "../types";
+import { useApi } from "../hooks/use-api";
 import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
 import { SignalBars } from "./SignalBars";
 import { CompositeRing } from "./CompositeRing";
@@ -95,6 +96,18 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
   }, [tierDist]);
 
   const totalEvals = overview?.totalEvaluations ?? filtered.length;
+
+  // Model experiments — find running experiments with modelId variants
+  const { data: experimentsData } = useApi<any>("/experiments?status=running&limit=10", { pollMs: 20000 });
+  const modelExperiments = useMemo(() => {
+    if (!experimentsData?.experiments) return [];
+    return experimentsData.experiments.filter((exp: any) => {
+      try {
+        const variants = JSON.parse(exp.variants);
+        return variants.some((v: any) => v.modelId);
+      } catch { return false; }
+    });
+  }, [experimentsData]);
 
   return (
     <div className="tab-content">
@@ -470,6 +483,36 @@ export function EvaluateTab({ evaluations, selectedSession, overview, shadowStat
           ROW 7 — SHADOW MODE  (collapsed by default — dev-facing)
           Compare MSWIM-only vs LLM+MSWIM accuracy.
       ═══════════════════════════════════════════════════════════ */}
+      {modelExperiments.length > 0 && (
+        <DevSection title="Model A/B Tests" defaultOpen={true}>
+          {modelExperiments.map((exp: any) => {
+            let variants: any[] = [];
+            try { variants = JSON.parse(exp.variants); } catch { /* empty */ }
+            return (
+              <div key={exp.id} style={{ marginBottom: 12, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", flex: 1 }}>{exp.name}</span>
+                  <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "rgba(107,201,160,0.2)", color: "var(--accent)" }}>
+                    {exp.status}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {variants.map((v: any) => (
+                    <div key={v.id} className="metric-box" style={{ minWidth: 120 }}>
+                      <div className="label">{v.name}</div>
+                      <div className="value" style={{ fontSize: 10, wordBreak: "break-all" }}>
+                        {v.modelId || "base model"}
+                      </div>
+                      <div className="sub">weight: {(v.weight * 100).toFixed(0)}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </DevSection>
+      )}
+
       {shadowStats && (
         <DevSection title="Shadow Mode — MSWIM vs LLM+MSWIM (Dev)">
           <div className="grid-4" style={{ marginBottom: 12 }}>

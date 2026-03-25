@@ -4,6 +4,9 @@
 
 import type { Request, Response } from "express";
 import { InsightSnapshotRepo } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 function parseSiteUrl(req: Request): string | undefined {
   return req.query.siteUrl as string | undefined;
@@ -53,7 +56,7 @@ export async function getLatestInsights(req: Request, res: Response): Promise<vo
       },
     });
   } catch (err) {
-    console.error("[InsightsAPI] getLatestInsights error:", err);
+    log.error("[InsightsAPI] getLatestInsights error:", err);
     res.status(500).json({ error: "Failed to fetch insights" });
   }
 }
@@ -81,7 +84,7 @@ export async function getCROFindings(req: Request, res: Response): Promise<void>
 
     res.json({ siteUrl, generatedAt: snapshot.createdAt, findings });
   } catch (err) {
-    console.error("[InsightsAPI] getCROFindings error:", err);
+    log.error("[InsightsAPI] getCROFindings error:", err);
     res.status(500).json({ error: "Failed to fetch CRO findings" });
   }
 }

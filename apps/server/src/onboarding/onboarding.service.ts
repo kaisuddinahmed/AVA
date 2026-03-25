@@ -6,6 +6,9 @@ import {
 import { analyzeSite, reanalyzeSite } from "../site-analyzer/analyzer.service.js";
 import { runAnalyzerPipeline } from "./analyzer-runner.js";
 import { broadcastOnboardingProgress } from "./progress-broadcaster.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "onboarding" });
 
 export interface StartOnboardingInput {
   siteId?: string;
@@ -44,10 +47,10 @@ export async function startOnboardingRun(
         });
         if (response.ok) {
           html = await response.text();
-          console.log(`[Onboarding] Fetched ${html.length} chars from ${payload.siteUrl}`);
+          log.info(`[Onboarding] Fetched ${html.length} chars from ${payload.siteUrl}`);
         }
       } catch (fetchErr) {
-        console.warn(`[Onboarding] Could not fetch ${payload.siteUrl}:`, fetchErr);
+        log.warn(`[Onboarding] Could not fetch ${payload.siteUrl}:`, fetchErr);
       }
     }
 
@@ -131,7 +134,7 @@ function triggerAnalyzer(runId: string) {
 
   void runAnalyzerPipeline(runId)
     .catch((error) => {
-      console.error(`[Onboarding] Analyzer pipeline failed for ${runId}:`, error);
+      log.error(`[Onboarding] Analyzer pipeline failed for ${runId}:`, error);
     })
     .finally(() => {
       runningRuns.delete(runId);

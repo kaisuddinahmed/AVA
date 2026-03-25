@@ -8,6 +8,9 @@ import { config } from "../config.js";
 import { runNightlyBatch } from "./nightly-batch.job.js";
 import { computeWindowSnapshot } from "./drift-detector.js";
 import { checkAllRolloutsHealth } from "../rollout/rollout-health.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "jobs" });
 
 // ---------------------------------------------------------------------------
 // Job Runner
@@ -86,7 +89,7 @@ export class JobRunner {
 
   private scheduleNightlyBatch(): void {
     const msUntilTarget = this.calculateMsUntilTarget();
-    console.log(
+    log.info(
       `[JobRunner] Nightly batch scheduled for ${this.getNextRunTime().toISOString()} (${Math.round(msUntilTarget / 60000)} min)`,
     );
 
@@ -94,7 +97,7 @@ export class JobRunner {
       try {
         await this.executeNightlyBatch("scheduler");
       } catch (error) {
-        console.error("[JobRunner] Nightly batch failed:", error);
+        log.error("[JobRunner] Nightly batch failed:", error);
       }
       // Re-schedule for the next day
       this.scheduleNightlyBatch();
@@ -121,7 +124,7 @@ export class JobRunner {
         durationMs,
       );
 
-      console.log(
+      log.info(
         `[JobRunner] Nightly batch completed in ${durationMs}ms (${result.subtasks.length} subtasks, ${result.errors.length} errors)`,
       );
 
@@ -149,13 +152,13 @@ export class JobRunner {
     this.hourlyTimer = setInterval(async () => {
       try {
         await computeWindowSnapshot("1h");
-        console.log("[JobRunner] Hourly drift snapshot computed");
+        log.info("[JobRunner] Hourly drift snapshot computed");
       } catch (error) {
-        console.error("[JobRunner] Hourly snapshot failed:", error);
+        log.error("[JobRunner] Hourly snapshot failed:", error);
       }
     }, HOUR_MS);
 
-    console.log("[JobRunner] Hourly drift snapshots enabled");
+    log.info("[JobRunner] Hourly drift snapshots enabled");
   }
 
   // ── Canary health checks ──────────────────────────────────────────────────
@@ -167,13 +170,13 @@ export class JobRunner {
     this.canaryTimer = setInterval(async () => {
       try {
         await checkAllRolloutsHealth();
-        console.log("[JobRunner] Canary health check completed");
+        log.info("[JobRunner] Canary health check completed");
       } catch (error) {
-        console.error("[JobRunner] Canary health check failed:", error);
+        log.error("[JobRunner] Canary health check failed:", error);
       }
     }, intervalMs);
 
-    console.log(
+    log.info(
       `[JobRunner] Canary health checks every ${config.jobs.canaryCheckIntervalHours}h`,
     );
   }

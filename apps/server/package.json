@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx --env-file=../../.env src/index.ts",
+    "dev": "DISABLE_SCHEDULER=true node --experimental-sqlite --env-file=../../.env dist/index.js",
     "dev:watch": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",

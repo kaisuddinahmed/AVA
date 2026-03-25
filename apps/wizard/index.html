@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AVA — Integration Wizard</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+    <!--
+      Shopify App Bridge 3.x — loaded from Shopify CDN.
+      Only active when the wizard is embedded inside Shopify Admin
+      (detected by ?embedded=1 or ?host= query params).
+    -->
+    <script>
+      (function() {
+        var params = new URLSearchParams(window.location.search);
+        var isEmbedded = params.get("embedded") === "1" || params.has("host");
+        if (isEmbedded) {
+          var s = document.createElement("script");
+          s.src = "https://cdn.shopify.com/shopifycloud/app-bridge.js";
+          s.setAttribute("data-api-key", params.get("apiKey") || "");
+          document.head.appendChild(s);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -12,11 +12,15 @@
 
 import { BehaviorMappingRepo } from "@ava/db";
 import {
+
   BEHAVIOR_GROUP_DEFINITIONS,
   BEHAVIOR_GROUP_PRIORITY,
   PATTERN_TO_GROUP,
   type BehaviorGroup,
 } from "@ava/shared";
+
+import { logger } from "../logger.js";
+const log = logger.child({ service: "evaluate" });
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -253,7 +257,7 @@ export async function detectBehaviorPatterns(
     const activeGroups = detectActiveGroups(events);
     return await resolvePatterns(activeGroups, siteConfigId);
   } catch (err) {
-    console.error("[BehaviorMatcher] Detection failed (non-blocking):", err);
+    log.error("[BehaviorMatcher] Detection failed (non-blocking):", err);
     return [];
   }
 }

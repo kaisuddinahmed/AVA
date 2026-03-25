@@ -7,6 +7,9 @@ import { JobRunRepo } from "@ava/db";
 import { getJobRunner } from "../jobs/job-runner.js";
 import { runDriftCheck } from "../jobs/drift-detector.js";
 import { checkAllRolloutsHealth } from "../rollout/rollout-health.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 /**
  * GET /api/jobs/runs — List recent job runs
@@ -29,7 +32,7 @@ export async function listJobRuns(req: Request, res: Response) {
 
     res.json({ runs });
   } catch (error) {
-    console.error("[Jobs API] listJobRuns error:", error);
+    log.error("[Jobs API] listJobRuns error:", error);
     res.status(500).json({ error: "Failed to list job runs" });
   }
 }
@@ -49,7 +52,7 @@ export async function getJobRun(req: Request, res: Response) {
       summary: run.summary ? JSON.parse(run.summary) : null,
     });
   } catch (error) {
-    console.error("[Jobs API] getJobRun error:", error);
+    log.error("[Jobs API] getJobRun error:", error);
     res.status(500).json({ error: "Failed to get job run" });
   }
 }
@@ -111,7 +114,7 @@ export async function triggerJob(req: Request, res: Response) {
       });
     }
   } catch (error) {
-    console.error("[Jobs API] triggerJob error:", error);
+    log.error("[Jobs API] triggerJob error:", error);
     res.status(500).json({ error: "Failed to trigger job" });
   }
 }
@@ -138,7 +141,7 @@ export async function getNextRun(_req: Request, res: Response) {
         : null,
     });
   } catch (error) {
-    console.error("[Jobs API] getNextRun error:", error);
+    log.error("[Jobs API] getNextRun error:", error);
     res.status(500).json({ error: "Failed to get next run time" });
   }
 }

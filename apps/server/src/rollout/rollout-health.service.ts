@@ -13,9 +13,13 @@ import type {
 } from "@ava/shared";
 import { computeVariantMetrics } from "../experiment/experiment-metrics.js";
 import {
+
   promoteStage,
   rollbackRollout,
 } from "./rollout.service.js";
+
+import { logger } from "../logger.js";
+const log = logger.child({ service: "rollout" });
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -191,7 +195,7 @@ export async function checkAllRolloutsHealth(): Promise<void> {
           rollout.id,
           `Auto-rollback: ${failedChecks.join(", ")}`,
         );
-        console.log(
+        log.info(
           `[RolloutHealth] Auto-rolled back rollout ${rollout.name}: ${failedChecks.join(", ")}`,
         );
       } else if (health.recommendation === "promote") {
@@ -202,14 +206,14 @@ export async function checkAllRolloutsHealth(): Promise<void> {
           const hoursInStage = getHoursInCurrentStage(rollout);
           if (hoursInStage >= currentStage.durationHours) {
             await promoteStage(rollout.id);
-            console.log(
+            log.info(
               `[RolloutHealth] Auto-promoted rollout ${rollout.name} to stage ${rollout.currentStage + 1}`,
             );
           }
         }
       }
     } catch (error) {
-      console.error(
+      log.error(
         `[RolloutHealth] Failed to check rollout ${rollout.id}:`,
         error,
       );

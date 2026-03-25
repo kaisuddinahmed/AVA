@@ -1,4 +1,7 @@
 import { getClientsByChannel, getClientsByChannelAndSession } from "./channel-manager.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "broadcast" });
 
 /**
  * Broadcast a message to all clients on a channel.
@@ -14,7 +17,7 @@ export function broadcastToChannel(
     try {
       client.ws.send(payload);
     } catch (error) {
-      console.error(`[Broadcast] Failed to send to ${channel} client:`, error);
+      log.error(`[Broadcast] Failed to send to ${channel} client:`, error);
     }
   }
 }
@@ -34,7 +37,7 @@ export function broadcastToSession(
     try {
       client.ws.send(payload);
     } catch (error) {
-      console.error(`[Broadcast] Failed to send to ${channel}/${sessionId}:`, error);
+      log.error(`[Broadcast] Failed to send to ${channel}/${sessionId}:`, error);
     }
   }
 }

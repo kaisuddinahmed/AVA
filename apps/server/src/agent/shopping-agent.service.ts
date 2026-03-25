@@ -1,329 +1,432 @@
-// ============================================================================
-// Shopping Agent Service — orchestrates product discovery + TTS narration.
-//
-// Called from voice-responder.service.ts when a voice transcript is classified
-// as a shopping request (product_search, compare, add_to_cart, more_like_this).
-//
-// Returns an intervention payload with:
-//   - products?: ProductCard[]       — search results
-//   - comparison?: ComparisonCard    — side-by-side comparison
-//   - message: string                — TTS narration text
-//   - voice_script: string           — ≤80-char version for TTS
-//   - action_code: string            — "AGENT_ACTION" for training capture
-// ============================================================================
+/**
+ * Shopping Agent Service — Story 12: Conversational Shopping Agent
+ * Copy to: apps/server/src/agent/shopping-agent.service.ts
+ *
+ * Main orchestrator for the AVA shopping agent. Responsibilities:
+ *   • In-memory conversation history per session (max 10 turns, TTL 30 min)
+ *   • Intent parsing → product search → Groq response generation pipeline
+ *   • Handles all AgentAction types including comparison and cart confirm
+ *   • Logs every agent action as an intervention (actionCode: AGENT_*) for
+ *     training data capture (Story 12 AC: agent actions logged as interventions)
+ *   • Graceful fallback to navigation guidance when no search adapter available
+ *   • Story 2 prerequisite fulfilled: per-session conversation history passed
+ *     to Groq on every call with page context grounding
+ */
 
-import Groq from "groq-sdk";
-import { config } from "../config.js";
-import { EvaluationRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
-import { broadcastToSession } from "../broadcast/broadcast.service.js";
-import {
-  parseIntent,
-  type ShoppingIntent,
-} from "./intent-parser.js";
-import {
-  searchProducts,
-  buildComparisonCard,
-  type ProductCard,
-  type ComparisonCard,
-} from "./product-search-adapter.js";
+import Groq from 'groq-sdk';
+import { parseIntent } from './intent-parser.js';
+import { searchProducts } from './product-search-adapter.js';
+import { broadcastToSession } from '../broadcast/broadcast.service.js';
+import { InterventionRepo, EvaluationRepo, SessionRepo } from '@ava/db';
+import type {
+  AgentResponse,
+  AgentResponseType,
+  ConversationMessage,
+  PageContext,
+  ParsedIntent,
+  ProductResult,
+  SiteAdapterConfig,
+} from './agent.types.js';
 
-const groq = new Groq({ apiKey: config.groq.apiKey });
+// ─── Session store ────────────────────────────────────────────────────────────
 
-// In-memory: last search results per session (for "compare the first two", "add that")
-const lastSearchResults = new Map<string, ProductCard[]>();
+const MAX_TURNS = 10;
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-interface PageContext {
-  page_type?: string;
-  page_url?: string;
-  siteUrl?: string;
+interface SessionContext {
+  history: ConversationMessage[];
+  lastResults: ProductResult[];       // Products from the most recent search turn
+  lastActivity: number;
+  turnIndex: number;
 }
 
-export interface AgentResponse {
-  message: string;
-  voice_script: string;
-  products?: ProductCard[];
-  comparison?: ComparisonCard;
-  action_code: string;
-  intervention_type: "nudge" | "active";
-  meta?: Record<string, unknown>;
+const sessions = new Map<string, SessionContext>();
+
+// TTL cleanup — runs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, ctx] of sessions) {
+    if (now - ctx.lastActivity > SESSION_TTL_MS) sessions.delete(id);
+  }
+}, 5 * 60 * 1000);
+
+function getOrCreateSession(sessionId: string): SessionContext {
+  if (!sessions.has(sessionId)) {
+    sessions.set(sessionId, { history: [], lastResults: [], lastActivity: Date.now(), turnIndex: 0 });
+  }
+  const ctx = sessions.get(sessionId)!;
+  ctx.lastActivity = Date.now();
+  return ctx;
 }
+
+function pushHistory(ctx: SessionContext, role: 'user' | 'assistant', content: string, products?: ProductResult[]): void {
+  ctx.history.push({ role, content, timestamp: Date.now(), products });
+  if (ctx.history.length > MAX_TURNS * 2) ctx.history.splice(0, 2); // evict oldest pair
+}
+
+export function clearSession(sessionId: string): void {
+  sessions.delete(sessionId);
+}
+
+// ─── Groq instance ────────────────────────────────────────────────────────────
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// ─── System prompt builder ────────────────────────────────────────────────────
+
+function buildSystemPrompt(ctx: PageContext): string {
+  const cartSummary = ctx.cartContents?.length
+    ? `Cart: ${ctx.cartContents.map(c => `${c.quantity}x ${c.title} ($${c.price})`).join(', ')}`
+    : 'Cart: empty';
+  const inViewSummary = ctx.productsInView?.length
+    ? `Products currently visible: ${ctx.productsInView.map(p => `${p.title} ($${p.price})`).join(', ')}`
+    : '';
+
+  return `You are AVA, a knowledgeable and friendly shopping assistant embedded in an online store.
+Your goal is to help shoppers find the right product through natural conversation.
+
+Current page: ${ctx.pageType} — ${ctx.pageUrl}
+${inViewSummary ? inViewSummary + '\n' : ''}${cartSummary}
+
+Guidelines:
+- Be concise (1-3 sentences). The response will be read aloud via TTS.
+- Reference prior conversation turns naturally ("As I mentioned...", "Based on what you said...").
+- When showing products, briefly narrate the top recommendation. Do NOT list all products — the UI handles that.
+- For comparisons, highlight the key differentiator between options.
+- For add-to-cart, confirm what you're adding before doing it.
+- If you cannot find relevant products, say so and suggest navigating to a relevant section.
+- Never make up product details. Only reference products actually returned by search.`;
+}
+
+// ─── Response generators ──────────────────────────────────────────────────────
+
+async function generateNarration(
+  ctx: SessionContext,
+  pageCtx: PageContext,
+  intent: ParsedIntent,
+  products: ProductResult[],
+): Promise<string> {
+  const productContext = products.slice(0, 3).map((p, i) =>
+    `${i + 1}. ${p.title} — $${p.price} ${p.matchedAttributes.length ? `(matches: ${p.matchedAttributes.join(', ')})` : ''}`
+  ).join('\n');
+
+  const messages: Groq.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildSystemPrompt(pageCtx) },
+    ...ctx.history.slice(-8).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    {
+      role: 'user',
+      content: `Shopper said: "${intent.raw}"\n\nSearch results:\n${productContext || 'No results found.'}\n\nRespond naturally in 1-3 sentences.`,
+    },
+  ];
+
+  const resp = await groq.chat.completions.create({
+    model: process.env.GROQ_MODEL ?? 'llama3-8b-8192',
+    messages,
+    temperature: 0.4,
+    max_tokens: 150,
+  });
+  return resp.choices[0]?.message?.content?.trim() ?? 'Here\'s what I found for you.';
+}
+
+async function generateMessage(
+  ctx: SessionContext,
+  pageCtx: PageContext,
+  userMessage: string,
+): Promise<string> {
+  const messages: Groq.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildSystemPrompt(pageCtx) },
+    ...ctx.history.slice(-8).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    { role: 'user', content: userMessage },
+  ];
+
+  const resp = await groq.chat.completions.create({
+    model: process.env.GROQ_MODEL ?? 'llama3-8b-8192',
+    messages,
+    temperature: 0.4,
+    max_tokens: 150,
+  });
+  return resp.choices[0]?.message?.content?.trim() ?? 'I\'m here to help!';
+}
+
+// ─── Intervention logger ──────────────────────────────────────────────────────
+
+// Dynamically import prisma so the agent works even if @ava/db is not yet
+// migrated during development (does not crash the server at startup).
+async function logAgentAction(
+  sessionId: string,
+  siteUrl: string,
+  actionCode: string,
+  intent: ParsedIntent,
+  productsShown: string[],
+  turnIndex: number,
+  latencyMs: number,
+): Promise<void> {
+  try {
+    const { prisma } = await import('@ava/db');
+    await (prisma as unknown as {
+      intervention: {
+        create: (args: { data: Record<string, unknown> }) => Promise<unknown>
+      }
+    }).intervention.create({
+      data: {
+        sessionId,
+        siteUrl,
+        actionCode,
+        intentRaw: intent.raw,
+        intentAction: intent.action,
+        intentCategory: intent.category ?? null,
+        intentAttributes: JSON.stringify(intent.attributes),
+        productsShown: JSON.stringify(productsShown),
+        turnIndex,
+        latencyMs,
+        firedAt: new Date(),
+      },
+    });
+  } catch {
+    // Non-fatal — training capture should never break the conversation
+  }
+}
+
+// ─── Main entry point ─────────────────────────────────────────────────────────
+
+export interface ProcessQueryOptions {
+  sessionId: string;
+  query: string;
+  pageContext: PageContext;
+  siteConfig: SiteAdapterConfig;
+  /** Forwarded directly from widget: verified add-to-cart selector from onboarding */
+  addToCartSelector?: string;
+}
+
+export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResponse> {
+  const { sessionId, query, pageContext, siteConfig, addToCartSelector } = opts;
+  const ctx = getOrCreateSession(sessionId);
+  const t0 = Date.now();
+
+  // Parse intent with full conversation history for context
+  const intent = await parseIntent(query, ctx.history);
+
+  // Push user turn before processing (agents that respond to prior turns need history)
+  pushHistory(ctx, 'user', query);
+
+  let responseType: AgentResponseType = 'message';
+  let message = '';
+  let products: ProductResult[] | undefined;
+  let navigateTo: string | undefined;
+  let cartTarget: AgentResponse['cartTarget'] | undefined;
+
+  // ── Route by action ──
+  switch (intent.action) {
+    case 'search': {
+      const result = await searchProducts(siteConfig, intent);
+      if (result.fallbackUrl) {
+        // No search adapter — navigate instead
+        navigateTo = result.fallbackUrl;
+        responseType = 'navigate';
+        message = `I don't have direct access to the product catalog here, but let me take you to the search results for "${intent.category ?? query}".`;
+      } else {
+        products = result.products.slice(0, 5);
+        ctx.lastResults = products;
+        responseType = 'products';
+        message = await generateNarration(ctx, pageContext, intent, products);
+      }
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_SEARCH', intent,
+        products?.map(p => p.id) ?? [], ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'compare': {
+      const indices = intent.referenceIndices ?? [0, 1];
+      products = indices.map(i => ctx.lastResults[i]).filter(Boolean);
+      responseType = products.length >= 2 ? 'comparison' : 'message';
+      if (products.length >= 2) {
+        const [a, b] = products;
+        const diff = a.price !== b.price ? `$${a.price} vs $${b.price}` : 'similar price';
+        message = `Comparing ${a.title} and ${b.title}. ${diff}. ${
+          a.matchedAttributes.length ? `The ${a.title} is stronger on: ${a.matchedAttributes.join(', ')}.` : ''
+        }`;
+      } else {
+        message = 'I don\'t have two products to compare yet. Let me search first — what are you looking for?';
+      }
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_COMPARE', intent,
+        products?.map(p => p.id) ?? [], ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'add_to_cart': {
+      const idx = intent.referenceIndex ?? 0;
+      const target = ctx.lastResults[idx];
+      if (target) {
+        cartTarget = { product: target, addToCartSelector };
+        responseType = 'cart_confirm';
+        message = `Just to confirm — you'd like me to add the ${target.title} ($${target.price}) to your cart?`;
+      } else {
+        message = 'Which product would you like to add? Say the name or "the first one", "the second one", etc.';
+        responseType = 'clarification';
+      }
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_CART_CONFIRM', intent,
+        target ? [target.id] : [], ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'show_cheaper': {
+      const sorted = [...ctx.lastResults].sort((a, b) => a.price - b.price);
+      products = sorted.slice(0, 5);
+      ctx.lastResults = products;
+      responseType = 'products';
+      message = products.length
+        ? `Here are the more affordable options, starting from $${products[0].price}.`
+        : 'I don\'t have cheaper alternatives in the current results. Want me to search again with a lower budget?';
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_SEARCH', intent,
+        products.map(p => p.id), ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'show_more_expensive': {
+      const sorted = [...ctx.lastResults].sort((a, b) => b.price - a.price);
+      products = sorted.slice(0, 5);
+      ctx.lastResults = products;
+      responseType = 'products';
+      message = products.length
+        ? `Here are the premium options, up to $${products[0].price}.`
+        : 'I don\'t have pricier options in the current results. Want me to search again?';
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_SEARCH', intent,
+        products.map(p => p.id), ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'navigate': {
+      const q = intent.category ?? intent.raw;
+      navigateTo = `${siteConfig.siteUrl.replace(/\/$/, '')}/search?q=${encodeURIComponent(q)}`;
+      responseType = 'navigate';
+      message = `Taking you to the ${intent.category ?? 'search results'} section now.`;
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_NAVIGATE', intent,
+        [], ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'clarify': {
+      responseType = 'clarification';
+      message = intent.clarificationPrompt ?? 'Could you tell me a bit more about what you\'re looking for?';
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_CLARIFY', intent,
+        [], ctx.turnIndex, Date.now() - t0);
+      break;
+    }
+
+    case 'show_more': {
+      // Re-run last search with offset — for now surfaces same results with note
+      products = ctx.lastResults;
+      responseType = 'products';
+      message = 'Here\'s what I have. Would you like me to refine the search — perhaps a different price range or specific features?';
+      break;
+    }
+
+    default: {
+      // chitchat / unrecognised
+      responseType = 'message';
+      message = await generateMessage(ctx, pageContext, query);
+      await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_FALLBACK', intent,
+        [], ctx.turnIndex, Date.now() - t0);
+    }
+  }
+
+  // Push assistant turn to history
+  pushHistory(ctx, 'assistant', message, products);
+  const turnIndex = ctx.turnIndex++;
+
+  return { sessionId, responseType, message, products, cartTarget, navigateTo, turnIndex };
+}
+
+// ─── Voice integration helpers ────────────────────────────────────────────────
 
 /**
- * Handle a shopping-intent voice query.
- * Returns a fully-formed intervention payload ready for broadcast.
+ * Convenience wrapper called by voice-responder.service.ts.
+ * Accepts a loose context shape (PageContext + siteUrl) from the voice path.
  */
 export async function handleShoppingQuery(
   sessionId: string,
   transcript: string,
-  pageCtx?: PageContext,
+  agentCtx: Partial<PageContext> & { siteUrl?: string },
 ): Promise<AgentResponse> {
-  const intent = parseIntent(transcript);
-  const siteUrl = pageCtx?.siteUrl ?? "";
-
-  switch (intent.actionType) {
-    case "product_search":
-    case "more_like_this":
-      return handleProductSearch(sessionId, intent, siteUrl);
-
-    case "compare":
-      return handleCompare(sessionId, intent);
-
-    case "add_to_cart":
-      return handleAddToCart(sessionId, intent, siteUrl);
-
-    default:
-      // Shouldn't reach here — caller checks isShoppingRequest() first
-      return {
-        message: "Let me help you find what you need.",
-        voice_script: "Let me help you find what you need.",
-        action_code: "AGENT_ACTION",
-        intervention_type: "nudge",
-      };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Action handlers
-// ---------------------------------------------------------------------------
-
-async function handleProductSearch(
-  sessionId: string,
-  intent: ShoppingIntent,
-  siteUrl: string,
-): Promise<AgentResponse> {
-  const result = await searchProducts(siteUrl, intent, 3);
-  const { products, query } = result;
-
-  // Persist last results for follow-up commands
-  if (products.length > 0) {
-    lastSearchResults.set(sessionId, products);
-  }
-
-  if (products.length === 0) {
-    return {
-      message: `I couldn't find ${intent.category ?? "products"} matching your request. Try browsing the category page or use the site's search bar.`,
-      voice_script: `I couldn't find matching results. Try the search bar.`,
-      action_code: "AGENT_ACTION",
-      intervention_type: "nudge",
-    };
-  }
-
-  // Build narration with Groq (brief, ≤2 sentences)
-  const narration = await buildSearchNarration(query, products);
-
-  return {
-    message: narration.full,
-    voice_script: narration.brief,
-    products,
-    action_code: "AGENT_ACTION",
-    intervention_type: "active",
+  const siteUrl = agentCtx.siteUrl ?? '';
+  const pageContext: PageContext = {
+    pageType: agentCtx.pageType ?? 'other',
+    pageUrl: agentCtx.pageUrl ?? siteUrl,
+    ...agentCtx,
   };
+  const siteConfig: SiteAdapterConfig = { siteUrl };
+  return processQuery({ sessionId, query: transcript, pageContext, siteConfig });
 }
 
-async function handleCompare(sessionId: string, intent: ShoppingIntent): Promise<AgentResponse> {
-  const previous = lastSearchResults.get(sessionId) ?? [];
+const AGENT_VOICE_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.15, receptivity: 0.20, value: 0.15 });
 
-  // Resolve which two products to compare
-  let a: ProductCard | undefined;
-  let b: ProductCard | undefined;
-
-  if (intent.referenceIndex !== undefined) {
-    // "compare the first and second"
-    a = previous[0];
-    b = previous[1];
-  } else {
-    // default: compare top 2 from last search
-    [a, b] = previous;
-  }
-
-  if (!a || !b) {
-    return {
-      message: "I need to find some products first. What are you looking for?",
-      voice_script: "What products would you like me to find first?",
-      action_code: "AGENT_ACTION",
-      intervention_type: "nudge",
-    };
-  }
-
-  const comparison = buildComparisonCard(a, b);
-  const recommended = comparison.recommendation
-    ? (comparison.products.find((p) => p.product_id === comparison.recommendation!.product_id)?.title ?? "the first option")
-    : a.title;
-
-  const message = `Here's a side-by-side comparison. Based on rating and value, I'd recommend ${recommended}.`;
-  const voice_script = `I'd recommend ${recommended.slice(0, 50)}.`;
-
-  return {
-    message,
-    voice_script,
-    comparison,
-    action_code: "AGENT_ACTION",
-    intervention_type: "active",
-  };
-}
-
-async function handleAddToCart(sessionId: string, intent: ShoppingIntent, siteUrl?: string): Promise<AgentResponse> {
-  const previous = lastSearchResults.get(sessionId) ?? [];
-  const targetIdx = (intent.referenceIndex ?? 1) - 1;
-  const product = previous[targetIdx];
-
-  if (!product) {
-    return {
-      message: "Which product would you like to add? Say 'the first one' or 'the second one'.",
-      voice_script: "Which product would you like to add?",
-      action_code: "AGENT_ACTION",
-      intervention_type: "nudge",
-    };
-  }
-
-  // Resolve verified add-to-cart selector from onboarding trackingConfig
-  let addToCartSelector: string | undefined;
-  if (siteUrl) {
-    try {
-      const tc = await SiteConfigRepo.getTrackingConfig(siteUrl) as Record<string, unknown> | null;
-      const selectors = (tc?.selectors as Record<string, unknown> | undefined);
-      const atcSelectors = selectors?.addToCart as string[] | undefined;
-      addToCartSelector = atcSelectors?.[0];
-    } catch {
-      // Non-critical — widget falls back to heuristics
-    }
-  }
-
-  // Widget receives this, shows a confirmation card, then fires DOM click on the store button
-  return {
-    message: `Adding ${product.title} to your cart now.`,
-    voice_script: `Adding ${product.title.slice(0, 40)} to your cart.`,
-    products: [product],  // single product = widget knows to ATC it
-    action_code: "AGENT_ADD_TO_CART",
-    intervention_type: "active",
-    meta: addToCartSelector ? { addToCartSelector } : undefined,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Narration builder
-// ---------------------------------------------------------------------------
-
-async function buildSearchNarration(
-  query: string,
-  products: ProductCard[],
-): Promise<{ full: string; brief: string }> {
-  const productList = products
-    .slice(0, 3)
-    .map((p, i) => `${i + 1}. ${p.title} ($${p.price.toFixed(2)})`)
-    .join("; ");
-
-  let full = `I found ${products.length} option${products.length > 1 ? "s" : ""} for "${query}": ${productList}.`;
-  let brief = `I found ${products.length} option${products.length > 1 ? "s" : ""} for ${query}.`;
-
-  if (!config.groq.apiKey) return { full, brief };
-
-  try {
-    const completion = await groq.chat.completions.create({
-      model: config.groq.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are AVA, a shopping assistant. Narrate a product search result in 1-2 sentences, warm and helpful. Keep it under 50 words. Mention the best match by name.",
-        },
-        {
-          role: "user",
-          content: `Products found for "${query}": ${productList}. Best match: ${products[0]?.title}.`,
-        },
-      ],
-      max_tokens: 80,
-      temperature: 0.5,
-    });
-    const raw = completion.choices[0]?.message?.content?.trim();
-    if (raw) {
-      full = raw;
-      const firstSentence = raw.split(/(?<=[.!?])\s/)[0] ?? raw;
-      brief = firstSentence.length > 80 ? firstSentence.slice(0, 77) + "…" : firstSentence;
-    }
-  } catch {
-    // Use rule-based fallback
-  }
-
-  return { full, brief };
-}
-
-// ---------------------------------------------------------------------------
-// Broadcast helper — wraps agent response as an intervention and broadcasts
-// ---------------------------------------------------------------------------
-
-const AGENT_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.15, receptivity: 0.20, value: 0.15 });
-
+/**
+ * Persists an evaluation + intervention for a voice-driven agent response,
+ * then broadcasts it to the widget. Returns the intervention ID.
+ */
 export async function broadcastAgentResponse(
   sessionId: string,
-  response: AgentResponse,
+  agentResponse: AgentResponse,
   voicePlayback: boolean,
 ): Promise<string> {
+  const voiceScript = agentResponse.message.length > 80
+    ? agentResponse.message.slice(0, 77) + '…'
+    : agentResponse.message;
+
   const payload = {
-    type: response.intervention_type,
-    action_code: response.action_code,
-    friction_id: "F036",
-    message: response.message,
-    products: response.products,
-    comparison: response.comparison,
+    type: 'active' as const,
+    action_code: 'AGENT_VOICE',
+    friction_id: 'F036',
+    message: agentResponse.message,
+    products: agentResponse.products,
+    cartTarget: agentResponse.cartTarget,
+    navigateTo: agentResponse.navigateTo,
     voice_enabled: voicePlayback,
-    voice_script: voicePlayback ? response.voice_script : undefined,
-    meta: response.meta,
+    voice_script: voicePlayback ? voiceScript : undefined,
   };
 
-  let interventionId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  let interventionId = `av_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
   try {
     const evaluation = await EvaluationRepo.createEvaluation({
       sessionId,
-      eventBatchIds: "[]",
-      narrative: `Agent: ${response.action_code}`,
+      eventBatchIds: '[]',
+      narrative: `Agent voice response (turn ${agentResponse.turnIndex})`,
       frictionsFound: '["F036"]',
-      intentScore: 75,
-      frictionScore: 30,
-      clarityScore: 80,
-      receptivityScore: 85,
-      valueScore: 70,
-      compositeScore: 68,
-      weightsUsed: AGENT_WEIGHTS,
-      tier: "ACTIVE",
-      decision: "fire",
-      reasoning: `Shopping agent action: ${response.action_code}`,
+      intentScore: 65,
+      frictionScore: 50,
+      clarityScore: 55,
+      receptivityScore: 75,
+      valueScore: 60,
+      compositeScore: 62,
+      weightsUsed: AGENT_VOICE_WEIGHTS,
+      tier: 'NUDGE',
+      decision: 'fire',
+      reasoning: 'User-initiated voice shopping query — always respond',
     });
 
     const intervention = await InterventionRepo.createIntervention({
       sessionId,
       evaluationId: evaluation.id,
-      type: response.intervention_type,
-      actionCode: response.action_code,
-      frictionId: "F036",
+      type: 'active',
+      actionCode: 'AGENT_VOICE',
+      frictionId: 'F036',
       payload: JSON.stringify(payload),
-      mswimScoreAtFire: 68,
-      tierAtFire: "ACTIVE",
+      mswimScoreAtFire: 62,
+      tierAtFire: 'NUDGE',
     });
 
     interventionId = intervention.id;
     SessionRepo.incrementVoiceInterventionsFired(sessionId).catch(() => {});
-  } catch (err) {
-    console.error("[ShoppingAgent] DB persist error:", err);
+  } catch {
+    // Non-fatal — still broadcast with synthetic ID
   }
 
-  broadcastToSession("widget", sessionId, {
-    type: "intervention",
+  broadcastToSession('widget', sessionId, {
+    type: 'intervention',
     sessionId,
     payload: { ...payload, intervention_id: interventionId },
   });
 
   return interventionId;
-}
-
-/**
- * Clear session state when session ends.
- */
-export function clearAgentState(sessionId: string): void {
-  lastSearchResults.delete(sessionId);
 }

@@ -6,6 +6,9 @@ import { buildPayload } from "./payload-builder.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "intervene" });
 
 export interface InterventionOutput {
   interventionId: string;
@@ -50,7 +53,7 @@ export async function handleDecision(
   if (!config.voice.enabled) {
     // Silent — voice simply not configured for this deployment
   } else if (voiceDisabled && session) {
-    console.log(
+    log.info(
       `[Intervene] Voice budget exhausted for session ${sessionId} ` +
       `(fired=${session.totalVoiceInterventionsFired}, muted=${session.voiceMuted})`
     );
@@ -172,7 +175,7 @@ export async function recordInterventionOutcome(
 
   // Capture training datapoint on terminal outcomes (non-blocking)
   captureTrainingDatapoint(interventionId, effectiveStatus).catch((error) => {
-    console.error("[Intervene] Training datapoint capture failed:", error);
+    log.error("[Intervene] Training datapoint capture failed:", error);
   });
 
   // Broadcast updated intervention status to dashboard so feed reflects outcomes in real time.

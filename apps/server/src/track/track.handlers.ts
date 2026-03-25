@@ -6,8 +6,13 @@ import {
   WsWidgetMessageSchema,
   WsVoiceQuerySchema,
   InterventionOutcomeSchema,
+  InterventionFeedbackSchema,
   validatePayload,
 } from "../validation/schemas.js";
+import { InterventionFeedbackRepo, TrainingDatapointRepo } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "track" });
 
 /**
  * Handle incoming WebSocket messages from the widget.
@@ -25,11 +30,11 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
       const voiceQueryResult = validatePayload(WsVoiceQuerySchema, raw);
       if (voiceQueryResult.success) {
         const { session_id, transcript, page_context } = voiceQueryResult.data;
-        console.log(`[Track] Voice query from session ${session_id}: "${transcript.slice(0, 60)}"`);
+        log.info(`[Track] Voice query from session ${session_id}: "${transcript.slice(0, 60)}"`);
 
         handleVoiceQuery(ws, session_id, transcript, page_context)
           .catch((error) => {
-            console.error("[Track] Voice query error:", error);
+            log.error("[Track] Voice query error:", error);
             ws.send(
               JSON.stringify({
                 type: "voice_query_error",
@@ -57,7 +62,7 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
             );
           })
           .catch((error) => {
-            console.error("[Track] Outcome recording error:", error);
+            log.error("[Track] Outcome recording error:", error);
             ws.send(
               JSON.stringify({
                 type: "outcome_error",
@@ -69,7 +74,26 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
         return;
       }
 
-      console.warn("[Track] Validation failed:", result.error);
+      // Maybe it's intervention feedback (thumbs up/down)
+      const feedbackResult = validatePayload(InterventionFeedbackSchema, raw);
+      if (feedbackResult.success) {
+        const { intervention_id, session_id, feedback } = feedbackResult.data;
+        // Persist feedback + enrich training datapoint (fire-and-forget)
+        InterventionFeedbackRepo.createFeedback({
+          interventionId: intervention_id,
+          sessionId: session_id,
+          feedback,
+        })
+          .then(() => {
+            // Also enrich the training datapoint if it exists
+            TrainingDatapointRepo.updateUserFeedback(intervention_id, feedback).catch(() => {});
+          })
+          .catch((err) => log.error("[Track] Feedback persist error:", err));
+        ws.send(JSON.stringify({ type: "feedback_ack", intervention_id }));
+        return;
+      }
+
+      log.warn("[Track] Validation failed:", result.error);
       ws.send(JSON.stringify({ type: "validation_error", error: result.error }));
       return;
     }
@@ -96,7 +120,7 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
             ws.send(JSON.stringify({ type: "track_ack", ...trackResult }));
           })
           .catch((error) => {
-            console.error("[Track] Error processing event:", error);
+            log.error("[Track] Error processing event:", error);
             ws.send(
               JSON.stringify({ type: "track_error", error: "Processing failed" }),
             );
@@ -109,7 +133,7 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
         break;
     }
   } catch (error) {
-    console.error("[Track] Message handling error:", error);
+    log.error("[Track] Message handling error:", error);
     ws.send(JSON.stringify({ error: "Internal error" }));
   }
 }

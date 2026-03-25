@@ -5,6 +5,9 @@ import { SessionRepo, EvaluationRepo, InterventionRepo } from "@ava/db";
 import { broadcastToSession } from "../broadcast/broadcast.service.js";
 import { isShoppingRequest } from "../agent/intent-parser.js";
 import { handleShoppingQuery, broadcastAgentResponse } from "../agent/shopping-agent.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "voice" });
 
 const VOICE_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.15, receptivity: 0.20, value: 0.15 });
 
@@ -141,7 +144,7 @@ export async function handleVoiceQuery(
       ws.send(JSON.stringify({ type: "voice_query_ack", intervention_id: interventionId, status: "ok" }));
       return;
     } catch (err) {
-      console.error("[VoiceResponder] Shopping agent error (falling through to LLM):", err);
+      log.error("[VoiceResponder] Shopping agent error (falling through to LLM):", err);
       // Fall through to general LLM path on error
     }
   }
@@ -177,7 +180,7 @@ export async function handleVoiceQuery(
         : firstSentence;
     }
   } catch (err) {
-    console.error("[VoiceResponder] Groq error:", err);
+    log.error("[VoiceResponder] Groq error:", err);
     // Fall through with the default answer — don't reject the user
   }
 
@@ -230,7 +233,7 @@ export async function handleVoiceQuery(
     // Increment voice counter fire-and-forget
     SessionRepo.incrementVoiceInterventionsFired(sessionId).catch(() => {});
   } catch (err) {
-    console.error("[VoiceResponder] DB persist error (non-blocking):", err);
+    log.error("[VoiceResponder] DB persist error (non-blocking):", err);
     // Fall through — still broadcast with the synthetic ID
   }
 
@@ -244,7 +247,7 @@ export async function handleVoiceQuery(
   });
 
   const turnCount = getHistory(sessionId).length / 2;
-  console.log(
+  log.info(
     `[VoiceResponder] Replied to session ${sessionId} (turn ${turnCount}): "${answer.slice(0, 60)}…"` +
     ` (voice=${voicePlayback})`,
   );

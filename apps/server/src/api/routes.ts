@@ -18,7 +18,9 @@ import * as webhooksApi from "./webhooks.api.js";
 import * as networkApi from "./network.api.js";
 import * as shopifyApi from "./shopify.api.js";
 import * as addressApi from "./address.api.js";
+import * as modelsApi from "./models.api.js";
 
+import { agentRouter } from './agent.api.js';
 export const apiRouter = Router();
 
 // Sessions
@@ -81,6 +83,18 @@ apiRouter.get("/training/export/fine-tune", trainingApi.exportFineTune);
 apiRouter.get("/training/export/fine-tune/preview", trainingApi.previewFineTune);
 apiRouter.get("/training/quality/stats", trainingApi.getQuality);
 apiRouter.get("/training/quality/assess", trainingApi.assessDatapoints);
+apiRouter.get("/training/feedback/stats", trainingApi.getFeedbackStats);
+apiRouter.post("/training/fine-tune/submit", trainingApi.submitFineTune);
+apiRouter.get("/training/fine-tune/status/:jobId", trainingApi.getFineTuneStatus);
+apiRouter.get("/training/retrain/history", trainingApi.getRetrainHistory);
+apiRouter.post("/training/retrain/trigger", trainingApi.triggerRetrain);
+
+// Model Versions
+apiRouter.get("/models", modelsApi.list);
+apiRouter.get("/models/active", modelsApi.getActive);
+apiRouter.post("/models", modelsApi.create);
+apiRouter.post("/models/:id/promote", modelsApi.promote);
+apiRouter.post("/models/:id/retire", modelsApi.retire);
 
 // Shadow Mode Comparisons
 apiRouter.get("/shadow/stats", shadowApi.getStats);
@@ -103,6 +117,7 @@ apiRouter.post("/drift/check", driftApi.triggerDriftCheck);
 
 // Experiments (A/B Testing)
 apiRouter.get("/experiments", experimentsApi.list);
+apiRouter.post("/experiments/model-test", experimentsApi.createModelTest);
 apiRouter.post("/experiments", experimentsApi.create);
 apiRouter.get("/experiments/:id", experimentsApi.get);
 apiRouter.post("/experiments/:id/start", experimentsApi.start);
@@ -148,3 +163,5 @@ apiRouter.post("/rollouts/:id/start", rolloutsApi.start);
 apiRouter.post("/rollouts/:id/promote", rolloutsApi.promote);
 apiRouter.post("/rollouts/:id/rollback", rolloutsApi.rollback);
 apiRouter.post("/rollouts/:id/pause", rolloutsApi.pauseRolloutEndpoint);
+
+apiRouter.use('/agent', agentRouter);

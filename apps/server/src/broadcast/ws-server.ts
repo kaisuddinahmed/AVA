@@ -3,6 +3,10 @@ import { handleTrackMessage } from "../track/track.handlers.js";
 import { registerClient, unregisterClient } from "./channel-manager.js";
 import { WsDashboardMessageSchema, validatePayload } from "../validation/schemas.js";
 
+import { handleAgentWsMessage } from '../api/agent.api.js';
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "broadcast" });
 /**
  * Create the main WebSocket server.
  */
@@ -14,7 +18,7 @@ export function createWSServer(port: number): WebSocketServer {
     const channel = url.searchParams.get("channel") ?? "widget";
     const sessionId = url.searchParams.get("sessionId");
 
-    console.log(`[WS] Client connected: channel=${channel}, session=${sessionId}`);
+    log.info(`[WS] Client connected: channel=${channel}, session=${sessionId}`);
 
     // Register this client for broadcasting
     registerClient(ws, channel, sessionId ?? undefined);
@@ -31,11 +35,11 @@ export function createWSServer(port: number): WebSocketServer {
 
     ws.on("close", () => {
       unregisterClient(ws);
-      console.log(`[WS] Client disconnected: channel=${channel}`);
+      log.info(`[WS] Client disconnected: channel=${channel}`);
     });
 
     ws.on("error", (error) => {
-      console.error("[WS] Client error:", error.message);
+      log.error("[WS] Client error:", error.message);
       unregisterClient(ws);
     });
 
@@ -44,7 +48,7 @@ export function createWSServer(port: number): WebSocketServer {
   });
 
   wss.on("error", (error) => {
-    console.error("[WS] Server error:", error);
+    log.error("[WS] Server error:", error);
   });
 
   return wss;
@@ -56,14 +60,19 @@ function handleDashboardMessage(ws: WebSocket, data: string) {
     const result = validatePayload(WsDashboardMessageSchema, raw);
 
     if (!result.success) {
-      console.warn("[WS] Dashboard message validation failed:", result.error);
+      log.warn("[WS] Dashboard message validation failed:", result.error);
       ws.send(JSON.stringify({ type: "validation_error", error: result.error }));
       return;
     }
 
     // Handle dashboard control messages (e.g., select session, tune weights)
-    console.log("[WS] Dashboard message:", result.data.type);
+    log.info("[WS] Dashboard message:", result.data.type);
   } catch {
     // ignore malformed JSON
   }
 }
+
+
+// TODO: add to your WS message handler:
+// import { handleAgentWsMessage } from '../api/agent.api.js';
+// case 'agent_query': await handleAgentWsMessage(ws, msg); break;

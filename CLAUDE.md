@@ -166,6 +166,27 @@ Priority test targets: MSWIM signal calculators (known inputs → expected outpu
 
 ---
 
+## Demo Port Architecture — Never Break
+
+| Port | App | Role |
+|---|---|---|
+| 3002 | `apps/wizard` | Integration wizard — owns the activation flow |
+| 3001 | `apps/store` | Demo store — widget loads here after activation |
+| 3000 | `apps/dashboard` | Merchant dashboard — activates after wizard completes |
+| 4002 | `apps/demo` | Three-panel shell (iframes: 3002 + 3001 + 3000) — display only, never standalone |
+
+**Activation is exclusively wizard-driven. These rules are absolute:**
+
+1. **Dashboard always starts inactive.** `use-activation.ts` clears localStorage on mount — never restore from it. No auto-activation from server state on page load.
+2. **Widget stays dormant until activation.** The activation gate (`GET /api/site/status`) must return `activated: true` before the widget mounts. This only happens after the wizard completes.
+3. **`integrationStatus` is wizard-owned.** `seed-demo-site.ts` only ensures the correct `siteKey` is present. It never sets or upgrades `integrationStatus` — that transition belongs to the wizard flow (`pending` → `analyzing` → `mapped` → `limited_active`/`active`).
+4. **4002 is a display shell only.** It iframes 3002, 3001, and 3000. It never contains its own activation logic. Activation signal flows: wizard (3002) → `ava:wizard:activated` postMessage → 4002 parent → `ava:activate` postMessage → dashboard iframe (3000).
+5. **Standalone sync (3002 + 3000 without 4002)** is handled by Channel 4 server polling in `use-activation.ts` — polls `GET /api/site/status?siteUrl=...&siteKey=...` every 5s and activates the dashboard when the wizard sets the site active on the server.
+6. **Demo siteKey is fixed:** `avak_eff0c37fabe8d527` — hardcoded in `apps/store/index.html` and seeded by `scripts/seed-demo-site.ts`. Never change either without updating both.
+7. **Reset on wizard startup:** `apps/wizard/src/main.js` calls `POST /api/site/reset` on load, returning the site to `analyzing`. This ensures every new demo session starts with a dormant widget and inactive dashboard.
+
+---
+
 ## Hard Rules
 
 - Widget has **zero npm dependencies** — absolute, no exceptions.

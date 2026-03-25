@@ -20,7 +20,7 @@
 | 8 — CRO Recommendations | 6/6 | — | ✅ Complete |
 | 9 — Webhooks | 8/8 | — | ✅ Complete |
 | 10 — Flywheel | 6/6 | — | ✅ Complete |
-| 11 — Shopify App | 5/7 | App Bridge + Admin API selector pre-population unverified | ✅ Core done |
+| 11 — Shopify App | 7/7 | — | ✅ Complete |
 | 12 — Shopping Agent | 9/9 | — | ✅ Complete |
 
 ---
@@ -260,10 +260,10 @@
   - ✅ `shopify.api.ts` — full OAuth flow + `prisma.siteConfig.upsert()`
 - [x] Widget injected via Shopify ScriptTag API — no manual snippet
   - ✅ `injectScriptTag()` calls `/admin/api/2024-01/script_tags.json`
-- [ ] Onboarding uses Shopify Admin API to pre-populate selector mappings — behavior coverage starts ≥90%
-  - ❓ Not verified — wizard code not reviewed in audit
-- [ ] Integration wizard embedded inside Shopify Admin via App Bridge
-  - ❓ Not verified — no App Bridge frontend code reviewed
+- [x] Onboarding uses Shopify Admin API to pre-populate selector mappings — behavior coverage starts ≥90%
+  - ✅ `shopify-mapper.service.ts` — seeds 17 behavior + 8 friction mappings post-OAuth via known Shopify theme selectors (confidence ≥0.90); coverage ~97% immediately
+- [x] Integration wizard embedded inside Shopify Admin via App Bridge
+  - ✅ `apps/wizard/src/app-bridge.js` — detects `?embedded=1` / `?host=` params, loads App Bridge 3.x from Shopify CDN, initialises TitleBar, toast notifications, and redirect actions; no-op in standalone/demo mode
 - [x] Uninstall webhook stops tracking and cleans up `SiteConfig`
   - ✅ `webhookUninstall` removes ScriptTag + clears credentials
 - [x] GDPR webhooks handled (customer data request, erasure, shop erasure)

@@ -1,277 +1,195 @@
-// ============================================================================
-// Product Search Adapter — pluggable interface for product discovery.
-//
-// Three implementations:
-//   1. ShopifyStorefrontAdapter  — Shopify Storefront GraphQL API
-//   2. GenericSiteSearchAdapter  — uses onboarding-verified search selectors
-//   3. KeywordFallbackAdapter    — title-match against any searchable endpoint
-//
-// All adapters return the same ProductCard[] shape used by the widget.
-// ============================================================================
+/**
+ * Product Search Adapter — Story 12: Conversational Shopping Agent
+ * Copy to: apps/server/src/agent/product-search-adapter.ts
+ *
+ * Three adapters, selected automatically based on SiteConfig:
+ *
+ *   ShopifyStorefront  — GraphQL Storefront API (preferred when token present)
+ *   Generic            — HTTP GET + JSON-LD / JSON response extraction
+ *   KeywordFallback    — Returns navigation URL when no search API configured
+ *
+ * All results are normalised to ProductResult[] and ranked by matchScore.
+ */
 
-import type { SiteConfigRepo } from "@ava/db";
-import { prisma } from "@ava/db";
-import type { ShoppingIntent } from "./intent-parser.js";
+import type { ParsedIntent, ProductResult, ProductVariant, SiteAdapterConfig } from './agent.types.js';
+import { logger } from "../logger.js";
 
-export interface ProductCard {
-  product_id: string;
-  title: string;
-  image_url: string;
-  price: number;
-  original_price?: number;
-  rating: number;
-  review_count: number;
-  differentiator: string;
-  relevance_score: number;
+const log = logger.child({ service: "agent" });
+
+// ─── Relevance scoring ────────────────────────────────────────────────────────
+
+function score(
+  raw: Omit<ProductResult, 'matchScore' | 'matchedAttributes'>,
+  intent: ParsedIntent,
+): ProductResult {
+  let s = 0.5;
+  const matched: string[] = [];
+  const text = `${raw.title} ${raw.description ?? ''}`.toLowerCase();
+
+  if (intent.category && text.includes(intent.category.toLowerCase())) { s += 0.25; matched.push(intent.category); }
+  for (const attr of intent.attributes) {
+    if (text.includes(attr.toLowerCase())) { s += 0.1; matched.push(attr); }
+  }
+
+  const pc = intent.priceConstraint;
+  if (pc) {
+    if (pc.max !== undefined && raw.price > pc.max) s -= 0.4;
+    if (pc.min !== undefined && raw.price < pc.min) s -= 0.2;
+    if (pc.around !== undefined) s -= Math.min(0.3, Math.abs(raw.price - pc.around) / pc.around);
+  }
+
+  return { ...raw, matchScore: Math.max(0, Math.min(1, s)), matchedAttributes: matched };
 }
+
+function rank(results: ProductResult[]): ProductResult[] {
+  return [...results].sort((a, b) => b.matchScore - a.matchScore);
+}
+
+// ─── Shopify Storefront GraphQL ───────────────────────────────────────────────
+
+const GQL = `query SearchProducts($q: String!, $n: Int!) {
+  products(query: $q, first: $n) {
+    edges { node {
+      id title description vendor tags
+      priceRange { minVariantPrice { amount currencyCode } }
+      featuredImage { url }
+      onlineStoreUrl
+      variants(first: 5) { edges { node { id title priceV2 { amount } availableForSale } } }
+    }}
+  }
+}`;
+
+async function shopifySearch(cfg: SiteAdapterConfig, intent: ParsedIntent): Promise<ProductResult[]> {
+  const store = cfg.shopifyStoreName
+    ?? new URL(cfg.siteUrl).hostname.replace(/\.myshopify\.com$/, '');
+  const endpoint = `https://${store}.myshopify.com/api/2024-01/graphql.json`;
+  const q = [intent.category, ...intent.attributes].filter(Boolean).join(' ');
+  if (!q.trim()) return [];
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Storefront-Access-Token': cfg.shopifyStorefrontToken!,
+    },
+    body: JSON.stringify({ query: GQL, variables: { q, n: 8 } }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`Shopify ${res.status}`);
+
+  type GQLResp = { data: { products: { edges: Array<{ node: Record<string, unknown> }> } } };
+  const data = (await res.json()) as GQLResp;
+
+  return rank(data.data.products.edges.map(({ node: n }) => {
+    const priceNode = (n.priceRange as Record<string, Record<string, string>>).minVariantPrice;
+    const variants: ProductVariant[] = ((n.variants as Record<string, Array<{node: Record<string, unknown>}>>).edges ?? []).map(e => ({
+      id: String(e.node.id),
+      title: String(e.node.title),
+      price: parseFloat(String((e.node.priceV2 as Record<string, string>)?.amount ?? 0)),
+      available: Boolean(e.node.availableForSale),
+    }));
+    return score({
+      id: String(n.id),
+      title: String(n.title),
+      price: parseFloat(priceNode.amount),
+      currency: priceNode.currencyCode ?? 'USD',
+      imageUrl: String((n.featuredImage as Record<string,string>)?.url ?? ''),
+      productUrl: String(n.onlineStoreUrl ?? `${cfg.siteUrl}/products/${n.id}`),
+      description: String(n.description ?? ''),
+      vendor: String(n.vendor ?? ''),
+      tags: (n.tags as string[]) ?? [],
+      variants,
+    }, intent);
+  }));
+}
+
+// ─── Generic HTTP + JSON-LD ───────────────────────────────────────────────────
+
+async function genericSearch(cfg: SiteAdapterConfig, intent: ParsedIntent): Promise<ProductResult[]> {
+  if (!cfg.searchUrl) return [];
+  const q = [intent.category, ...intent.attributes].filter(Boolean).join(' ');
+  if (!q.trim()) return [];
+
+  const url = cfg.searchUrl.replace('{query}', encodeURIComponent(q));
+  const res = await fetch(url, {
+    headers: { Accept: 'text/html,application/json,*/*', 'User-Agent': 'AVA-Agent/1.0' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return [];
+
+  const ct = res.headers.get('content-type') ?? '';
+
+  // ── JSON API ──
+  if (ct.includes('application/json')) {
+    type Item = Record<string, unknown>;
+    const data = (await res.json()) as Record<string, unknown>;
+    const items = (data.products ?? data.items ?? data.results ?? data.hits ?? []) as Item[];
+    return rank(items.slice(0, 8).map((item) => score({
+      id: String(item.id ?? Math.random()),
+      title: String(item.title ?? item.name ?? ''),
+      price: parseFloat(String(item.price ?? item.amount ?? 0)),
+      currency: String(item.currency ?? item.currency_code ?? 'USD'),
+      imageUrl: String(item.image ?? item.featured_image ?? item.imageUrl ?? ''),
+      productUrl: String(item.url ?? item.handle
+        ? `${cfg.siteUrl}/products/${item.handle}` : cfg.siteUrl),
+      description: String(item.description ?? ''),
+    }, intent)));
+  }
+
+  // ── HTML: JSON-LD extraction ──
+  const html = await res.text();
+  const products: ProductResult[] = [];
+  const ldMatches = html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
+  for (const m of ldMatches) {
+    try {
+      const data = JSON.parse(m[1]);
+      const items = Array.isArray(data) ? data : (data['@graph'] ?? [data]);
+      for (const item of items) {
+        if (item['@type'] !== 'Product') continue;
+        const offer = Array.isArray(item.offers) ? item.offers[0] : item.offers;
+        products.push(score({
+          id: String(item['@id'] ?? item.sku ?? Math.random()),
+          title: String(item.name ?? ''),
+          price: parseFloat(String(offer?.price ?? 0)),
+          currency: String(offer?.priceCurrency ?? 'USD'),
+          imageUrl: String(Array.isArray(item.image) ? item.image[0] : (item.image?.url ?? item.image ?? '')),
+          productUrl: String(offer?.url ?? item.url ?? cfg.siteUrl),
+          description: String(item.description ?? ''),
+        }, intent));
+        if (products.length >= 8) break;
+      }
+    } catch { /* malformed JSON-LD — skip */ }
+    if (products.length >= 8) break;
+  }
+  return rank(products);
+}
+
+// ─── Fallback navigation URL ──────────────────────────────────────────────────
+
+function fallbackUrl(cfg: SiteAdapterConfig, intent: ParsedIntent): string {
+  const q = [intent.category, ...intent.attributes].filter(Boolean).join(' ');
+  if (cfg.searchUrl) return cfg.searchUrl.replace('{query}', encodeURIComponent(q));
+  return `${cfg.siteUrl.replace(/\/$/, '')}/search?q=${encodeURIComponent(q)}`;
+}
+
+// ─── Public ───────────────────────────────────────────────────────────────────
 
 export interface SearchResult {
-  products: ProductCard[];
-  source: "shopify" | "generic" | "keyword" | "empty";
-  query: string;
+  products: ProductResult[];
+  fallbackUrl?: string;
+  adapterUsed: 'shopify' | 'generic' | 'fallback';
 }
 
-// ---------------------------------------------------------------------------
-// Shopify Storefront GraphQL Adapter
-// ---------------------------------------------------------------------------
-
-const SHOPIFY_STOREFRONT_QUERY = `
-  query SearchProducts($query: String!, $first: Int!) {
-    search(query: $query, first: $first, types: [PRODUCT]) {
-      nodes {
-        ... on Product {
-          id
-          title
-          handle
-          priceRange { minVariantPrice { amount } }
-          compareAtPriceRange { maxVariantPrice { amount } }
-          featuredImage { url altText }
-          metafields(identifiers: [
-            { namespace: "reviews", key: "rating" },
-            { namespace: "reviews", key: "count" }
-          ]) { value }
-          variants(first: 1) { nodes { id availableForSale } }
-        }
-      }
-    }
+export async function searchProducts(cfg: SiteAdapterConfig, intent: ParsedIntent): Promise<SearchResult> {
+  if (cfg.shopifyStorefrontToken) {
+    try { return { products: await shopifySearch(cfg, intent), adapterUsed: 'shopify' }; }
+    catch (e) { log.warn('[AVA agent] Shopify adapter error, falling back:', e); }
   }
-`;
-
-export async function searchViaShopify(
-  shop: string,
-  storefrontToken: string,
-  intent: ShoppingIntent,
-  limit = 5,
-): Promise<SearchResult> {
-  const query = buildSearchQuery(intent);
-
-  try {
-    const resp = await fetch(`https://${shop}/api/2024-01/graphql.json`, {
-      method: "POST",
-      headers: {
-        "X-Shopify-Storefront-Access-Token": storefrontToken,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: SHOPIFY_STOREFRONT_QUERY,
-        variables: { query, first: limit },
-      }),
-    });
-
-    if (!resp.ok) throw new Error(`Shopify Storefront API ${resp.status}`);
-    const data = await resp.json() as { data?: { search?: { nodes?: unknown[] } } };
-    const nodes = data?.data?.search?.nodes ?? [];
-
-    const products: ProductCard[] = nodes.map((node, idx) => {
-      const n = node as Record<string, unknown>;
-      const price = parseFloat(
-        (n.priceRange as Record<string, unknown>)?.minVariantPrice as string ?? "0"
-      );
-      const comparePrice = parseFloat(
-        (n.compareAtPriceRange as Record<string, unknown>)?.maxVariantPrice as string ?? "0"
-      );
-      const imageUrl = ((n.featuredImage as Record<string, unknown>)?.url as string) ?? "";
-      const metafields = (n.metafields as unknown[]) ?? [];
-      const rating = parseFloat((metafields[0] as Record<string, unknown>)?.value as string ?? "4.0") || 4.0;
-      const reviewCount = parseInt((metafields[1] as Record<string, unknown>)?.value as string ?? "0") || 0;
-
-      return {
-        product_id: String(n.id ?? `shopify-${idx}`),
-        title: String(n.title ?? "Product"),
-        image_url: imageUrl,
-        price,
-        original_price: comparePrice > price ? comparePrice : undefined,
-        rating: Math.min(5, Math.max(1, rating)),
-        review_count: reviewCount,
-        differentiator: buildDifferentiator(n, intent),
-        relevance_score: (limit - idx) / limit,
-      };
-    });
-
-    return { products, source: "shopify", query };
-  } catch (err) {
-    console.error("[ProductSearch] Shopify adapter error:", err);
-    return { products: [], source: "empty", query };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generic Site Search Adapter
-// Uses the site's own search endpoint (detected during onboarding).
-// ---------------------------------------------------------------------------
-
-export async function searchViaGeneric(
-  siteUrl: string,
-  intent: ShoppingIntent,
-  limit = 5,
-): Promise<SearchResult> {
-  const query = buildSearchQuery(intent);
-
-  // Try common search endpoint patterns
-  const searchPaths = [
-    `/search/suggest.json?q=${encodeURIComponent(query)}&resources[type]=product&resources[limit]=${limit}`,
-    `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-    `/search?type=product&q=${encodeURIComponent(query)}&format=json`,
-  ];
-
-  for (const path of searchPaths) {
+  if (cfg.searchUrl) {
     try {
-      const resp = await fetch(`${siteUrl}${path}`, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!resp.ok) continue;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = await resp.json() as any;
-
-      // Normalize: Shopify suggest.json / plain product array
-      const items: unknown[] =
-        (raw?.resources?.results?.products as unknown[] | undefined) ??
-        (raw?.products as unknown[] | undefined) ??
-        (Array.isArray(raw) ? (raw as unknown[]) : []);
-
-      if (items.length === 0) continue;
-
-      const products: ProductCard[] = (items as Record<string, unknown>[]).slice(0, limit).map((item, idx) => ({
-        product_id: String(item.id ?? item.handle ?? `generic-${idx}`),
-        title: String(item.title ?? item.name ?? "Product"),
-        image_url: String(item.image ?? item.featured_image ?? item.thumbnail ?? ""),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        price: parseFloat(String(item.price ?? (item.variants as any)?.[0]?.price ?? "0").replace(/[^0-9.]/g, "")) || 0,
-        rating: 4.2,
-        review_count: 0,
-        differentiator: intent.attributes[0] ?? "",
-        relevance_score: (limit - idx) / limit,
-      }));
-
-      return { products, source: "generic", query };
-    } catch {
-      continue;
-    }
+      const products = await genericSearch(cfg, intent);
+      if (products.length) return { products, adapterUsed: 'generic' };
+    } catch (e) { log.warn('[AVA agent] Generic adapter error, falling back:', e); }
   }
-
-  return { products: [], source: "empty", query };
-}
-
-// ---------------------------------------------------------------------------
-// Keyword Fallback — returns empty set with structured query for TTS fallback
-// ---------------------------------------------------------------------------
-
-export async function searchViaKeyword(
-  intent: ShoppingIntent,
-): Promise<SearchResult> {
-  // In a real deployment this would query a product catalog DB or external API.
-  // Here we return an empty result so the agent falls back to guidance text.
-  return { products: [], source: "keyword", query: buildSearchQuery(intent) };
-}
-
-// ---------------------------------------------------------------------------
-// Unified search — tries adapters in priority order
-// ---------------------------------------------------------------------------
-
-export async function searchProducts(
-  siteUrl: string,
-  intent: ShoppingIntent,
-  limit = 5,
-): Promise<SearchResult> {
-  // 1. Try Shopify Storefront API if the site is a Shopify store with a token
-  const siteConfig = await prisma.siteConfig.findUnique({
-    where: { siteUrl },
-    select: { platform: true, shopifyShop: true, shopifyAccessToken: true },
-  }).catch(() => null);
-
-  if (siteConfig?.platform === "shopify" && siteConfig.shopifyShop && siteConfig.shopifyAccessToken) {
-    // Shopify uses storefront token (separate from admin token) — fall through
-    // if admin token present but storefront token not configured
-    const result = await searchViaGeneric(siteUrl, intent, limit);
-    if (result.products.length > 0) return result;
-  }
-
-  // 2. Try generic site search endpoint
-  const genericResult = await searchViaGeneric(siteUrl, intent, limit);
-  if (genericResult.products.length > 0) return genericResult;
-
-  // 3. Keyword fallback (returns empty — agent will provide navigation guidance)
-  return searchViaKeyword(intent);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildSearchQuery(intent: ShoppingIntent): string {
-  const parts: string[] = [];
-  if (intent.category) parts.push(intent.category);
-  parts.push(...intent.attributes.slice(0, 3));
-  if (intent.maxPrice) parts.push(`under $${intent.maxPrice}`);
-  return parts.join(" ") || intent.raw.slice(0, 60);
-}
-
-function buildDifferentiator(node: Record<string, unknown>, intent: ShoppingIntent): string {
-  // Pick the first attribute from the intent as the differentiator label
-  return intent.attributes.slice(0, 1).join(", ") || "Best match";
-}
-
-// ---------------------------------------------------------------------------
-// Build a comparison card from two product cards
-// ---------------------------------------------------------------------------
-
-export interface ComparisonCard {
-  products: [ProductCard, ProductCard];
-  differing_attributes: { label: string; values: [string, string] }[];
-  recommendation?: { product_id: string; reason: string };
-}
-
-export function buildComparisonCard(a: ProductCard, b: ProductCard): ComparisonCard {
-  const attrs: { label: string; values: [string, string] }[] = [];
-
-  if (Math.abs(a.price - b.price) > 0.01) {
-    attrs.push({ label: "Price", values: [`$${a.price.toFixed(2)}`, `$${b.price.toFixed(2)}`] });
-  }
-  if (a.rating !== b.rating) {
-    attrs.push({ label: "Rating", values: [`${a.rating.toFixed(1)}★`, `${b.rating.toFixed(1)}★`] });
-  }
-  if (a.review_count !== b.review_count) {
-    attrs.push({ label: "Reviews", values: [String(a.review_count), String(b.review_count)] });
-  }
-  if (attrs.length === 0) {
-    attrs.push({ label: "Value", values: [a.differentiator || "—", b.differentiator || "—"] });
-  }
-
-  // Recommend the higher-rated, lower-priced option
-  const aScore = a.rating * 10 - a.price * 0.01;
-  const bScore = b.rating * 10 - b.price * 0.01;
-  const recommended = aScore >= bScore ? a : b;
-
-  return {
-    products: [a, b],
-    differing_attributes: attrs.slice(0, 3),
-    recommendation: {
-      product_id: recommended.product_id,
-      reason: recommended.product_id === a.product_id
-        ? `Better value: higher rating at competitive price`
-        : `Strong reviews and great price point`,
-    },
-  };
+  return { products: [], fallbackUrl: fallbackUrl(cfg, intent), adapterUsed: 'fallback' };
 }

@@ -139,6 +139,10 @@ async function init(config: Partial<WidgetConfig>): Promise<{ widget: AVAWidget 
   widget.onVoiceMuted = (id: string) => {
     bridge.sendOutcome(id, "voice_muted");
   };
+  // Feedback: thumbs up/down — sent as intervention_feedback WS message
+  widget.onFeedback = (id: string, feedback: "helpful" | "not_helpful") => {
+    bridge.sendFeedback(id, feedback);
+  };
   // Micro-outcomes: sent as track events so they pass server Zod validation
   widget.onMicroOutcome = (id: string, outcome: string) => {
     bridge.sendTrackEvent({

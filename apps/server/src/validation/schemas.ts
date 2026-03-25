@@ -105,6 +105,18 @@ export const InterventionOutcomeSchema = z.object({
 });
 
 // ============================================================================
+// WEBSOCKET: INTERVENTION FEEDBACK (from widget — thumbs up/down)
+// ============================================================================
+
+export const InterventionFeedbackSchema = z.object({
+  type: z.literal("intervention_feedback"),
+  intervention_id: z.string(),
+  session_id: z.string(),
+  feedback: z.enum(["helpful", "not_helpful"]),
+  timestamp: z.number(),
+});
+
+// ============================================================================
 // WEBSOCKET: DASHBOARD CHANNEL
 // ============================================================================
 
@@ -195,6 +207,7 @@ const ExperimentVariantSchema = z.object({
   weight: z.number().min(0).max(1),
   scoringConfigId: z.string().optional(),
   evalEngine: z.enum(["llm", "fast", "auto"]).optional(),
+  modelId: z.string().optional(),
 });
 
 export const ExperimentCreateSchema = z.object({

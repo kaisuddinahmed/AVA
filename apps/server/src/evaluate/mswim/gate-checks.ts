@@ -1,6 +1,18 @@
 import type { GateConfig } from "@ava/shared";
 import { GateOverride, ScoreTier } from "@ava/shared";
 
+// ScoreTier is a string enum — ordinal comparison must use this map.
+const TIER_ORDER: Record<ScoreTier, number> = {
+  [ScoreTier.MONITOR]: 0,
+  [ScoreTier.PASSIVE]: 1,
+  [ScoreTier.NUDGE]: 2,
+  [ScoreTier.ACTIVE]: 3,
+  [ScoreTier.ESCALATE]: 4,
+};
+function tierLt(a: ScoreTier, b: ScoreTier) { return TIER_ORDER[a] < TIER_ORDER[b]; }
+function tierLte(a: ScoreTier, b: ScoreTier) { return TIER_ORDER[a] <= TIER_ORDER[b]; }
+function tierGt(a: ScoreTier, b: ScoreTier) { return TIER_ORDER[a] > TIER_ORDER[b]; }
+
 export interface GateContext {
   sessionAgeSec: number;
   totalInterventionsFired: number;
@@ -51,7 +63,7 @@ export function runGateChecks(
   const duplicateFriction = ctx.currentFrictionIds.find((id) =>
     ctx.frictionIdsAlreadyIntervened.includes(id)
   );
-  if (duplicateFriction && tier < ScoreTier.ESCALATE) {
+  if (duplicateFriction && tierLt(tier, ScoreTier.ESCALATE)) {
     return { override: GateOverride.DUPLICATE_FRICTION, action: "suppress" };
   }
 
@@ -65,7 +77,7 @@ export function runGateChecks(
   if (
     ctx.secondsSinceLastIntervention !== null &&
     ctx.secondsSinceLastIntervention < PASSIVE_COOLDOWN_SEC &&
-    tier <= ScoreTier.PASSIVE
+    tierLte(tier, ScoreTier.PASSIVE)
   ) {
     return { override: GateOverride.COOLDOWN_ACTIVE, action: "suppress" };
   }
@@ -74,7 +86,7 @@ export function runGateChecks(
   if (
     ctx.secondsSinceLastActive !== null &&
     ctx.secondsSinceLastActive < gates.cooldownAfterActiveSec &&
-    tier < ScoreTier.ESCALATE
+    tierLt(tier, ScoreTier.ESCALATE)
   ) {
     return { override: GateOverride.COOLDOWN_ACTIVE, action: "suppress" };
   }
@@ -83,7 +95,7 @@ export function runGateChecks(
   if (
     ctx.secondsSinceLastNudge !== null &&
     ctx.secondsSinceLastNudge < gates.cooldownAfterNudgeSec &&
-    tier <= ScoreTier.NUDGE
+    tierLte(tier, ScoreTier.NUDGE)
   ) {
     return { override: GateOverride.COOLDOWN_ACTIVE, action: "suppress" };
   }
@@ -107,15 +119,15 @@ export function runGateChecks(
 
   // ============ 3 FORCE-PASSIVE GATES ============
 
-  if (ctx.hasTechnicalError && tier > ScoreTier.PASSIVE) {
+  if (ctx.hasTechnicalError && tierGt(tier, ScoreTier.PASSIVE)) {
     return { override: GateOverride.FORCE_PASSIVE_TECHNICAL, action: "force_passive" };
   }
 
-  if (ctx.hasOutOfStock && tier > ScoreTier.PASSIVE) {
+  if (ctx.hasOutOfStock && tierGt(tier, ScoreTier.PASSIVE)) {
     return { override: GateOverride.FORCE_PASSIVE_OOS, action: "force_passive" };
   }
 
-  if (ctx.hasShippingIssue && tier > ScoreTier.PASSIVE) {
+  if (ctx.hasShippingIssue && tierGt(tier, ScoreTier.PASSIVE)) {
     return { override: GateOverride.FORCE_PASSIVE_SHIPPING, action: "force_passive" };
   }
 

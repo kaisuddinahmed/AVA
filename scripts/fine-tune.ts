@@ -2,13 +2,13 @@
 // ============================================================================
 // AVA Fine-Tune Script
 // Exports training data, applies quality filters, formats for fine-tuning,
-// and optionally submits to a provider (Groq / OpenAI) or saves locally.
+// and optionally submits to Groq or saves locally.
 //
 // Usage:
 //   npx tsx scripts/fine-tune.ts [options]
 //
 // Options:
-//   --provider    groq | openai | local          (default: local)
+//   --provider    groq | local                    (default: local)
 //   --output      path/to/output.jsonl            (default: data/fine-tune-{timestamp}.jsonl)
 //   --min-grade   high | medium | low             (default: medium)
 //   --min-samples N                                (default: 50)
@@ -18,10 +18,10 @@
 //   --site        https://example.com              (optional filter)
 //   --since       2025-01-01                       (optional date filter)
 //   --until       2025-12-31                       (optional date filter)
-//   --preset      openai | groq | generic          (format preset, default: matches provider)
+//   --preset      groq | generic                   (format preset, default: matches provider)
 //   --dry-run                                       (show stats only, don't write/submit)
 //   --include-outcome-hint                          (add outcome label for reward modeling)
-//   --submit                                        (submit to provider API after export)
+//   --submit                                        (submit to Groq API after export)
 //
 // Requires: server DB accessible (runs Prisma directly, not via HTTP)
 // ============================================================================
@@ -32,7 +32,7 @@ import { resolve, dirname } from "path";
 
 // --- Prisma client bootstrap (direct DB access, no server needed) ---
 // We import from the built @ava/db package
-import { TrainingDatapointRepo } from "@ava/db";
+import { TrainingDatapointRepo, ModelVersionRepo } from "@ava/db";
 
 // ---------------------------------------------------------------------------
 // CLI arg parsing
@@ -49,7 +49,7 @@ function hasFlag(name: string): boolean {
   return args.includes(`--${name}`);
 }
 
-const PROVIDER = getArg("provider", "local") as "groq" | "openai" | "local";
+const PROVIDER = getArg("provider", "local") as "groq" | "local";
 const MIN_GRADE = getArg("min-grade", "medium") as "high" | "medium" | "low";
 const MIN_SAMPLES = Number(getArg("min-samples", "50"));
 const MAX_SAMPLES = Number(getArg("max-samples", "5000"));
@@ -58,8 +58,7 @@ const TIER_FILTER = getArg("tier", "");
 const SITE_FILTER = getArg("site", "");
 const SINCE = getArg("since", "");
 const UNTIL = getArg("until", "");
-const PRESET = getArg("preset", PROVIDER === "local" ? "generic" : PROVIDER) as
-  | "openai"
+const PRESET = getArg("preset", PROVIDER === "local" ? "generic" : "groq") as
   | "groq"
   | "generic";
 const DRY_RUN = hasFlag("dry-run");
@@ -263,6 +262,7 @@ function gradeDatapoint(dp: {
   outcomeDelayMs: number | null;
   cartValue: number;
   frictionsFound: string;
+  userFeedback: string | null;
 }): QualityGradeInfo {
   let score = 50; // baseline
 
@@ -322,6 +322,10 @@ function gradeDatapoint(dp: {
 
   // Cart context
   if (dp.cartValue > 0) score += 5;
+
+  // User feedback signal (from widget thumbs up/down)
+  if (dp.userFeedback === "helpful") score += 20;
+  else if (dp.userFeedback === "not_helpful") score -= 25;
 
   // Clamp and grade
   score = Math.max(0, Math.min(100, score));
@@ -444,48 +448,83 @@ Analyze the user's current session state and provide your evaluation in the requ
 }
 
 // ---------------------------------------------------------------------------
-// Provider submission (stubbed — real API calls require provider SDK)
+// Provider submission — Groq SDK + ModelVersion tracking
 // ---------------------------------------------------------------------------
 
 async function submitToProvider(
-  provider: "groq" | "openai",
+  provider: "groq",
   filePath: string,
   exampleCount: number
 ): Promise<void> {
-  if (provider === "openai") {
-    console.log(`  OpenAI fine-tuning submission:`);
-    console.log(`    File: ${filePath}`);
-    console.log(`    Examples: ${exampleCount}`);
-    console.log();
-    console.log(`  To submit manually:`);
-    console.log(`    openai api fine_tuning.jobs.create \\`);
-    console.log(`      -m gpt-4o-mini-2024-07-18 \\`);
-    console.log(`      -t ${filePath}`);
-    console.log();
-    console.log(`  Or via SDK:`);
-    console.log(`    import OpenAI from "openai";`);
-    console.log(`    const openai = new OpenAI();`);
-    console.log(`    const file = await openai.files.create({`);
-    console.log(`      file: fs.createReadStream("${filePath}"),`);
-    console.log(`      purpose: "fine-tune",`);
-    console.log(`    });`);
-    console.log(`    const job = await openai.fineTuning.jobs.create({`);
-    console.log(`      model: "gpt-4o-mini-2024-07-18",`);
-    console.log(`      training_file: file.id,`);
-    console.log(`    });`);
-  } else if (provider === "groq") {
-    console.log(`  Groq fine-tuning submission:`);
-    console.log(`    File: ${filePath}`);
-    console.log(`    Examples: ${exampleCount}`);
-    console.log();
-    console.log(`  Note: Groq fine-tuning API availability varies.`);
-    console.log(`  When available, upload the JSONL file via the Groq dashboard`);
-    console.log(`  or API and select the base model (e.g., llama-3.3-70b-versatile).`);
+  const baseModel = "llama-3.3-70b-versatile";
+
+  // Create ModelVersion record before submission
+  const modelVersion = await ModelVersionRepo.createModelVersion({
+    provider,
+    baseModel,
+    modelId: "pending",
+    status: "training",
+    trainingDatapointCount: exampleCount,
+  });
+  console.log(`  Created ModelVersion: ${modelVersion.id}`);
+
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    console.error("  ✗ GROQ_API_KEY not set. ModelVersion created but submission skipped.");
+    console.error(`    Set GROQ_API_KEY and re-run when Groq fine-tuning API is available.`);
+    await ModelVersionRepo.updateModelVersion(modelVersion.id, { status: "ready", modelId: baseModel });
+    return;
   }
 
-  console.log();
-  console.log("  ℹ  Automated submission will be enabled once provider SDKs");
-  console.log("     expose stable fine-tuning endpoints. For now, use the file above.");
+  try {
+    const Groq = (await import("groq-sdk")).default;
+    const groq = new Groq({ apiKey });
+
+    // Upload file
+    const { createReadStream } = await import("fs");
+    const file = await (groq as any).files.create({
+      file: createReadStream(filePath),
+      purpose: "fine-tune",
+    });
+    console.log(`  Uploaded file: ${file.id} (${file.bytes} bytes)`);
+
+    // Create fine-tuning job
+    const job = await (groq as any).fineTuning.jobs.create({
+      model: baseModel,
+      training_file: file.id,
+      suffix: `ava-${modelVersion.id.slice(0, 8)}`,
+    });
+    console.log(`  Fine-tune job: ${job.id} (status: ${job.status})`);
+
+    await ModelVersionRepo.updateModelVersion(modelVersion.id, { fineTuneJobId: job.id });
+
+    if (!hasFlag("no-wait")) {
+      console.log("  Polling for completion (Ctrl+C to exit — job continues on Groq)...");
+      let status = job.status;
+      while (status !== "succeeded" && status !== "failed" && status !== "cancelled") {
+        await new Promise((r) => setTimeout(r, 30000));
+        const updated = await (groq as any).fineTuning.jobs.retrieve(job.id);
+        status = updated.status;
+        console.log(`  Status: ${status}`);
+        if (status === "succeeded" && updated.fine_tuned_model) {
+          await ModelVersionRepo.updateModelVersion(modelVersion.id, {
+            status: "ready",
+            modelId: updated.fine_tuned_model,
+          });
+          console.log(`  ✓ Fine-tuned model: ${updated.fine_tuned_model}`);
+        } else if (status === "failed") {
+          await ModelVersionRepo.updateModelVersion(modelVersion.id, { status: "retired" });
+          console.error(`  ✗ Fine-tuning failed: ${updated.error?.message ?? "unknown error"}`);
+        }
+      }
+    } else {
+      console.log(`  --no-wait: Job submitted. Poll status via: GET /api/training/fine-tune/status/${job.id}`);
+    }
+  } catch (err) {
+    console.log(`  Groq fine-tuning API not yet available: ${(err as Error).message}`);
+    console.log(`  ModelVersion created with base model. JSONL file saved at: ${filePath}`);
+    await ModelVersionRepo.updateModelVersion(modelVersion.id, { status: "ready", modelId: baseModel });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -845,6 +845,68 @@
       const COLORS = ["Black","White","Red","Blue","Green","Beige","Gold","Silver"];
       const INTROS = ["Experience the epitome of style and comfort with this exceptional piece.","Redefine your everyday look with a product designed for the modern lifestyle.","Crafted with precision and care, this item represents the pinnacle of our collection.","Discover a new standard of quality with materials sourced from the finest suppliers.","Elevate your wardrobe instantly with this versatile and striking addition."];
       const FILLER = "Furthermore, our commitment to sustainability means this product was created with eco-friendly practices in mind. The ergonomic design ensures tailored fit and maximum comfort throughout the day, making it an essential companion for your busy lifestyle.";
+      const CATEGORY_IMAGE_CONTEXT = {
+        men: {
+          clothing: ["mens-fashion", "apparel"],
+          footwear: ["mens-shoes", "footwear"],
+          watches: ["watch", "mens-accessories"],
+          accessories: ["mens-fashion", "accessories"],
+          lifestyle: ["lifestyle", "design"],
+          beauty: ["mens-grooming", "skincare"],
+          home: ["home-decor", "interior"],
+          tech: ["technology", "gadgets"],
+        },
+        women: {
+          clothing: ["womens-fashion", "apparel"],
+          footwear: ["womens-shoes", "footwear"],
+          watches: ["watch", "womens-accessories"],
+          accessories: ["womens-fashion", "accessories"],
+          lifestyle: ["lifestyle", "design"],
+          beauty: ["beauty", "skincare"],
+          home: ["home-decor", "interior"],
+          tech: ["technology", "gadgets"],
+        },
+      };
+
+      function hashString(value) {
+        let hash = 0;
+        for (let i = 0; i < value.length; i++) {
+          hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+        }
+        return Math.abs(hash);
+      }
+
+      function normalizeImageKeyword(value) {
+        return value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+      function getFallbackImage(category, gender, seed = 0) {
+        const pool =
+          (GENDERED_CAT_IMGS[gender] && GENDERED_CAT_IMGS[gender][category]) ||
+          CAT_IMGS[category] ||
+          DEMO_PRODUCTS.map((product) => product.image);
+        if (!pool.length) return DEMO_PRODUCTS[0].image;
+        return pool[Math.abs(seed) % pool.length];
+      }
+
+      function buildGeneratedImageUrl({ id, category, gender, noun }) {
+        const context =
+          (CATEGORY_IMAGE_CONTEXT[gender] &&
+            CATEGORY_IMAGE_CONTEXT[gender][category]) ||
+          [normalizeImageKeyword(category)];
+        const nounTerms = noun
+          .split(/\s+/)
+          .map(normalizeImageKeyword)
+          .filter(Boolean)
+          .slice(0, 3);
+        const tags = Array.from(new Set([...context, ...nounTerms])).slice(0, 4);
+        const query = tags.map((tag) => encodeURIComponent(tag)).join(",");
+        const lock = hashString(`${id}:${category}:${gender}:${noun}`) % 100000;
+        return `https://loremflickr.com/800/1000/${query}?lock=${lock}`;
+      }
 
       function genDesc(name) {
         return INTROS[Math.floor(Math.random() * INTROS.length)] + " " + FILLER + " Every stitch and detail has been considered to ensure longevity and timeless appeal with the " + name + ".";
@@ -861,10 +923,6 @@
         let n = 1;
         CATEGORIES.forEach((cat) => {
           GENDERS.forEach((gender) => {
-            const imgs =
-              (GENDERED_CAT_IMGS[gender] && GENDERED_CAT_IMGS[gender][cat]) ||
-              CAT_IMGS[cat] ||
-              [];
             const nounPool =
               (GENDERED_NOUNS[gender] && GENDERED_NOUNS[gender][cat]) ||
               BASE_NOUNS[cat] ||
@@ -893,7 +951,8 @@
                 category: cat,
                 gender,
                 price,
-                image: imgs[(i + n) % imgs.length],
+                image: buildGeneratedImageUrl({ id, category: cat, gender, noun }),
+                fallbackImage: getFallbackImage(cat, gender, i + n),
                 specs: ["Premium Material","Sustainable","New Season"],
                 reviews,
                 description: genDesc(name),
@@ -947,7 +1006,39 @@
         return products;
       }
 
-      const ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts()));
+      const ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts())).map(
+        (product, index) => ({
+          ...product,
+          fallbackImage:
+            product.fallbackImage ||
+            getFallbackImage(product.category, product.gender, index),
+        }),
+      );
+
+      window.useImageFallback = (img) => {
+        if (!(img instanceof HTMLImageElement)) return;
+        const fallback = img.dataset.fallbackSrc;
+        if (!fallback) return;
+        const activeSrc = img.currentSrc || img.src;
+        if (activeSrc === fallback) {
+          img.removeAttribute("data-fallback-src");
+          return;
+        }
+        img.removeAttribute("data-fallback-src");
+        img.src = fallback;
+      };
+
+      document.addEventListener(
+        "error",
+        (event) => {
+          const target = event.target;
+          if (target instanceof HTMLImageElement) {
+            window.useImageFallback(target);
+          }
+        },
+        true,
+      );
+
       function getProductsByCategory(cat) { return ALL_PRODUCTS.filter(p => p.category === cat); }
       function searchProducts(query) {
         const q = query.toLowerCase();
@@ -1099,9 +1190,35 @@
       }
 
       function getHomeTopProducts() {
-        return [...ALL_PRODUCTS]
-          .sort((a, b) => (b.isDemo ? 1 : 0) - (a.isDemo ? 1 : 0))
-          .slice(0, 100);
+        const demoProducts = ALL_PRODUCTS.filter((product) => product.isDemo);
+        const buckets = new Map();
+        const bucketOrder = [];
+
+        ALL_PRODUCTS.filter((product) => !product.isDemo).forEach((product) => {
+          const key = `${product.category}:${product.gender || "all"}`;
+          if (!buckets.has(key)) {
+            buckets.set(key, []);
+            bucketOrder.push(key);
+          }
+          buckets.get(key).push(product);
+        });
+
+        const diversified = [];
+        let offset = 0;
+        while (demoProducts.length + diversified.length < 100) {
+          let addedInRound = false;
+          bucketOrder.forEach((key) => {
+            const bucket = buckets.get(key) || [];
+            const candidate = bucket[offset];
+            if (!candidate || demoProducts.length + diversified.length >= 100) return;
+            diversified.push(candidate);
+            addedInRound = true;
+          });
+          if (!addedInRound) break;
+          offset += 1;
+        }
+
+        return [...demoProducts, ...diversified].slice(0, 100);
       }
 
       function showHomeTop100() {
@@ -1212,7 +1329,7 @@
                                 .map(p => `
                                     <div class="group relative cursor-pointer" onclick="openModalById('${p.id}')">
                                         <div class="aspect-[3/4] bg-gray-100 overflow-hidden mb-2">
-                                            <img src="${p.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                                            <img src="${p.image}" alt="${p.name}" data-fallback-src="${p.fallbackImage || p.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
                                         </div>
                                         <div class="font-bold text-sm text-black truncate">${p.name}</div>
                                         <div class="text-xs text-gray-500">$${p.price}</div>
@@ -1253,7 +1370,7 @@
           card.innerHTML = `
                     ${badge}
                     <div class="aspect-[3/4] bg-black/20 mb-0 flex items-center justify-center overflow-hidden cursor-pointer product-trigger relative">
-                        <img src="${p.image}" alt="${p.name}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-700">
+                        <img src="${p.image}" alt="${p.name}" loading="lazy" data-fallback-src="${p.fallbackImage || p.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-700">
                          <button class="btn-wishlist absolute bottom-3 right-3 w-10 h-10 rounded-full border flex items-center justify-center shadow-lg transition ${isWishlisted ? "bg-rose-50 border-rose-200 text-rose-500" : "bg-white/95 border-gray-200 text-gray-700 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-200"}" data-id="${p.id}" data-active="${isWishlisted ? "true" : "false"}" aria-label="Toggle wishlist">
                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="${isWishlisted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -1586,6 +1703,8 @@
         document.getElementById("modal-qty").innerText = 1;
         document.getElementById("modal-image").src = p.image;
         document.getElementById("modal-image").alt = p.name;
+        document.getElementById("modal-image").dataset.fallbackSrc =
+          p.fallbackImage || p.image;
         document.getElementById("modal-category").innerText = p.category;
         document.getElementById("modal-title").innerText = p.name;
         const modalPriceEl = document.getElementById("modal-price");
@@ -1824,7 +1943,7 @@
                     data-from-name="${p.name}"
                     onclick="window.safeTrigger('suggested_product_clicked', {product_id: '${s.id}', product_name: '${s.name}', product_price: ${s.price}, from_product_id: '${p.id}', from_product_name: '${p.name}'}); window.openModalById('${s.id}');">
                     <div class="aspect-[3/4] bg-gray-100 overflow-hidden relative">
-                        <img src="${s.image}" class="w-full h-full object-cover">
+                        <img src="${s.image}" alt="${s.name}" data-fallback-src="${s.fallbackImage || s.image}" class="w-full h-full object-cover">
                     </div>
                     <div>
                         <div class="font-bold text-xs truncate font-serif text-black">${s.name}</div>
@@ -2203,7 +2322,7 @@
             (p) => `
                 <div class="flex gap-3 p-2 hover:bg-white/5 rounded cursor-pointer transition border border-transparent hover:border-white/10 group items-center" onclick="openModalById('${p.id}')">
                     <div class="w-10 h-10 bg-black/20 rounded overflow-hidden flex-shrink-0">
-                        <img src="${p.image}" class="w-full h-full object-cover">
+                        <img src="${p.image}" alt="${p.name}" data-fallback-src="${p.fallbackImage || p.image}" class="w-full h-full object-cover">
                     </div>
                     <div class="flex-grow min-w-0">
                         <div class="font-bold text-xs text-white truncate font-serif group-hover:text-amber-400 transition">${p.name}</div>
@@ -2414,7 +2533,7 @@
               .map(
                 (m) => `
                             <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded cursor-pointer transition border border-transparent hover:border-white/5" onclick="document.getElementById('search-dropdown').classList.add('hidden'); openModalById('${m.id}');">
-                                <img src="${m.image}" class="w-8 h-8 rounded bg-gray-800 object-cover">
+                                <img src="${m.image}" alt="${m.name}" data-fallback-src="${m.fallbackImage || m.image}" class="w-8 h-8 rounded bg-gray-800 object-cover">
                                 <div>
                                     <div class="font-bold text-sm text-white font-serif">${m.name}</div>
                                     <div class="text-xs text-gray-400">$${m.price}</div>

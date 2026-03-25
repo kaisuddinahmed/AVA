@@ -13,6 +13,9 @@ import {
   getRollout,
 } from "../rollout/rollout.service.js";
 import { evaluateRolloutHealth } from "../rollout/rollout-health.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 /**
  * GET /api/rollouts — List rollouts
@@ -31,7 +34,7 @@ export async function list(req: Request, res: Response) {
 
     res.json({ rollouts, count: rollouts.length });
   } catch (error) {
-    console.error("[Rollouts API] list error:", error);
+    log.error("[Rollouts API] list error:", error);
     res.status(500).json({ error: "Failed to list rollouts" });
   }
 }
@@ -45,7 +48,7 @@ export async function create(req: Request, res: Response) {
     res.status(201).json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Rollouts API] create error:", msg);
+    log.error("[Rollouts API] create error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -72,7 +75,7 @@ export async function get(req: Request, res: Response) {
 
     res.json({ ...rollout, health });
   } catch (error) {
-    console.error("[Rollouts API] get error:", error);
+    log.error("[Rollouts API] get error:", error);
     res.status(500).json({ error: "Failed to get rollout" });
   }
 }
@@ -86,7 +89,7 @@ export async function start(req: Request, res: Response) {
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Rollouts API] start error:", msg);
+    log.error("[Rollouts API] start error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -100,7 +103,7 @@ export async function promote(req: Request, res: Response) {
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Rollouts API] promote error:", msg);
+    log.error("[Rollouts API] promote error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -115,7 +118,7 @@ export async function rollback(req: Request, res: Response) {
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Rollouts API] rollback error:", msg);
+    log.error("[Rollouts API] rollback error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -129,7 +132,7 @@ export async function pauseRolloutEndpoint(req: Request, res: Response) {
     res.json(rollout);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Rollouts API] pause error:", msg);
+    log.error("[Rollouts API] pause error:", msg);
     res.status(400).json({ error: msg });
   }
 }

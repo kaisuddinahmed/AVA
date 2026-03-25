@@ -15,6 +15,9 @@ import type {
   DriftSeverity,
   WindowType,
 } from "@ava/shared";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "jobs" });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,7 +211,7 @@ export async function runDriftCheck(
         }
       }
     } catch (error) {
-      console.error(
+      log.error(
         `[DriftDetector] Failed to compute ${windowType} snapshot:`,
         error,
       );

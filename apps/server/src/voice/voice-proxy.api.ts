@@ -10,6 +10,9 @@
 
 import type { Request, Response } from "express";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "voice" });
 
 const DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak";
 const DEEPGRAM_STT_URL =
@@ -49,7 +52,7 @@ export async function ttsProxy(req: Request, res: Response): Promise<void> {
 
     if (!upstream.ok) {
       const errText = await upstream.text();
-      console.error(`[VoiceProxy] Deepgram TTS error ${upstream.status}: ${errText}`);
+      log.error(`[VoiceProxy] Deepgram TTS error ${upstream.status}: ${errText}`);
       res.status(502).json({ error: "Deepgram TTS failed", status: upstream.status });
       return;
     }
@@ -69,7 +72,7 @@ export async function ttsProxy(req: Request, res: Response): Promise<void> {
     };
     await pump();
   } catch (err) {
-    console.error("[VoiceProxy] TTS proxy error:", err);
+    log.error("[VoiceProxy] TTS proxy error:", err);
     if (!res.headersSent) {
       res.status(502).json({ error: "TTS proxy failed" });
     }
@@ -111,7 +114,7 @@ export async function sstProxy(req: Request, res: Response): Promise<void> {
 
     if (!upstream.ok) {
       const errText = await upstream.text();
-      console.error(`[VoiceProxy] Deepgram STT error ${upstream.status}: ${errText}`);
+      log.error(`[VoiceProxy] Deepgram STT error ${upstream.status}: ${errText}`);
       res.status(502).json({ error: "Deepgram STT failed", status: upstream.status });
       return;
     }
@@ -129,7 +132,7 @@ export async function sstProxy(req: Request, res: Response): Promise<void> {
 
     res.json({ transcript });
   } catch (err) {
-    console.error("[VoiceProxy] STT proxy error:", err);
+    log.error("[VoiceProxy] STT proxy error:", err);
     res.status(502).json({ error: "STT proxy failed" });
   }
 }

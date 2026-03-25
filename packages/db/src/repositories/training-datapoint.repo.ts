@@ -144,6 +144,16 @@ export async function getOutcomeDistribution(siteUrl?: string) {
 }
 
 /**
+ * Update user feedback on a training datapoint (enrichment from InterventionFeedback).
+ */
+export async function updateUserFeedback(interventionId: string, feedback: string) {
+  return prisma.trainingDatapoint.update({
+    where: { interventionId },
+    data: { userFeedback: feedback },
+  });
+}
+
+/**
  * Get tier × outcome cross-tabulation for model analysis.
  */
 export async function getTierOutcomeCrossTab(siteUrl?: string) {

@@ -148,6 +148,9 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
   const { data: voiceData } = useApi<VoiceAnalytics>(`/analytics/voice${analyticsParams}`, { pollMs: 20000 });
 
   // ── System (Operate) data ──────────────────────────────────────────────
+  const { data: activeModel } = useApi<any>("/models/active", { pollMs: 30000 });
+  const { data: feedbackStats } = useApi<any>("/training/feedback/stats", { pollMs: 30000 });
+  const { data: retrainHistory, reload: reloadRetrain } = useApi<any>("/training/retrain/history?limit=5", { pollMs: 30000 });
   const { data: trainingStats } = useApi<any>("/training/stats", { pollMs: 30000 });
   const { data: qualityStats }  = useApi<any>("/training/quality/stats", { pollMs: 30000 });
   const { data: driftStatus, reload: reloadDrift } = useApi<any>("/drift/status", { pollMs: 15000 });
@@ -548,6 +551,103 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
           </>
         ) : (
           <div className="empty-state" style={{ padding: 16 }}><p className="muted">Loading training data...</p></div>
+        )}
+      </SystemSection>
+
+      {/* Active Model */}
+      <SystemSection title="Active Model" badge={activeModel?.model ? activeModel.model.provider : "none"}>
+        {activeModel?.model ? (
+          <div className="grid-4" style={{ marginBottom: 12 }}>
+            <div className="metric-box">
+              <div className="label">Provider</div>
+              <div className="value" style={{ fontSize: 13 }}>{activeModel.model.provider}</div>
+              <div className="sub">{activeModel.model.baseModel}</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Model ID</div>
+              <div className="value" style={{ fontSize: 10, wordBreak: "break-all" }}>{activeModel.model.modelId}</div>
+              <div className="sub">{activeModel.model.status}</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Training Data</div>
+              <div className="value">{fmtNum(activeModel.model.trainingDatapointCount ?? 0)}</div>
+              <div className="sub">datapoints</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Promoted</div>
+              <div className="value" style={{ fontSize: 11 }}>{activeModel.model.promotedAt ? new Date(activeModel.model.promotedAt).toLocaleDateString() : "—"}</div>
+              <div className="sub">{activeModel.model.promotedAt ? fmtTime(activeModel.model.promotedAt) : ""}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No fine-tuned model active — using base model ({config.groq?.model ?? "llama-3.3-70b-versatile"})</p></div>
+        )}
+      </SystemSection>
+
+      {/* User Feedback */}
+      <SystemSection title="User Feedback" badge={feedbackStats ? `${fmtNum((feedbackStats.helpful ?? 0) + (feedbackStats.not_helpful ?? 0))} total` : undefined}>
+        {feedbackStats ? (
+          <div className="grid-4" style={{ marginBottom: 12 }}>
+            <div className="metric-box">
+              <div className="label">Helpful</div>
+              <div className="value accent">{fmtNum(feedbackStats.helpful ?? 0)}</div>
+              <div className="sub">thumbs up</div>
+            </div>
+            <div className="metric-box">
+              <div className="label">Not Helpful</div>
+              <div className="value warn">{fmtNum(feedbackStats.not_helpful ?? 0)}</div>
+              <div className="sub">thumbs down</div>
+            </div>
+            <div className="metric-box" style={{ gridColumn: "span 2" }}>
+              <div className="label">Helpfulness Rate</div>
+              <div className="value" style={{ color: "var(--accent)" }}>
+                {(() => {
+                  const total = (feedbackStats.helpful ?? 0) + (feedbackStats.not_helpful ?? 0);
+                  return total > 0 ? fmtPct((feedbackStats.helpful ?? 0) / total) : "—";
+                })()}
+              </div>
+              <div className="sub">helpful / total feedback</div>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No feedback data yet</p></div>
+        )}
+      </SystemSection>
+
+      {/* Retraining */}
+      <SystemSection title="Retraining" badge={retrainHistory?.triggers?.length > 0 ? `${retrainHistory.triggers.length} runs` : undefined}>
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={async () => {
+              setActionLoading("retrain");
+              try {
+                await apiFetch("/training/retrain/trigger", { method: "POST", body: JSON.stringify({}), headers: { "Content-Type": "application/json" } });
+                reloadRetrain();
+              } finally { setActionLoading(null); }
+            }}
+            disabled={actionLoading === "retrain"}
+            style={{ fontSize: 10, padding: "5px 12px", background: "rgba(91,155,213,0.15)", border: "1px solid rgba(91,155,213,0.3)", borderRadius: 4, color: "var(--info)", cursor: "pointer", marginBottom: 12 }}
+          >
+            {actionLoading === "retrain" ? "Checking..." : "Check Retrain Conditions"}
+          </button>
+        </div>
+        {(retrainHistory?.triggers ?? []).length > 0 ? (
+          <div className="scroll-list" style={{ maxHeight: 200 }}>
+            {(retrainHistory?.triggers ?? []).map((t: any) => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3,
+                  background: t.status === "completed" ? "rgba(107,201,160,0.15)" : t.status === "failed" ? "rgba(220,80,80,0.15)" : "rgba(255,255,255,0.06)",
+                  color: t.status === "completed" ? "var(--accent)" : t.status === "failed" ? "var(--tier-escalate)" : "var(--info)",
+                  flexShrink: 0 }}>
+                  {t.status}
+                </span>
+                <span style={{ fontSize: 10, flex: 1, color: "var(--text)" }}>{fmtNum(t.trainingDatapointCount)} pts</span>
+                <span className="mono muted" style={{ fontSize: 9 }}>{fmtTime(t.triggeredAt)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No retrain triggers yet</p></div>
         )}
       </SystemSection>
 

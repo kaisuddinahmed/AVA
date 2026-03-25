@@ -84,6 +84,8 @@ export class AVAWidget {
   onUserAction: (action: string, data?: Record<string, unknown>) => void = () => {};
   /** Micro-outcome callback — fine-grained training signal */
   onMicroOutcome: (id: string, outcome: MicroOutcome) => void = () => {};
+  /** Feedback callback — thumbs up/down on interventions */
+  onFeedback: (id: string, feedback: "helpful" | "not_helpful") => void = () => {};
   /** Called when user taps mute — index.ts forwards this as "voice_muted" outcome */
   onVoiceMuted: (id: string) => void = () => {};
   /** Called when a voice query transcript is ready — index.ts sends it as voice_query WS message */
@@ -367,10 +369,11 @@ export class AVAWidget {
           this.hasUnread = false;
           this.render();
         },
-        onNotHelpful: () => {
+        onFeedback: (feedback: "helpful" | "not_helpful") => {
           this.voiceManager?.stopCurrent();
-          this.onMicroOutcome(payload.intervention_id, "not_helpful");
-          this.onIgnored(payload.intervention_id);
+          this.onFeedback(payload.intervention_id, feedback);
+          this.onMicroOutcome(payload.intervention_id, feedback === "helpful" ? "cta_click" : "not_helpful");
+          if (feedback === "not_helpful") this.onIgnored(payload.intervention_id);
           this.currentNudge = null;
           this.state = "minimized";
           this.hasUnread = false;
@@ -443,11 +446,12 @@ export class AVAWidget {
                 this.onUserAction(lead.payload.cta_action || "cta_click", lead.payload.meta);
               }
             : undefined,
-          onNotHelpful: lead.payload
-            ? () => {
+          onFeedback: lead.payload
+            ? (feedback: "helpful" | "not_helpful") => {
                 if (!lead.payload) return;
-                this.onMicroOutcome(lead.payload.intervention_id, "not_helpful");
-                this.onIgnored(lead.payload.intervention_id);
+                this.onFeedback(lead.payload.intervention_id, feedback);
+                this.onMicroOutcome(lead.payload.intervention_id, feedback === "helpful" ? "cta_click" : "not_helpful");
+                if (feedback === "not_helpful") this.onIgnored(lead.payload.intervention_id);
                 this.reportedOutcomes.add(lead.id);
               }
             : undefined,

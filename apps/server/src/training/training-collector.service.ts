@@ -4,12 +4,16 @@
 // ============================================================================
 
 import {
+
   TrainingDatapointRepo,
   InterventionRepo,
   EvaluationRepo,
   SessionRepo,
   EventRepo,
 } from "@ava/db";
+
+import { logger } from "../logger.js";
+const log = logger.child({ service: "training" });
 
 /** Terminal outcomes worth capturing as training data */
 const TERMINAL_OUTCOMES = new Set(["dismissed", "converted", "ignored"]);
@@ -36,7 +40,7 @@ export async function captureTrainingDatapoint(
   // Load the full chain: intervention → evaluation → session + events
   const intervention = await InterventionRepo.getIntervention(interventionId);
   if (!intervention || !intervention.evaluation) {
-    console.warn(
+    log.warn(
       `[TrainingCollector] Intervention ${interventionId} not found or missing evaluation`
     );
     return null;
@@ -45,7 +49,7 @@ export async function captureTrainingDatapoint(
   const evaluation = intervention.evaluation;
   const session = await SessionRepo.getSession(intervention.sessionId);
   if (!session) {
-    console.warn(
+    log.warn(
       `[TrainingCollector] Session ${intervention.sessionId} not found`
     );
     return null;
@@ -72,7 +76,7 @@ export async function captureTrainingDatapoint(
     }
   } catch {
     // If event batch parsing fails, continue with empty data
-    console.warn(
+    log.warn(
       `[TrainingCollector] Failed to parse event batch for evaluation ${evaluation.id}`
     );
   }
@@ -159,7 +163,7 @@ export async function captureTrainingDatapoint(
     qualityFlags,
   });
 
-  console.log(
+  log.info(
     `[TrainingCollector] Captured datapoint ${datapoint.id} | ` +
       `intervention=${interventionId} outcome=${outcome} tier=${evaluation.tier} ` +
       `composite=${evaluation.compositeScore.toFixed(1)}`

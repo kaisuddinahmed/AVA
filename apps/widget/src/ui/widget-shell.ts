@@ -1,5 +1,6 @@
 import { injectGlobalStyles } from "./styles/global-styles.js";
 import type { WidgetConfig } from "../config.js";
+import { AgentController } from '../agent/agent.controller.js';
 
 /**
  * Widget Shell — Creates and manages the Shadow DOM container.
@@ -90,4 +91,18 @@ export class WidgetShell {
   destroy(): void {
     this.hostEl.remove();
   }
+
+  // ── Story 12: Conversational Shopping Agent ───────────────────────────────
+  const _agentCtrl = new AgentController({
+    ws: wsTransport as unknown as { send(m: Record<string, unknown>): void; on(e: string, h: (d: Record<string, unknown>) => void): void; off(e: string, h: (d: Record<string, unknown>) => void): void },
+    panel: panel as unknown as { appendMessage(role: 'user'|'assistant', content: string, extra?: HTMLElement|null): void; showTypingIndicator(): void; hideTypingIndicator(): void; scrollToBottom(): void; clearMessages(): void },
+    sessionId: sessionId ?? crypto.randomUUID(),
+    siteUrl: config?.siteUrl ?? window.location.origin,
+    shopifyStorefrontToken: config?.shopifyStorefrontToken,
+    searchUrl: config?.searchUrl,
+    addToCartSelector: config?.addToCartSelector,
+    pageContextProvider: { getContext: () => ({ pageType: 'other' as const, pageUrl: window.location.href }) },
+    onTtsRequest: (text: string) => (voiceManager as unknown as { speak?: (t: string) => void })?.speak?.(text),
+  });
+
 }

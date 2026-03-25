@@ -2,6 +2,9 @@ import type { Request, Response } from "express";
 import { EvaluationRepo, InterventionRepo, EventRepo, SessionRepo } from "@ava/db";
 import { prisma } from "@ava/db";
 import { SEVERITY_SCORES } from "@ava/shared";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 function parseSinceValue(value: unknown): Date | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
@@ -82,7 +85,7 @@ export async function getSessionAnalytics(req: Request, res: Response): Promise<
       totalEvaluations: evaluations.length,
     });
   } catch (error) {
-    console.error("[Analytics] Session analytics error:", error);
+    log.error("[Analytics] Session analytics error:", error);
     res.status(500).json({ error: "Failed to compute session analytics" });
   }
 }
@@ -196,7 +199,7 @@ export async function getOverview(req: Request, res: Response): Promise<void> {
       avgPageViewsPerSession: avgPageViews,
     });
   } catch (error) {
-    console.error("[Analytics] Overview error:", error);
+    log.error("[Analytics] Overview error:", error);
     res.status(500).json({ error: "Failed to compute analytics overview" });
   }
 }
@@ -221,7 +224,7 @@ export async function getFunnel(req: Request, res: Response): Promise<void> {
       })),
     });
   } catch (error) {
-    console.error("[Analytics] Funnel error:", error);
+    log.error("[Analytics] Funnel error:", error);
     res.status(500).json({ error: "Failed to compute funnel" });
   }
 }
@@ -239,7 +242,7 @@ export async function getPageFlow(req: Request, res: Response): Promise<void> {
     const flows = await EventRepo.getPageFlowGraph(siteUrl, since, limit);
     res.json({ flows });
   } catch (error) {
-    console.error("[Analytics] Flow error:", error);
+    log.error("[Analytics] Flow error:", error);
     res.status(500).json({ error: "Failed to compute page flow" });
   }
 }
@@ -256,7 +259,7 @@ export async function getTrafficSources(req: Request, res: Response): Promise<vo
     const breakdown = await SessionRepo.getTrafficSourceBreakdown(siteUrl, since);
     res.json({ breakdown });
   } catch (error) {
-    console.error("[Analytics] Traffic sources error:", error);
+    log.error("[Analytics] Traffic sources error:", error);
     res.status(500).json({ error: "Failed to compute traffic sources" });
   }
 }
@@ -273,7 +276,7 @@ export async function getDevices(req: Request, res: Response): Promise<void> {
     const breakdown = await SessionRepo.getDeviceBreakdown(siteUrl, since);
     res.json({ breakdown });
   } catch (error) {
-    console.error("[Analytics] Devices error:", error);
+    log.error("[Analytics] Devices error:", error);
     res.status(500).json({ error: "Failed to compute device breakdown" });
   }
 }
@@ -300,7 +303,7 @@ export async function getPageStats(req: Request, res: Response): Promise<void> {
     }));
     res.json({ pages: pagesWithScroll });
   } catch (error) {
-    console.error("[Analytics] Page stats error:", error);
+    log.error("[Analytics] Page stats error:", error);
     res.status(500).json({ error: "Failed to compute page stats" });
   }
 }
@@ -318,7 +321,7 @@ export async function getSessionsTrend(req: Request, res: Response): Promise<voi
     const trend = await SessionRepo.getSessionVolumeByDay(siteUrl, since, until);
     res.json({ trend });
   } catch (error) {
-    console.error("[Analytics] Sessions trend error:", error);
+    log.error("[Analytics] Sessions trend error:", error);
     res.status(500).json({ error: "Failed to compute sessions trend" });
   }
 }
@@ -336,7 +339,7 @@ export async function getRetention(req: Request, res: Response): Promise<void> {
     const cohorts = await SessionRepo.getRetentionCohort(siteUrl, since, until);
     res.json({ cohorts });
   } catch (error) {
-    console.error("[Analytics] Retention error:", error);
+    log.error("[Analytics] Retention error:", error);
     res.status(500).json({ error: "Failed to compute retention" });
   }
 }
@@ -428,7 +431,7 @@ export async function getVoiceAnalytics(req: Request, res: Response): Promise<vo
       },
     });
   } catch (error) {
-    console.error("[Analytics] Voice analytics error:", error);
+    log.error("[Analytics] Voice analytics error:", error);
     res.status(500).json({ error: "Failed to compute voice analytics" });
   }
 }
@@ -549,7 +552,7 @@ export async function getFrictionAnalytics(req: Request, res: Response): Promise
 
     res.json({ byFriction, trend, top5Ids, severityDistribution: severityDist });
   } catch (error) {
-    console.error("[Analytics] Friction analytics error:", error);
+    log.error("[Analytics] Friction analytics error:", error);
     res.status(500).json({ error: "Failed to compute friction analytics" });
   }
 }
@@ -623,7 +626,7 @@ export async function getRevenueAttribution(req: Request, res: Response): Promis
       byFriction,
     });
   } catch (error) {
-    console.error("[Analytics] Revenue attribution error:", error);
+    log.error("[Analytics] Revenue attribution error:", error);
     res.status(500).json({ error: "Failed to compute revenue attribution" });
   }
 }
@@ -642,7 +645,7 @@ export async function getClickHeatmap(req: Request, res: Response): Promise<void
     const points = await EventRepo.getClickCoordinates(siteUrl, since, pageUrl, limit);
     res.json({ points });
   } catch (error) {
-    console.error("[Analytics] Click heatmap error:", error);
+    log.error("[Analytics] Click heatmap error:", error);
     res.status(500).json({ error: "Failed to get click heatmap data" });
   }
 }

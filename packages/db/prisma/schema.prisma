@@ -4,11 +4,14 @@
 // ============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
+  // DATABASE_PROVIDER=sqlite  (local dev)
+  // DATABASE_PROVIDER=postgresql  (production)
+  provider = env("DATABASE_PROVIDER")
   url      = env("DATABASE_URL")
 }
 
@@ -173,6 +176,15 @@ model Intervention {
   @@index([sessionId, timestamp])
   @@index([status])
   @@index([type, status])
+  // Story 12 — agent action fields
+  actionCode       String?
+  intentRaw        String?
+  intentAction     String?
+  intentCategory   String?
+  intentAttributes String?  // JSON: string[]
+  productsShown    String?  // JSON: string[] of product IDs
+  turnIndex        Int?
+  latencyMs        Int?
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +424,9 @@ model TrainingDatapoint {
 
   // Quality & filtering
   qualityFlags String? // JSON: { hasOutcome, highConfidence, sufficientContext, ... }
+
+  // User feedback signal — enriched from InterventionFeedback when available
+  userFeedback String? // "helpful" | "not_helpful" | null
 
   @@index([outcome])
   @@index([tier, outcome])
@@ -747,4 +762,58 @@ model NetworkPattern {
 
   @@index([category])
   @@index([avgSeverity])
+}
+
+// ---------------------------------------------------------------------------
+// InterventionFeedback — user thumbs up/down on interventions (continuous learning)
+// ---------------------------------------------------------------------------
+model InterventionFeedback {
+  id             String   @id @default(uuid())
+  interventionId String
+  sessionId      String
+  feedback       String   // "helpful" | "not_helpful"
+  createdAt      DateTime @default(now())
+
+  @@index([interventionId])
+  @@index([sessionId])
+  @@index([feedback, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// ModelVersion — tracks fine-tuned model versions and their lifecycle
+// ---------------------------------------------------------------------------
+model ModelVersion {
+  id                     String    @id @default(uuid())
+  provider               String    // "groq" | "openai"
+  baseModel              String    // e.g. "llama-3.3-70b-versatile"
+  fineTuneJobId          String?   // provider's fine-tune job ID
+  modelId                String    // provider's model ID string used in API calls
+  status                 String    @default("training") // training | ready | active | retired
+  trainingDatapointCount Int       @default(0)
+  qualityStats           String?   // JSON: grade distribution of training data
+  evalMetrics            String?   // JSON: eval harness results for this version
+  promotedAt             DateTime?
+  retiredAt              DateTime?
+  createdAt              DateTime  @default(now())
+
+  @@index([provider, status])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// RetrainTrigger — tracks automated retraining decisions
+// ---------------------------------------------------------------------------
+model RetrainTrigger {
+  id                     String    @id @default(uuid())
+  triggeredAt            DateTime  @default(now())
+  reason                 String    // JSON array of trigger reasons
+  trainingDatapointCount Int
+  modelVersionId         String?   // resulting model version
+  status                 String    @default("triggered") // triggered | exporting | submitted | training | completed | failed
+  completedAt            DateTime?
+  error                  String?
+
+  @@index([status])
+  @@index([triggeredAt])
 }

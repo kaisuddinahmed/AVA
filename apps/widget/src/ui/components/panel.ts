@@ -242,9 +242,9 @@ export function renderLeadCard(opts: {
   message: string;
   ctaLabel?: string;
   onCtaClick?: () => void;
-  onNotHelpful?: () => void;
+  onFeedback?: (feedback: "helpful" | "not_helpful") => void;
 }): HTMLDivElement {
-  const { config, frictionId, message, ctaLabel, onCtaClick, onNotHelpful } = opts;
+  const { config, frictionId, message, ctaLabel, onCtaClick, onFeedback } = opts;
 
   const FRICTION_LABELS: Record<string, string> = {
     F015: "Browsing signal",
@@ -309,28 +309,42 @@ export function renderLeadCard(opts: {
     card.appendChild(ctaBtn);
   }
 
-  // Not helpful link
-  if (onNotHelpful) {
-    const notHelpfulRow = document.createElement("div");
-    notHelpfulRow.setAttribute("style", "margin-top:8px;text-align:right;");
-    const notHelpfulBtn = document.createElement("button");
-    notHelpfulBtn.setAttribute(
-      "style",
-      `background:none;border:none;cursor:pointer;
-       font-size:11px;color:#9ca3af;font-family:var(--ava-font,${config.fontFamily});
-       padding:2px 4px;border-radius:4px;
-       transition:color 0.15s ease;`,
-    );
-    notHelpfulBtn.textContent = "Not helpful";
-    notHelpfulBtn.addEventListener("click", () => {
-      notHelpfulBtn.textContent = "Got it ✓";
-      notHelpfulBtn.style.color = "#22c55e";
-      setTimeout(onNotHelpful, 600);
-    });
-    notHelpfulBtn.addEventListener("mouseenter", () => { notHelpfulBtn.style.color = "#374151"; });
-    notHelpfulBtn.addEventListener("mouseleave", () => { notHelpfulBtn.style.color = "#9ca3af"; });
-    notHelpfulRow.appendChild(notHelpfulBtn);
-    card.appendChild(notHelpfulRow);
+  // Feedback row (👍 / 👎)
+  if (onFeedback) {
+    const feedbackRow = document.createElement("div");
+    feedbackRow.setAttribute("style", "margin-top:8px;display:flex;align-items:center;gap:2px;");
+
+    const fbBtnStyle = `background:none;border:none;cursor:pointer;padding:4px 8px;
+       font-size:14px;line-height:1;border-radius:6px;
+       transition:background 0.15s ease,transform 0.1s ease;`;
+
+    const thumbsUp = document.createElement("button");
+    thumbsUp.setAttribute("style", fbBtnStyle);
+    thumbsUp.setAttribute("aria-label", "Helpful");
+    thumbsUp.textContent = "\uD83D\uDC4D"; // 👍
+
+    const thumbsDown = document.createElement("button");
+    thumbsDown.setAttribute("style", fbBtnStyle);
+    thumbsDown.setAttribute("aria-label", "Not helpful");
+    thumbsDown.textContent = "\uD83D\uDC4E"; // 👎
+
+    function disableBtns(selected: "up" | "down") {
+      thumbsUp.style.cursor = "default";
+      thumbsDown.style.cursor = "default";
+      thumbsUp.style.opacity = selected === "up" ? "1" : "0.3";
+      thumbsDown.style.opacity = selected === "down" ? "1" : "0.3";
+    }
+
+    thumbsUp.addEventListener("click", () => { disableBtns("up"); onFeedback("helpful"); });
+    thumbsDown.addEventListener("click", () => { disableBtns("down"); onFeedback("not_helpful"); });
+    thumbsUp.addEventListener("mouseenter", () => { thumbsUp.style.background = "#f0fdf4"; });
+    thumbsUp.addEventListener("mouseleave", () => { thumbsUp.style.background = "none"; });
+    thumbsDown.addEventListener("mouseenter", () => { thumbsDown.style.background = "#fef2f2"; });
+    thumbsDown.addEventListener("mouseleave", () => { thumbsDown.style.background = "none"; });
+
+    feedbackRow.appendChild(thumbsUp);
+    feedbackRow.appendChild(thumbsDown);
+    card.appendChild(feedbackRow);
   }
 
   return card;

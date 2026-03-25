@@ -9,7 +9,7 @@
 // Zero site URLs or session IDs ever stored in NetworkPattern.
 // ============================================================================
 
-import { prisma } from "@ava/db";
+import { prisma, Prisma } from "@ava/db";
 import { NetworkPatternRepo } from "@ava/db";
 
 export interface FlywheelResult {
@@ -56,7 +56,7 @@ export async function runNetworkFlywheel(): Promise<FlywheelResult> {
     FROM Evaluation e
     JOIN Session s ON e.sessionId = s.id
     LEFT JOIN Intervention i ON i.evaluationId = e.id
-    WHERE s.siteUrl IN (${siteUrls.join("','")})
+    WHERE s.siteUrl IN (${Prisma.join(siteUrls)})
       AND e.createdAt >= ${thirtyDaysAgo}
       AND e.frictionsFound != '[]'
     GROUP BY e.frictionsFound

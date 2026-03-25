@@ -18,18 +18,18 @@ const targets = [
   },
   {
     name: "dashboard",
-    cmd: npmCmd,
-    args: ["run", "dev", "--workspace=@ava/dashboard"],
+    cmd: "node",
+    args: ["scripts/serve-static.mjs", "apps/dashboard/dist", "3000"],
   },
   {
     name: "wizard",
-    cmd: npmCmd,
-    args: ["run", "dev", "--workspace=@ava/wizard"],
+    cmd: "node",
+    args: ["scripts/serve-static.mjs", "apps/wizard/dist", "3002"],
   },
   {
     name: "integration",
-    cmd: npmCmd,
-    args: ["run", "dev", "--workspace=@ava/demo"],
+    cmd: "node",
+    args: ["scripts/serve-static.mjs", "apps/demo/dist", "4002"],
   },
 ];
 

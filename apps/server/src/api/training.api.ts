@@ -22,7 +22,13 @@ import {
   type QualityGrade,
   type QualityThresholds,
 } from "../training/training-quality.service.js";
-import { TrainingDatapointRepo } from "@ava/db";
+import { TrainingDatapointRepo, InterventionFeedbackRepo, RetrainTriggerRepo } from "@ava/db";
+import { submitFineTuneJob, getFineTuneJobStatus } from "../training/fine-tune-submit.service.js";
+import { checkRetrainTriggers } from "../training/retrain-trigger.service.js";
+import { RetrainTriggerRepo } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 /**
  * Parse common query params into ExportFilters.
@@ -51,7 +57,7 @@ export async function getStats(req: Request, res: Response): Promise<void> {
     const stats = await getExportStats(filters);
     res.json(stats);
   } catch (error) {
-    console.error("[Training API] Stats error:", error);
+    log.error("[Training API] Stats error:", error);
     res.status(500).json({ error: "Failed to compute training stats" });
   }
 }
@@ -73,7 +79,7 @@ export async function exportJsonl(req: Request, res: Response): Promise<void> {
     );
     res.send(jsonl);
   } catch (error) {
-    console.error("[Training API] JSONL export error:", error);
+    log.error("[Training API] JSONL export error:", error);
     res.status(500).json({ error: "Failed to export training data" });
   }
 }
@@ -95,7 +101,7 @@ export async function exportCsv(req: Request, res: Response): Promise<void> {
     );
     res.send(csv);
   } catch (error) {
-    console.error("[Training API] CSV export error:", error);
+    log.error("[Training API] CSV export error:", error);
     res.status(500).json({ error: "Failed to export training data" });
   }
 }
@@ -114,7 +120,7 @@ export async function exportJson(req: Request, res: Response): Promise<void> {
       data: records,
     });
   } catch (error) {
-    console.error("[Training API] JSON export error:", error);
+    log.error("[Training API] JSON export error:", error);
     res.status(500).json({ error: "Failed to export training data" });
   }
 }
@@ -144,7 +150,7 @@ export async function exportFineTune(
     res.setHeader("X-Formatter-Stats", JSON.stringify(stats));
     res.send(jsonl);
   } catch (error) {
-    console.error("[Training API] Fine-tune export error:", error);
+    log.error("[Training API] Fine-tune export error:", error);
     res.status(500).json({ error: "Failed to export fine-tuning data" });
   }
 }
@@ -165,7 +171,7 @@ export async function previewFineTune(
     const { examples, stats } = await formatAsExamples(filters, options);
     res.json({ stats, examples });
   } catch (error) {
-    console.error("[Training API] Fine-tune preview error:", error);
+    log.error("[Training API] Fine-tune preview error:", error);
     res.status(500).json({ error: "Failed to preview fine-tuning data" });
   }
 }
@@ -181,7 +187,7 @@ export async function getQuality(req: Request, res: Response): Promise<void> {
     const stats = await getQualityStats(filters, thresholds);
     res.json(stats);
   } catch (error) {
-    console.error("[Training API] Quality stats error:", error);
+    log.error("[Training API] Quality stats error:", error);
     res.status(500).json({ error: "Failed to compute quality stats" });
   }
 }
@@ -217,7 +223,7 @@ export async function assessDatapoints(
       assessments: filtered,
     });
   } catch (error) {
-    console.error("[Training API] Quality assess error:", error);
+    log.error("[Training API] Quality assess error:", error);
     res.status(500).json({ error: "Failed to assess datapoint quality" });
   }
 }
@@ -238,8 +244,97 @@ export async function getDistribution(
     ]);
     res.json({ outcomeDistribution, tierOutcomeCrossTab: crossTab });
   } catch (error) {
-    console.error("[Training API] Distribution error:", error);
+    log.error("[Training API] Distribution error:", error);
     res.status(500).json({ error: "Failed to compute distribution" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/training/feedback/stats
+// Aggregated feedback stats (helpful vs not_helpful counts).
+// ---------------------------------------------------------------------------
+export async function getFeedbackStats(
+  _req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const stats = await InterventionFeedbackRepo.getFeedbackStats();
+    res.json(stats);
+  } catch (error) {
+    log.error("[Training API] Feedback stats error:", error);
+    res.status(500).json({ error: "Failed to compute feedback stats" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/training/fine-tune/submit
+// Submit training data to a provider for fine-tuning.
+// ---------------------------------------------------------------------------
+export async function submitFineTune(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { baseModel, preset, maxExamples, siteUrl } = req.body;
+    const provider = "groq" as const;
+    const result = await submitFineTuneJob({ provider, baseModel, preset, maxExamples, siteUrl });
+    res.status(201).json(result);
+  } catch (error) {
+    log.error("[Training API] Fine-tune submit error:", error);
+    res.status(500).json({ error: (error as Error).message || "Failed to submit fine-tune job" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/training/fine-tune/status/:jobId
+// Poll provider for fine-tune job status.
+// ---------------------------------------------------------------------------
+export async function getFineTuneStatus(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const provider = "groq";
+    const status = await getFineTuneJobStatus(provider, req.params.jobId);
+    res.json(status);
+  } catch (error) {
+    log.error("[Training API] Fine-tune status error:", error);
+    res.status(500).json({ error: "Failed to get fine-tune status" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/training/retrain/history
+// List retrain trigger history.
+// ---------------------------------------------------------------------------
+export async function getRetrainHistory(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const triggers = await RetrainTriggerRepo.listTriggers({ limit });
+    res.json({ count: triggers.length, triggers });
+  } catch (error) {
+    log.error("[Training API] Retrain history error:", error);
+    res.status(500).json({ error: "Failed to list retrain history" });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/training/retrain/trigger
+// Manually trigger a retrain check.
+// ---------------------------------------------------------------------------
+export async function triggerRetrain(
+  _req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const result = await checkRetrainTriggers();
+    res.json(result);
+  } catch (error) {
+    log.error("[Training API] Manual retrain error:", error);
+    res.status(500).json({ error: "Failed to trigger retrain" });
   }
 }
 
@@ -247,7 +342,7 @@ export async function getDistribution(
 // Helpers
 // ---------------------------------------------------------------------------
 
-const VALID_PRESETS = new Set(["openai", "groq", "generic"]);
+const VALID_PRESETS = new Set(["groq", "generic"]);
 
 function parseFormatterOptions(query: Request["query"]): FormatterOptions {
   const opts: FormatterOptions = {};

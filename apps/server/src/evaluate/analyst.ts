@@ -3,10 +3,41 @@ import { config } from "../config.js";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt.js";
 import { buildEvaluatePrompt } from "./prompts/evaluate-prompt.js";
 import type { EvaluationContext } from "./context-builder.js";
+import { ModelVersionRepo } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "evaluate" });
 
 const groq = new Groq({
   apiKey: config.groq.apiKey,
 });
+
+// TTL-cached active model lookup (60s)
+let _cachedActiveModel: string | null = null;
+let _cachedActiveModelAt = 0;
+const MODEL_CACHE_TTL_MS = 60_000;
+
+async function resolveModel(modelOverride?: string): Promise<string> {
+  if (modelOverride) return modelOverride;
+
+  const now = Date.now();
+  if (_cachedActiveModel && now - _cachedActiveModelAt < MODEL_CACHE_TTL_MS) {
+    return _cachedActiveModel;
+  }
+
+  try {
+    const active = await ModelVersionRepo.getActiveModel("groq");
+    if (active?.modelId) {
+      _cachedActiveModel = active.modelId;
+      _cachedActiveModelAt = now;
+      return active.modelId;
+    }
+  } catch {
+    // Fall through to default
+  }
+
+  return config.groq.model;
+}
 
 export interface LLMEvaluationOutput {
   narrative: string;
@@ -26,12 +57,14 @@ export interface LLMEvaluationOutput {
  * Call the Groq API (Llama 3.3 70B) to evaluate the session.
  */
 export async function evaluateWithLLM(
-  context: EvaluationContext
+  context: EvaluationContext,
+  modelOverride?: string
 ): Promise<LLMEvaluationOutput> {
   const userPrompt = buildEvaluatePrompt(context);
+  const model = await resolveModel(modelOverride);
 
   const response = await groq.chat.completions.create({
-    model: config.groq.model,
+    model,
     max_tokens: 1024,
     messages: [
       {
@@ -77,7 +110,7 @@ export async function evaluateWithLLM(
 
     return parsed;
   } catch (error) {
-    console.error("[Analyst] Failed to parse LLM response:", raw);
+    log.error("[Analyst] Failed to parse LLM response:", raw);
     // Return safe defaults
     return {
       narrative: "Unable to parse analyst response.",

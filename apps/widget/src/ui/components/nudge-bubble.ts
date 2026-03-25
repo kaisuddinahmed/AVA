@@ -28,8 +28,8 @@ interface NudgeBubbleOptions {
   onSoftDismiss: () => void;
   /** Hard dismiss: explicit × — "stop showing these" */
   onHardDismiss: () => void;
-  /** Micro-signal: user found this not helpful */
-  onNotHelpful: () => void;
+  /** Feedback callback: user tapped 👍 or 👎 */
+  onFeedback: (feedback: "helpful" | "not_helpful") => void;
   /** True when server sent voice_enabled=true for this nudge */
   voiceEnabled?: boolean;
   /** Called when user taps the mute button — disables voice for the session */
@@ -62,7 +62,7 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     onCtaClick,
     onSoftDismiss,
     onHardDismiss,
-    onNotHelpful,
+    onFeedback,
     voiceEnabled,
     onVoiceMute,
   } = opts;
@@ -260,7 +260,7 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
 
   card.appendChild(body);
 
-  // --- Micro-signal footer ---
+  // --- Feedback footer (👍 / 👎) ---
   const footer = document.createElement("div");
   footer.setAttribute(
     "style",
@@ -269,30 +269,53 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
      border-top:1px solid rgba(0,0,0,0.05);`,
   );
 
-  const notHelpfulBtn = document.createElement("button");
-  notHelpfulBtn.setAttribute(
-    "style",
-    `background:none;border:none;cursor:pointer;padding:3px 6px;
-     font-size:11px;color:#9ca3af;font-family:var(--ava-font,${config.fontFamily});
-     border-radius:6px;transition:background 0.15s ease,color 0.15s ease;`,
-  );
-  notHelpfulBtn.textContent = "Not helpful";
-  notHelpfulBtn.addEventListener("click", (e) => {
+  // Left side: thumbs up/down feedback buttons
+  const feedbackWrap = document.createElement("div");
+  feedbackWrap.setAttribute("style", "display:flex;align-items:center;gap:2px;");
+
+  const feedbackBtnStyle = `background:none;border:none;cursor:pointer;padding:4px 8px;
+     font-size:14px;line-height:1;border-radius:6px;
+     transition:background 0.15s ease,transform 0.1s ease;`;
+
+  const thumbsUpBtn = document.createElement("button");
+  thumbsUpBtn.setAttribute("style", feedbackBtnStyle);
+  thumbsUpBtn.setAttribute("aria-label", "Helpful");
+  thumbsUpBtn.setAttribute("title", "Helpful");
+  thumbsUpBtn.textContent = "\uD83D\uDC4D"; // 👍
+
+  const thumbsDownBtn = document.createElement("button");
+  thumbsDownBtn.setAttribute("style", feedbackBtnStyle);
+  thumbsDownBtn.setAttribute("aria-label", "Not helpful");
+  thumbsDownBtn.setAttribute("title", "Not helpful");
+  thumbsDownBtn.textContent = "\uD83D\uDC4E"; // 👎
+
+  function disableFeedbackBtns(selected: "up" | "down") {
+    thumbsUpBtn.style.cursor = "default";
+    thumbsDownBtn.style.cursor = "default";
+    thumbsUpBtn.style.opacity = selected === "up" ? "1" : "0.3";
+    thumbsDownBtn.style.opacity = selected === "down" ? "1" : "0.3";
+  }
+
+  thumbsUpBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    // Visual feedback before callback
-    notHelpfulBtn.textContent = "Got it ✓";
-    notHelpfulBtn.style.color = "#22c55e";
-    setTimeout(onNotHelpful, 600);
+    disableFeedbackBtns("up");
+    onFeedback("helpful");
   });
-  notHelpfulBtn.addEventListener("mouseenter", () => {
-    notHelpfulBtn.style.background = "#f3f4f6";
-    notHelpfulBtn.style.color = "#374151";
-  });
-  notHelpfulBtn.addEventListener("mouseleave", () => {
-    notHelpfulBtn.style.background = "none";
-    notHelpfulBtn.style.color = "#9ca3af";
+  thumbsDownBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    disableFeedbackBtns("down");
+    onFeedback("not_helpful");
   });
 
+  thumbsUpBtn.addEventListener("mouseenter", () => { thumbsUpBtn.style.background = "#f0fdf4"; });
+  thumbsUpBtn.addEventListener("mouseleave", () => { thumbsUpBtn.style.background = "none"; });
+  thumbsDownBtn.addEventListener("mouseenter", () => { thumbsDownBtn.style.background = "#fef2f2"; });
+  thumbsDownBtn.addEventListener("mouseleave", () => { thumbsDownBtn.style.background = "none"; });
+
+  feedbackWrap.appendChild(thumbsUpBtn);
+  feedbackWrap.appendChild(thumbsDownBtn);
+
+  // Right side: soft dismiss
   const softDismissBtn = document.createElement("button");
   softDismissBtn.setAttribute(
     "style",
@@ -303,7 +326,6 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
   softDismissBtn.textContent = "Not now";
   softDismissBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    // Visual feedback before callback (matches "Not helpful" pattern)
     softDismissBtn.textContent = "Ok \u2193";
     softDismissBtn.style.color = "#6b7280";
     setTimeout(onSoftDismiss, 400);
@@ -317,7 +339,7 @@ export function renderNudgeBubble(opts: NudgeBubbleOptions): HTMLDivElement {
     softDismissBtn.style.color = "#9ca3af";
   });
 
-  footer.appendChild(notHelpfulBtn);
+  footer.appendChild(feedbackWrap);
   footer.appendChild(softDismissBtn);
   card.appendChild(footer);
 

@@ -4,6 +4,9 @@
 
 import type { Request, Response } from "express";
 import { ShadowComparisonRepo } from "@ava/db";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 // ---------------------------------------------------------------------------
 // GET /api/shadow/stats
@@ -17,7 +20,7 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
     ]);
     res.json({ ...stats, distribution });
   } catch (error) {
-    console.error("[Shadow API] Stats error:", error);
+    log.error("[Shadow API] Stats error:", error);
     res.status(500).json({ error: "Failed to compute shadow stats" });
   }
 }
@@ -49,7 +52,7 @@ export async function listComparisons(req: Request, res: Response): Promise<void
     const comparisons = await ShadowComparisonRepo.listComparisons(options);
     res.json({ count: comparisons.length, data: comparisons });
   } catch (error) {
-    console.error("[Shadow API] List comparisons error:", error);
+    log.error("[Shadow API] List comparisons error:", error);
     res.status(500).json({ error: "Failed to list shadow comparisons" });
   }
 }
@@ -65,7 +68,7 @@ export async function getSessionComparisons(req: Request, res: Response): Promis
       await ShadowComparisonRepo.getComparisonsBySession(sessionId);
     res.json({ sessionId, count: comparisons.length, data: comparisons });
   } catch (error) {
-    console.error("[Shadow API] Session comparisons error:", error);
+    log.error("[Shadow API] Session comparisons error:", error);
     res.status(500).json({ error: "Failed to get session comparisons" });
   }
 }
@@ -80,7 +83,7 @@ export async function getTopDivergences(req: Request, res: Response): Promise<vo
     const divergences = await ShadowComparisonRepo.getTopDivergences(limit);
     res.json({ count: divergences.length, data: divergences });
   } catch (error) {
-    console.error("[Shadow API] Divergences error:", error);
+    log.error("[Shadow API] Divergences error:", error);
     res.status(500).json({ error: "Failed to get divergences" });
   }
 }

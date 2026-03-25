@@ -1,6 +1,9 @@
 import { ScoringConfigRepo } from "@ava/db";
 import type { MSWIMConfig, SignalWeights, TierThresholds, GateConfig } from "@ava/shared";
 import { DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS, DEFAULT_GATES } from "@ava/shared";
+import { logger } from "../../logger.js";
+
+const log = logger.child({ service: "mswim" });
 
 // In-memory cache with 60-second TTL
 // Cache key: `${siteUrl ?? "global"}:${configId ?? "active"}`
@@ -81,7 +84,7 @@ export async function loadMSWIMConfig(
     configCache.set(cacheKey, { config: mswimConfig, timestamp: now });
     return mswimConfig;
   } catch (error) {
-    console.error("[MSWIM] Failed to load config from DB, using defaults:", error);
+    log.error("[MSWIM] Failed to load config from DB, using defaults:", error);
     const fallback: MSWIMConfig = {
       weights: { ...DEFAULT_WEIGHTS },
       thresholds: { ...DEFAULT_THRESHOLDS },

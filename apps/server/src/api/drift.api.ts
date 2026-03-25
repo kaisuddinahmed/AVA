@@ -5,6 +5,9 @@
 import type { Request, Response } from "express";
 import { DriftSnapshotRepo, DriftAlertRepo } from "@ava/db";
 import { getDriftStatus, runDriftCheck } from "../jobs/drift-detector.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 /**
  * GET /api/drift/status — Current drift health summary
@@ -15,7 +18,7 @@ export async function getStatus(req: Request, res: Response) {
     const status = await getDriftStatus(siteUrl || null);
     res.json(status);
   } catch (error) {
-    console.error("[Drift API] getStatus error:", error);
+    log.error("[Drift API] getStatus error:", error);
     res.status(500).json({ error: "Failed to get drift status" });
   }
 }
@@ -45,7 +48,7 @@ export async function listSnapshots(req: Request, res: Response) {
 
     res.json({ snapshots, count: snapshots.length });
   } catch (error) {
-    console.error("[Drift API] listSnapshots error:", error);
+    log.error("[Drift API] listSnapshots error:", error);
     res.status(500).json({ error: "Failed to list snapshots" });
   }
 }
@@ -78,7 +81,7 @@ export async function listAlerts(req: Request, res: Response) {
 
     res.json({ alerts, count: alerts.length });
   } catch (error) {
-    console.error("[Drift API] listAlerts error:", error);
+    log.error("[Drift API] listAlerts error:", error);
     res.status(500).json({ error: "Failed to list alerts" });
   }
 }
@@ -91,7 +94,7 @@ export async function acknowledgeAlert(req: Request, res: Response) {
     const alert = await DriftAlertRepo.acknowledgeAlert(String(req.params.id));
     res.json(alert);
   } catch (error) {
-    console.error("[Drift API] acknowledgeAlert error:", error);
+    log.error("[Drift API] acknowledgeAlert error:", error);
     res.status(500).json({ error: "Failed to acknowledge alert" });
   }
 }
@@ -105,7 +108,7 @@ export async function triggerDriftCheck(req: Request, res: Response) {
     const result = await runDriftCheck(siteUrl || null);
     res.json(result);
   } catch (error) {
-    console.error("[Drift API] triggerDriftCheck error:", error);
+    log.error("[Drift API] triggerDriftCheck error:", error);
     res.status(500).json({ error: "Failed to run drift check" });
   }
 }

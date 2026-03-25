@@ -2,16 +2,20 @@ import type { Request, Response } from "express";
 import { ScoringConfigRepo } from "@ava/db";
 import { invalidateConfigCache } from "../evaluate/mswim/config-loader.js";
 import {
+
   ScoringConfigCreateSchema,
   ScoringConfigUpdateSchema,
 } from "../validation/schemas.js";
+
+import { logger } from "../logger.js";
+const log = logger.child({ service: "api" });
 
 export async function listConfigs(_req: Request, res: Response) {
   try {
     const configs = await ScoringConfigRepo.listScoringConfigs();
     res.json({ configs });
   } catch (error) {
-    console.error("[API] List scoring configs error:", error);
+    log.error("[API] List scoring configs error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -25,7 +29,7 @@ export async function getConfig(req: Request, res: Response) {
     }
     res.json({ config });
   } catch (error) {
-    console.error("[API] Get scoring config error:", error);
+    log.error("[API] Get scoring config error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -56,7 +60,7 @@ export async function createConfig(req: Request, res: Response) {
     });
     res.status(201).json({ config });
   } catch (error) {
-    console.error("[API] Create scoring config error:", error);
+    log.error("[API] Create scoring config error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -91,7 +95,7 @@ export async function updateConfig(req: Request, res: Response) {
     invalidateConfigCache();
     res.json({ config });
   } catch (error) {
-    console.error("[API] Update scoring config error:", error);
+    log.error("[API] Update scoring config error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -102,7 +106,7 @@ export async function activateConfig(req: Request, res: Response) {
     invalidateConfigCache();
     res.json({ config });
   } catch (error) {
-    console.error("[API] Activate scoring config error:", error);
+    log.error("[API] Activate scoring config error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -113,7 +117,7 @@ export async function deleteConfig(req: Request, res: Response) {
     invalidateConfigCache();
     res.json({ ok: true });
   } catch (error) {
-    console.error("[API] Delete scoring config error:", error);
+    log.error("[API] Delete scoring config error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }

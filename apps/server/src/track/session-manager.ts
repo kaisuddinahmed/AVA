@@ -1,5 +1,8 @@
 import { SessionRepo } from "@ava/db";
 import { v4 as uuid } from "uuid";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "track" });
 
 // In-memory session cache
 const sessionCache = new Map<string, { sessionId: string; lastActivity: number }>();
@@ -84,7 +87,7 @@ export function cleanupIdleSessions() {
 
   for (const [key, entry] of sessionCache) {
     if (now - entry.lastActivity > threshold) {
-      SessionRepo.endSession(entry.sessionId).catch(console.error);
+      SessionRepo.endSession(entry.sessionId).catch(log.error);
       sessionCache.delete(key);
     }
   }

@@ -1,6 +1,9 @@
 import type { Request, Response } from "express";
 import { EventRepo } from "@ava/db";
 import { EventsQuerySchema } from "../validation/schemas.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 export async function getEvents(req: Request, res: Response) {
   try {
@@ -22,7 +25,7 @@ export async function getEvents(req: Request, res: Response) {
     });
     res.json({ events });
   } catch (error) {
-    console.error("[API] Get events error:", error);
+    log.error("[API] Get events error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 }

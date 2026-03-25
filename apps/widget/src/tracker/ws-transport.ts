@@ -127,6 +127,25 @@ export class FISMBridge {
   }
 
   /**
+   * Send intervention feedback (thumbs up/down) to the server.
+   * Server schema: { type: "intervention_feedback", intervention_id, session_id, feedback, timestamp }
+   */
+  sendFeedback(interventionId: string, feedback: "helpful" | "not_helpful"): void {
+    const msg = {
+      type: "intervention_feedback",
+      intervention_id: interventionId,
+      session_id: this.sessionId,
+      feedback,
+      timestamp: Date.now(),
+    };
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    } else {
+      this.messageQueue.push(msg);
+    }
+  }
+
+  /**
    * Send a voice query (transcript from ASR or text input) to the server.
    * Includes optional page context so the server can give more relevant replies.
    * Server schema: { type: "voice_query", session_id, transcript, timestamp, page_context? }

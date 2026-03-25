@@ -1,143 +1,191 @@
-// ============================================================================
-// Intent Parser — converts a natural-language transcript into a structured
-// shopping intent signal for the product search adapter.
-//
-// Parses: category, price constraints, attribute requirements, action type.
-// Zero external deps — pure string analysis with regex heuristics.
-// ============================================================================
+/**
+ * Intent Parser — Story 12: Conversational Shopping Agent
+ * Copy to: apps/server/src/agent/intent-parser.ts
+ *
+ * Two-tier parsing:
+ *   FAST  — Regex rules for unambiguous actions (compare, add-to-cart,
+ *            cheaper, reference resolution). Zero latency, zero LLM cost.
+ *   SLOW  — Groq JSON-mode for open-ended discovery queries.
+ *
+ * Only the SLOW path involves a network call.
+ */
 
-export type ActionType =
-  | "product_search"   // "show me trail shoes"
-  | "compare"          // "compare the first two" / "compare X and Y"
-  | "add_to_cart"      // "add that to my cart" / "buy the second one"
-  | "more_like_this"   // "show me more like that" / "something cheaper"
-  | "question";        // everything else — delegate to voice responder
+import Groq from 'groq-sdk';
+import type { ParsedIntent, AgentAction, PriceConstraint, ConversationMessage } from './agent.types.js';
 
-export interface ShoppingIntent {
-  actionType: ActionType;
-  category?: string;
-  maxPrice?: number;
-  minPrice?: number;
-  attributes: string[];  // e.g. ["trail", "overpronation", "waterproof"]
-  referenceIndex?: number; // 1-based: "the first one" = 1, "the second" = 2
-  raw: string;           // original transcript for fallback
-}
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// ---------------------------------------------------------------------------
-// Parsing helpers
-// ---------------------------------------------------------------------------
+// ─── Ordinal map ──────────────────────────────────────────────────────────────
 
-const PRICE_RE   = /\$(\d+(?:\.\d+)?)/g;
-const UNDER_RE   = /under\s+\$?(\d+)|less\s+than\s+\$?(\d+)|cheaper\s+than\s+\$?(\d+)/i;
-const OVER_RE    = /over\s+\$?(\d+)|more\s+than\s+\$?(\d+)|at\s+least\s+\$?(\d+)/i;
-const ORDINAL_RE = /\b(?:the\s+)?(first|second|third|1st|2nd|3rd|one|two|three)\b/i;
-const ORDINAL_MAP: Record<string, number> = {
-  first: 1, "1st": 1, one: 1,
-  second: 2, "2nd": 2, two: 2,
-  third: 3, "3rd": 3, three: 3,
+const ORDINALS: Record<string, number> = {
+  first: 0, '1st': 0,
+  second: 1, '2nd': 1,
+  third: 2, '3rd': 2,
+  fourth: 3, '4th': 3,
 };
 
-const COMPARE_TRIGGERS  = /\b(compar|contrast|vs\.?|versus|side.?by.?side|difference between)\b/i;
-const ADD_CART_TRIGGERS = /\b(add.{0,10}(cart|bag)|buy|purchase|order|get (me |that |this |the ))\b/i;
-const MORE_LIKE_TRIGGERS = /\b(more like|similar|something (else|cheaper|similar)|show me more|other options)\b/i;
-const SEARCH_TRIGGERS   = /\b(find|show|search|look(ing)? for|recommend|suggest|want|need|looking)\b/i;
+// ─── Action detection (pure regex, no LLM) ────────────────────────────────────
 
-// Common e-commerce categories for quick matching
-const CATEGORY_KEYWORDS: string[] = [
-  "shoes", "boots", "sneakers", "sandals", "heels",
-  "shirt", "shirts", "dress", "dresses", "pants", "jeans", "jacket", "coat",
-  "bag", "bags", "backpack", "wallet", "purse",
-  "watch", "watches", "jewelry", "ring", "necklace",
-  "laptop", "phone", "headphones", "earbuds", "tablet",
-  "chair", "desk", "sofa", "table", "lamp",
-  "coffee", "tea", "supplement", "vitamin",
-  "toy", "toys", "game", "games",
-];
-
-function extractAttributes(text: string): string[] {
-  // Extract meaningful adjective-like words (3–20 chars, not stop words)
-  const stopWords = new Set([
-    "the", "and", "for", "are", "was", "with", "that", "this", "have",
-    "not", "but", "from", "they", "will", "one", "two", "all", "been",
-    "can", "what", "their", "there", "more", "also", "than", "then",
-    "show", "find", "want", "need", "like", "about", "some", "just",
-    "good", "best", "nice", "great",
-  ]);
-
-  const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/);
-  return words.filter((w) => w.length >= 3 && w.length <= 20 && !stopWords.has(w));
+function detectAction(q: string): AgentAction | null {
+  if (/\bcompare\b/i.test(q)) return 'compare';
+  if (/\badd\s+(?:that|it|this|the\s+\w+)\s+to\s+(?:my\s+)?cart\b/i.test(q)) return 'add_to_cart';
+  if (/\badd\s+to\s+(?:my\s+)?cart\b/i.test(q)) return 'add_to_cart';
+  if (/\b(cheaper|less expensive|lower price|more affordable|budget option)\b/i.test(q)) return 'show_cheaper';
+  if (/\b(more expensive|higher.end|premium|luxury|pricier)\b/i.test(q)) return 'show_more_expensive';
+  if (/\b(show more|more options|see more|what else|other options)\b/i.test(q)) return 'show_more';
+  if (/\b(go to|take me to|navigate to|browse to)\b/i.test(q)) return 'navigate';
+  return null;
 }
 
-function extractCategory(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  for (const cat of CATEGORY_KEYWORDS) {
-    if (lower.includes(cat)) return cat;
-  }
+// ─── Reference resolution ─────────────────────────────────────────────────────
+
+interface RefResult { referenceIndex?: number; referenceIndices?: number[] }
+
+function resolveReferences(q: string): RefResult {
+  const lq = q.toLowerCase();
+
+  // "compare the first two" / "compare first and second"
+  if (/compare\s+(?:the\s+)?(?:first\s+two|1st\s+and\s+2nd|first\s+and\s+second)/.test(lq))
+    return { referenceIndices: [0, 1] };
+
+  // "compare them" / "compare both"
+  if (/compare\s+(?:them|both|all)/.test(lq)) return { referenceIndices: [0, 1] };
+
+  // "compare the second and third"
+  const namedCmp = lq.match(/compare\s+(?:the\s+)?(\w+)\s+(?:and|&)\s+(?:the\s+)?(\w+)/);
+  if (namedCmp && ORDINALS[namedCmp[1]] !== undefined && ORDINALS[namedCmp[2]] !== undefined)
+    return { referenceIndices: [ORDINALS[namedCmp[1]], ORDINALS[namedCmp[2]]] };
+
+  // "the first one" / "the second option"
+  const ordM = lq.match(/(?:the\s+)?(\w+)\s+(?:one|option|item|product)/);
+  if (ordM && ORDINALS[ordM[1]] !== undefined) return { referenceIndex: ORDINALS[ordM[1]] };
+
+  // "that" / "it" / implicit
+  if (/\b(that|it|this)\b/.test(lq)) return { referenceIndex: 0 };
+
+  return {};
+}
+
+// ─── Price extraction ─────────────────────────────────────────────────────────
+
+function extractPrice(q: string): PriceConstraint | undefined {
+  const cur = 'USD';
+  const under = q.match(/\b(?:under|less\s+than|below|max(?:imum)?|at\s+most)\s+\$?(\d+(?:\.\d{1,2})?)/i);
+  if (under) return { max: +under[1], currency: cur };
+  const over = q.match(/\b(?:over|more\s+than|above|min(?:imum)?|at\s+least)\s+\$?(\d+(?:\.\d{1,2})?)/i);
+  if (over) return { min: +over[1], currency: cur };
+  const around = q.match(/\b(?:around|about|roughly|approximately|~)\s+\$?(\d+(?:\.\d{1,2})?)/i);
+  if (around) return { around: +around[1], currency: cur };
+  const range = q.match(/\$?(\d+(?:\.\d{1,2})?)\s*(?:to|-)\s*\$?(\d+(?:\.\d{1,2})?)/i);
+  if (range) return { min: +range[1], max: +range[2], currency: cur };
+  const budget = q.match(/\bbudget\s+(?:of\s+)?\$?(\d+(?:\.\d{1,2})?)/i);
+  if (budget) return { max: +budget[1], currency: cur };
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+// ─── Fast path ────────────────────────────────────────────────────────────────
 
-/**
- * Parse a voice/text transcript into a structured ShoppingIntent.
- * Used by the shopping agent to decide which adapter to call.
- */
-export function parseIntent(transcript: string): ShoppingIntent {
-  const t = transcript.trim();
-  const lower = t.toLowerCase();
+function tryFastParse(q: string): Partial<ParsedIntent> | null {
+  const action = detectAction(q);
+  if (!action) return null;
 
-  // ── Determine action type ────────────────────────────────────────────────
-  let actionType: ActionType = "question";
+  const refs = resolveReferences(q);
+  if (action === 'compare' && !refs.referenceIndices) refs.referenceIndices = [0, 1];
+  if (action === 'add_to_cart' && refs.referenceIndex === undefined) refs.referenceIndex = 0;
 
-  if (ADD_CART_TRIGGERS.test(lower)) {
-    actionType = "add_to_cart";
-  } else if (COMPARE_TRIGGERS.test(lower)) {
-    actionType = "compare";
-  } else if (MORE_LIKE_TRIGGERS.test(lower)) {
-    actionType = "more_like_this";
-  } else if (SEARCH_TRIGGERS.test(lower)) {
-    actionType = "product_search";
-  }
-
-  // ── Extract price constraints ────────────────────────────────────────────
-  let maxPrice: number | undefined;
-  let minPrice: number | undefined;
-
-  const underMatch = UNDER_RE.exec(lower);
-  if (underMatch) maxPrice = parseFloat(underMatch[1] ?? underMatch[2] ?? underMatch[3] ?? "0");
-
-  const overMatch = OVER_RE.exec(lower);
-  if (overMatch) minPrice = parseFloat(overMatch[1] ?? overMatch[2] ?? overMatch[3] ?? "0");
-
-  // Bare "$X" with no qualifier → treat as max price if actionType is search
-  if (!maxPrice && !minPrice) {
-    const prices: number[] = [];
-    let m: RegExpExecArray | null;
-    PRICE_RE.lastIndex = 0;
-    while ((m = PRICE_RE.exec(t)) !== null) prices.push(parseFloat(m[1]));
-    if (prices.length === 1 && actionType === "product_search") maxPrice = prices[0];
-  }
-
-  // ── Extract ordinal reference (for compare / add-to-cart) ───────────────
-  let referenceIndex: number | undefined;
-  const ordinalMatch = ORDINAL_RE.exec(lower);
-  if (ordinalMatch) {
-    referenceIndex = ORDINAL_MAP[ordinalMatch[1].toLowerCase()];
-  }
-
-  // ── Extract category and attributes ─────────────────────────────────────
-  const category = extractCategory(lower);
-  const attributes = extractAttributes(lower).filter((w) => w !== category);
-
-  return { actionType, category, maxPrice, minPrice, attributes, referenceIndex, raw: t };
+  return { action, attributes: [], ...refs };
 }
 
-/**
- * Return true when the transcript looks like a shopping request (not just a question).
- */
+// ─── Groq slow path ───────────────────────────────────────────────────────────
+
+async function groqParse(q: string, history: ConversationMessage[]): Promise<Partial<ParsedIntent>> {
+  const ctxLines = history.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n');
+
+  const system = `You are a shopping intent extraction engine. Return ONLY valid JSON (no markdown):
+{
+  "action": "search|compare|add_to_cart|show_cheaper|show_more_expensive|show_more|navigate|clarify|chitchat",
+  "category": "product type in plain English or null",
+  "attributes": ["specific requirements not already in category"],
+  "needsClarification": false,
+  "clarificationPrompt": "question to ask shopper or null",
+  "confidence": "high|medium|low"
+}`;
+
+  const msgs: Groq.Chat.ChatCompletionMessageParam[] = [{ role: 'system', content: system }];
+  if (ctxLines) msgs.push({ role: 'user', content: `Conversation:\n${ctxLines}` });
+  msgs.push({ role: 'user', content: `Extract intent from: "${q}"` });
+
+  try {
+    const resp = await groq.chat.completions.create({
+      model: process.env.GROQ_MODEL ?? 'llama3-8b-8192',
+      messages: msgs,
+      temperature: 0,
+      max_tokens: 300,
+      response_format: { type: 'json_object' },
+    });
+    const p = JSON.parse(resp.choices[0]?.message?.content ?? '{}');
+    return {
+      action: (p.action as AgentAction) ?? 'search',
+      category: p.category ?? undefined,
+      attributes: Array.isArray(p.attributes) ? p.attributes : [],
+      confidence: (['high','medium','low'].includes(p.confidence) ? p.confidence : 'medium') as 'high'|'medium'|'low',
+      needsClarification: Boolean(p.needsClarification),
+      clarificationPrompt: p.clarificationPrompt ?? undefined,
+    };
+  } catch {
+    return { action: 'search', attributes: [], confidence: 'low', needsClarification: false };
+  }
+}
+
+// ─── Public ───────────────────────────────────────────────────────────────────
+
+export async function parseIntent(
+  query: string,
+  conversationHistory: ConversationMessage[] = [],
+): Promise<ParsedIntent> {
+  const q = query.trim();
+  const price = extractPrice(q);
+  const fast = tryFastParse(q);
+
+  if (fast) {
+    return {
+      raw: q,
+      action: fast.action!,
+      priceConstraint: price ?? fast.priceConstraint,
+      attributes: fast.attributes ?? [],
+      referenceIndex: fast.referenceIndex,
+      referenceIndices: fast.referenceIndices,
+      confidence: 'high',
+      needsClarification: false,
+    };
+  }
+
+  const slow = await groqParse(q, conversationHistory);
+  return {
+    raw: q,
+    action: slow.action ?? 'search',
+    category: slow.category,
+    priceConstraint: price ?? slow.priceConstraint,
+    attributes: slow.attributes ?? [],
+    confidence: slow.confidence ?? 'medium',
+    needsClarification: slow.needsClarification ?? false,
+    clarificationPrompt: slow.clarificationPrompt,
+  };
+}
+
+// ─── Voice helper ─────────────────────────────────────────────────────────────
+
+const SHOPPING_KEYWORDS = [
+  'find', 'search', 'look for', 'show me', 'buy', 'add to cart',
+  'compare', 'price', 'cheap', 'affordable', 'under $', 'under £',
+  'product', 'item', 'recommend', 'suggestion', 'what do you have',
+  'do you have', 'available', 'in stock', 'color', 'colour', 'size',
+  'style', 'brand', 'material', 'category', 'collection', 'sale',
+  'discount', 'deal', 'shipping', 'deliver',
+];
+
+/** Returns true when the transcript appears to be a shopping-related request. */
 export function isShoppingRequest(transcript: string): boolean {
-  const intent = parseIntent(transcript);
-  return intent.actionType !== "question";
+  const t = transcript.toLowerCase();
+  return SHOPPING_KEYWORDS.some(kw => t.includes(kw));
 }

@@ -28,7 +28,7 @@ app.innerHTML = `
           <h2>Demo Store</h2>
           <span class="hint">Customer journey view</span>
         </div>
-        <iframe id="store-frame" title="Demo Store" src="http://localhost:3001"></iframe>
+        <iframe id="store-frame" title="Demo Store" src="http://localhost:3001" allow="microphone; camera; clipboard-write" style="width:100%;height:100%;border:none;display:block;"></iframe>
       </section>
     </main>
 
@@ -41,7 +41,7 @@ app.innerHTML = `
             <h2>Dashboard</h2>
             <span class="hint">Backend analysis + intervention feed</span>
           </div>
-          <iframe id="dashboard-frame" title="Dashboard" src="http://localhost:3000"></iframe>
+          <iframe id="dashboard-frame" title="Dashboard" src="http://localhost:3000" allow="clipboard-write" style="width:100%;height:100%;border:none;display:block;"></iframe>
         </section>
       </div>
     </aside>

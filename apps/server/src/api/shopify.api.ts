@@ -22,6 +22,10 @@ import type { Request, Response } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import { SiteConfigRepo } from "@ava/db";
 import { prisma } from "@ava/db";
+import { logger } from "../logger.js";
+import { seedShopifyMappings } from "./shopify-mapper.service.js";
+
+const log = logger.child({ service: "api" });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,17 +206,23 @@ export async function callback(req: Request, res: Response) {
 
     // 4. Register mandatory webhooks (fire-and-forget)
     registerWebhooks(shop, accessToken, cfg.appUrl).catch((err) =>
-      console.error("[Shopify] Webhook registration failed:", err)
+      log.error("[Shopify] Webhook registration failed:", err)
     );
 
-    console.log(`[Shopify] Installed for ${shop} — scriptTagId=${scriptTagId}`);
+    // 5. Seed high-confidence Shopify selector mappings (fire-and-forget).
+    //    Coverage reaches ≥90% immediately via known Shopify theme selectors.
+    seedShopifyMappings(shop, accessToken).catch((err) =>
+      log.error({ shop, err }, "[Shopify] Selector mapping seed failed (non-blocking)")
+    );
 
-    // 5. Redirect merchant to onboarding wizard
+    log.info({ shop, scriptTagId }, "[Shopify] Installed — selector seeding in progress");
+
+    // 6. Redirect merchant to onboarding wizard
     const wizardUrl = process.env.SHOPIFY_POST_INSTALL_URL
       ?? `${cfg.appUrl.replace(":8080", ":4002")}?shop=${encodeURIComponent(shop)}`;
     return res.redirect(wizardUrl);
   } catch (err) {
-    console.error("[Shopify] OAuth callback error:", err);
+    log.error("[Shopify] OAuth callback error:", err);
     return res.status(500).json({ error: "Installation failed" });
   }
 }
@@ -251,9 +261,9 @@ export async function webhookUninstall(req: Request, res: Response) {
       },
     }).catch(() => {});
 
-    console.log(`[Shopify] Uninstalled for ${shop}`);
+    log.info(`[Shopify] Uninstalled for ${shop}`);
   } catch (err) {
-    console.error("[Shopify] Uninstall webhook error:", err);
+    log.error("[Shopify] Uninstall webhook error:", err);
   }
 
   return res.status(200).send("OK");
@@ -272,7 +282,7 @@ export function webhookCustomersDataRequest(req: Request, res: Response) {
     return res.status(401).send("Unauthorized");
   }
   // AVA stores only anonymous visitorId (hash fingerprint) — no PII to export.
-  console.log("[Shopify GDPR] customers/data_request received — no PII stored");
+  log.info("[Shopify GDPR] customers/data_request received — no PII stored");
   return res.status(200).send("OK");
 }
 
@@ -287,7 +297,7 @@ export function webhookCustomersRedact(req: Request, res: Response) {
   if (!verifyWebhookHmac(rawBody, hmacHeader, cfg.apiSecret)) {
     return res.status(401).send("Unauthorized");
   }
-  console.log("[Shopify GDPR] customers/redact received — no PII stored");
+  log.info("[Shopify GDPR] customers/redact received — no PII stored");
   return res.status(200).send("OK");
 }
 
@@ -311,9 +321,9 @@ export async function webhookShopRedact(req: Request, res: Response) {
       where: { siteUrl },
       data: { integrationStatus: "deleted" as string },
     }).catch(() => {});
-    console.log(`[Shopify GDPR] shop/redact for ${shop} — marked for deletion`);
+    log.info(`[Shopify GDPR] shop/redact for ${shop} — marked for deletion`);
   } catch (err) {
-    console.error("[Shopify GDPR] shop/redact error:", err);
+    log.error("[Shopify GDPR] shop/redact error:", err);
   }
   return res.status(200).send("OK");
 }

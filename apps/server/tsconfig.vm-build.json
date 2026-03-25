@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "typeRoots": [
+      "/sessions/focused-admiring-archimedes/mnt/ava/node_modules/@types",
+      "/sessions/focused-admiring-archimedes/mnt/ava/apps/server/node_modules/@types"
+    ]
+  },
+  "include": ["src/**/*"],
+  "files": ["src/agent/_stubs.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

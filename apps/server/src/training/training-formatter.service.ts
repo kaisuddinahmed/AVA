@@ -2,7 +2,7 @@
 // Training Data Formatter — transforms FineTuningRecords into chat fine-tuning
 // JSONL format (system/user/assistant message triples).
 //
-// Supports: OpenAI, Groq, and generic chat-completion fine-tuning formats.
+// Supports: Groq and generic chat-completion fine-tuning formats.
 // ============================================================================
 
 import {
@@ -26,7 +26,7 @@ export interface ChatFineTuningExample {
 }
 
 /** Format presets for different fine-tuning providers. */
-export type FormatterPreset = "openai" | "groq" | "generic";
+export type FormatterPreset = "groq" | "generic";
 
 export interface FormatterOptions {
   /** Which format preset to use. Default: "generic". */

@@ -7,6 +7,9 @@ import { ExperimentRepo } from "@ava/db";
 import { config } from "../config.js";
 import { assignVariant } from "./experiment-assigner.js";
 import type { ExperimentVariant, ExperimentOverrides } from "@ava/shared";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "experiment" });
 
 /**
  * Resolve experiment overrides for a session. Called before the evaluation
@@ -74,10 +77,11 @@ export async function resolveExperimentOverrides(
       variantId: variant.id,
       evalEngine: variant.evalEngine,
       scoringConfigId: variant.scoringConfigId,
+      modelId: variant.modelId,
     };
   } catch (error) {
     // Experiment resolution must never crash the evaluation pipeline
-    console.error("[ExperimentResolver] Failed (non-blocking):", error);
+    log.error("[ExperimentResolver] Failed (non-blocking):", error);
     return null;
   }
 }

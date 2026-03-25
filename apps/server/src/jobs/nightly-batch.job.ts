@@ -18,6 +18,10 @@ import {
 import { runDriftCheck } from "./drift-detector.js";
 import { checkAllRolloutsHealth } from "../rollout/rollout-health.service.js";
 import { config } from "../config.js";
+import { checkRetrainTriggers } from "../training/retrain-trigger.service.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "jobs" });
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -66,6 +70,11 @@ export async function runNightlyBatch(): Promise<NightlyBatchResult> {
     subtasks.push(await runSubtask("network_flywheel", runFlywheelAggregation));
   }
 
+  // 11. Automated retraining check — runs AFTER eval_harness and drift_alerts
+  const evalResult = subtasks.find((s) => s.name === "eval_harness");
+  const evalRegressionDetected = evalResult?.summary?.regressionDetected === true;
+  subtasks.push(await runSubtask("retrain_check", () => checkRetrain(evalRegressionDetected)));
+
   // Collect errors
   for (const st of subtasks) {
     if (st.status === "failed" && st.error) {
@@ -99,7 +108,7 @@ async function runSubtask(
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[NightlyBatch] Subtask ${name} failed:`, errorMsg);
+    log.error(`[NightlyBatch] Subtask ${name} failed:`, errorMsg);
     return {
       name,
       status: "failed",
@@ -254,7 +263,7 @@ async function generateMerchantInsights(): Promise<Record<string, unknown>> {
       await generateInsightSnapshot(siteUrl);
       generated++;
     } catch (err) {
-      console.error(`[NightlyBatch] Insight generation failed for ${siteUrl}:`, err);
+      log.error(`[NightlyBatch] Insight generation failed for ${siteUrl}:`, err);
     }
   }
   return { sitesProcessed: activeSites.length, snapshotsGenerated: generated };
@@ -279,7 +288,7 @@ async function runCROAnalysisBatch(): Promise<Record<string, unknown>> {
       totalFindings += findings.length;
       analyzed++;
     } catch (err) {
-      console.error(`[NightlyBatch] CRO analysis failed for ${siteUrl}:`, err);
+      log.error(`[NightlyBatch] CRO analysis failed for ${siteUrl}:`, err);
     }
   }
   return { sitesAnalyzed: analyzed, totalFindingsGenerated: totalFindings };
@@ -318,5 +327,17 @@ async function runFlywheelAggregation(): Promise<Record<string, unknown>> {
     patternsSkipped: result.patternsSkipped,
     merchantsContributing: result.merchantsContributing,
     totalSessionsAnalyzed: result.totalSessionsAnalyzed,
+  };
+}
+
+/**
+ * Check automated retraining conditions and trigger if needed.
+ */
+async function checkRetrain(evalRegressionDetected: boolean): Promise<Record<string, unknown>> {
+  const result = await checkRetrainTriggers(evalRegressionDetected);
+  return {
+    triggered: result.triggered,
+    reasons: result.reasons,
+    triggerId: result.triggerId ?? null,
   };
 }

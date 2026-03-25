@@ -12,6 +12,11 @@ import {
   getResults,
   listExperiments,
 } from "../experiment/experiment.service.js";
+import { ModelVersionRepo } from "@ava/db";
+import { config } from "../config.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ service: "api" });
 
 /**
  * GET /api/experiments — List experiments
@@ -30,7 +35,7 @@ export async function list(req: Request, res: Response) {
 
     res.json({ experiments, count: experiments.length });
   } catch (error) {
-    console.error("[Experiments API] list error:", error);
+    log.error("[Experiments API] list error:", error);
     res.status(500).json({ error: "Failed to list experiments" });
   }
 }
@@ -44,7 +49,7 @@ export async function create(req: Request, res: Response) {
     res.status(201).json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Experiments API] create error:", msg);
+    log.error("[Experiments API] create error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -60,7 +65,7 @@ export async function get(req: Request, res: Response) {
     }
     res.json(experiment);
   } catch (error) {
-    console.error("[Experiments API] get error:", error);
+    log.error("[Experiments API] get error:", error);
     res.status(500).json({ error: "Failed to get experiment" });
   }
 }
@@ -74,7 +79,7 @@ export async function start(req: Request, res: Response) {
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Experiments API] start error:", msg);
+    log.error("[Experiments API] start error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -88,7 +93,7 @@ export async function pause(req: Request, res: Response) {
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Experiments API] pause error:", msg);
+    log.error("[Experiments API] pause error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -102,7 +107,50 @@ export async function end(req: Request, res: Response) {
     res.json(experiment);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Experiments API] end error:", msg);
+    log.error("[Experiments API] end error:", msg);
+    res.status(400).json({ error: msg });
+  }
+}
+
+/**
+ * POST /api/experiments/model-test — Create a 2-variant model A/B test.
+ * Control uses base model, treatment uses the specified fine-tuned model.
+ * Body: { modelVersionId, siteUrl?, trafficPercent?, name? }
+ */
+export async function createModelTest(req: Request, res: Response) {
+  try {
+    const { modelVersionId, siteUrl, trafficPercent = 50, name } = req.body;
+    if (!modelVersionId) {
+      res.status(400).json({ error: "modelVersionId is required" });
+      return;
+    }
+
+    const modelVersion = await ModelVersionRepo.getModelVersion(modelVersionId);
+    if (!modelVersion) {
+      res.status(404).json({ error: `ModelVersion ${modelVersionId} not found` });
+      return;
+    }
+
+    const baseModel = config.groq.model;
+    const experimentName = name || `Model Test: ${baseModel} vs ${modelVersion.modelId}`;
+
+    const experiment = await createExperiment({
+      name: experimentName,
+      description: `A/B test comparing base model (${baseModel}) against fine-tuned model (${modelVersion.modelId})`,
+      siteUrl: siteUrl || null,
+      trafficPercent,
+      variants: [
+        { id: "control", name: "control", weight: 0.5 },
+        { id: "treatment", name: "treatment", weight: 0.5, modelId: modelVersion.modelId },
+      ],
+      primaryMetric: "conversion_rate",
+      minSampleSize: 100,
+    });
+
+    res.status(201).json({ experiment });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    log.error("[Experiments API] model-test error:", msg);
     res.status(400).json({ error: msg });
   }
 }
@@ -116,7 +164,7 @@ export async function results(req: Request, res: Response) {
     res.json(result);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Experiments API] results error:", msg);
+    log.error("[Experiments API] results error:", msg);
     res.status(400).json({ error: msg });
   }
 }

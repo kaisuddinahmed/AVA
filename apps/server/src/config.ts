@@ -2,6 +2,11 @@ export const config = {
   port: Number(process.env.PORT ?? 8080),
   wsPort: Number(process.env.WS_PORT ?? 8081),
 
+  log: {
+    // debug | info | warn | error | silent
+    level: (process.env.LOG_LEVEL ?? "info") as "debug" | "info" | "warn" | "error" | "silent",
+  },
+
   db: {
     url: process.env.DATABASE_URL ?? "file:./packages/db/prisma/dev.db",
   },
@@ -71,6 +76,14 @@ export const config = {
   // CONTROL_GROUP_PCT % of sessions receive no interventions — used as baseline.
   // Deterministic: SHA-256(sessionId) % 100 < pct → control.
   controlGroupPct: Number(process.env.CONTROL_GROUP_PCT ?? 5),
+
+  // Automated retraining
+  retrain: {
+    autoEnabled: process.env.RETRAIN_AUTO_ENABLED === "true",
+    minIntervalDays: Number(process.env.RETRAIN_MIN_INTERVAL_DAYS ?? 7),
+    minDatapoints: Number(process.env.RETRAIN_MIN_DATAPOINTS ?? 500),
+    provider: "groq" as const,
+  },
 
   // Voice interventions (Deepgram TTS — server sends voice_script; widget synthesizes audio)
   voice: {
