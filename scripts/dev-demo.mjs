@@ -230,14 +230,16 @@ CREATE TABLE IF NOT EXISTS "RetrainTrigger" ("id" TEXT PRIMARY KEY,"triggeredAt"
 
     // Seed ScoringConfig (minSessionAgeSec=5 for fast demo sessions)
     const uid = () => crypto.randomUUID();
-    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'default',null,1,0.25,0.25,0.15,0.20,0.15,29,49,64,79,5);
-    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'aggressive',null,0,0.25,0.30,0.15,0.15,0.15,20,39,54,69,5);
-    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'conservative',null,0,0.25,0.20,0.15,0.25,0.15,34,54,69,84,10);
+    // Use ISO 8601 format — Prisma WASM adapter requires T-separator datetimes
+    const now = new Date().toISOString();
+    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'default',null,1,0.25,0.25,0.15,0.20,0.15,29,49,64,79,5,now,now);
+    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'aggressive',null,0,0.25,0.30,0.15,0.15,0.15,20,39,54,69,5,now,now);
+    db.prepare(`INSERT OR IGNORE INTO "ScoringConfig" (id,name,siteUrl,isActive,weightIntent,weightFriction,weightClarity,weightReceptivity,weightValue,thresholdMonitor,thresholdPassive,thresholdNudge,thresholdActive,minSessionAgeSec,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(uid(),'conservative',null,0,0.25,0.20,0.15,0.25,0.15,34,54,69,84,10,now,now);
 
     // Seed demo SiteConfig
     const siteId = uid();
-    db.prepare(`INSERT OR IGNORE INTO "SiteConfig" (id,siteUrl,siteKey,platform,trackingConfig,integrationStatus) VALUES (?,?,?,?,?,?)`).run(siteId,'http://localhost:3001','avak_eff0c37fabe8d527','custom','{}','pending');
-    db.prepare(`INSERT OR IGNORE INTO "ActivationPolicy" (id,siteConfigId,behaviorMinPct,frictionMinPct,minConfidence,tier) VALUES (?,?,?,?,?,?)`).run(uid(),siteId,50,50,0.50,'starter');
+    db.prepare(`INSERT OR IGNORE INTO "SiteConfig" (id,siteUrl,siteKey,platform,trackingConfig,integrationStatus,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?)`).run(siteId,'http://localhost:3001','avak_eff0c37fabe8d527','custom','{}','pending',now,now);
+    db.prepare(`INSERT OR IGNORE INTO "ActivationPolicy" (id,siteConfigId,behaviorMinPct,frictionMinPct,minConfidence,tier,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?)`).run(uid(),siteId,50,50,0.50,'starter',now,now);
 
     db.close();
     console.log(`[dev:demo] ✅ Database bootstrapped at ${dbPath}`);
