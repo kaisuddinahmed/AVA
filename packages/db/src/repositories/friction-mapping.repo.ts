@@ -29,8 +29,10 @@ export async function createFrictionMapping(data: CreateFrictionMappingInput) {
 
 export async function createFrictionMappings(data: CreateFrictionMappingInput[]) {
   if (data.length === 0) return { count: 0 };
+  // createMany crashes in Prisma WASM — loop single creates instead
   const db = prisma as any;
-  return db.frictionMapping.createMany({ data });
+  for (const row of data) { await db.frictionMapping.create({ data: row }); }
+  return { count: data.length };
 }
 
 export async function getFrictionMapping(id: string) {

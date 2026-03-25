@@ -178,22 +178,13 @@ export async function callback(req: Request, res: Response) {
 
     // 2. Upsert SiteConfig for this Shopify store
     const siteUrl = `https://${shop}`;
-    await prisma.siteConfig.upsert({
-      where: { siteUrl },
-      create: {
-        siteUrl,
-        platform: "shopify",
-        trackingConfig: JSON.stringify({ shopify: true }),
-        integrationStatus: "limited_active",
-        shopifyShop: shop,
-        shopifyAccessToken: accessToken,
-      },
-      update: {
-        shopifyShop: shop,
-        shopifyAccessToken: accessToken,
-        integrationStatus: "limited_active",
-      },
-    });
+    // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
+    const _existingSite = await prisma.siteConfig.findUnique({ where: { siteUrl } });
+    if (_existingSite) {
+      await prisma.siteConfig.update({ where: { siteUrl }, data: { shopifyShop: shop, shopifyAccessToken: accessToken, integrationStatus: "limited_active" } });
+    } else {
+      await prisma.siteConfig.create({ data: { siteUrl, platform: "shopify", trackingConfig: JSON.stringify({ shopify: true }), integrationStatus: "limited_active", shopifyShop: shop, shopifyAccessToken: accessToken } });
+    }
 
     // 3. Inject widget ScriptTag
     const scriptTagId = await injectScriptTag(shop, accessToken, cfg.widgetSrc);

@@ -76,7 +76,10 @@ class NodeSqliteAdapter {
     async transactionContext() {
         const db = this.db;
         const adapter = this;
+        // Prisma WASM's fa() reads adapterName/provider from the context object itself
         return ok({
+            adapterName: "node-sqlite",
+            provider: "sqlite",
             async startTransaction() {
                 try {
                     db.exec("BEGIN");
