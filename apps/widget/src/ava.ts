@@ -74,7 +74,7 @@ export class AVAWidget {
   private panelContainer!: HTMLDivElement;
   private messagesContainer!: HTMLDivElement;
   private inputEl!: HTMLInputElement;
-  private toggleBtn!: HTMLButtonElement;
+  private toggleBtn!: HTMLElement;
 
   // External callbacks (wired by index.ts)
   onDismiss: (id: string) => void = () => {};
@@ -98,6 +98,15 @@ export class AVAWidget {
 
   private nudgeTimeout: ReturnType<typeof setTimeout> | null = null;
   private signalCollapseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Face-widget state (only set when not mobile)
+  private _faceWidget: HTMLDivElement | null = null;
+  private _faceRing: HTMLDivElement | null = null;
+  private _faceBadge: HTMLDivElement | null = null;
+  private _faceCapsule: HTMLDivElement | null = null;
+  private _isTalking = false;
+  private _missedVoiceCount = 0;
+  private _lastVoiceScript: string | null = null;
 
   // Track intervention IDs that have already reported a terminal outcome
   private reportedOutcomes = new Set<string>();
@@ -163,10 +172,88 @@ export class AVAWidget {
     this.root.appendChild(this.panelContainer);
 
     if (!this.isMobile) {
-      this.toggleBtn = renderToggleButton({
-        config: this.config,
-        onClick: () => this.handleToggleClick(),
+      // ── AVA face widget: 55×55 avatar + speaking ring + 3-dot capsule ──────
+      const _iw = document.createElement("div");
+      _iw.id = "ava-face-widget";
+      _iw.style.cssText = "position:relative;width:55px;height:55px;flex-shrink:0;";
+
+      // speaking ring (hidden by default)
+      const _ring = document.createElement("div");
+      _ring.id = "ava-face-ring";
+      _ring.style.cssText = "position:absolute;top:50%;left:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;pointer-events:none;display:none;";
+      _iw.appendChild(_ring);
+
+      // avatar image
+      const _face = document.createElement("img");
+      _face.id = "ava-face-wrap";
+      _face.src = "/ava-avatar.png";
+      _face.style.cssText = "width:100%;height:100%;display:block;object-fit:contain;cursor:pointer;";
+      _iw.appendChild(_face);
+
+      // missed-voices badge (top-right red dot)
+      const _badge = document.createElement("div");
+      _badge.id = "ava-missed-badge";
+      _badge.style.cssText = "display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#e94560;color:#fff;font-size:10px;font-weight:700;line-height:18px;text-align:center;padding:0 4px;cursor:pointer;z-index:1;";
+      _badge.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.voiceManager) (this.voiceManager as any)._muted = false;
+        this._missedVoiceCount = 0;
+        this.renderToggle();
+        if (this._lastVoiceScript) this.voiceManager?.speak(this._lastVoiceScript).catch(() => {});
       });
+      _iw.appendChild(_badge);
+
+      // 3-dot capsule below face — opens/closes chat
+      const _capsule = document.createElement("div");
+      _capsule.id = "ava-dot-capsule";
+      _capsule.title = "Open chat";
+      _capsule.style.cssText = "margin-top:5px;display:flex;align-items:center;justify-content:center;gap:4px;background:rgba(255,255,255,0.92);border:1.5px solid rgba(99,102,241,0.5);border-radius:20px;padding:5px 14px;cursor:pointer;transition:background 0.2s;box-shadow:0 2px 8px rgba(99,102,241,0.15);";
+      for (let i = 0; i < 3; i++) {
+        const d = document.createElement("div");
+        d.style.cssText = "width:5px;height:5px;border-radius:50%;background:rgba(99,102,241,0.9);";
+        _capsule.appendChild(d);
+      }
+      _capsule.addEventListener("mouseenter", () => { _capsule.style.background = "rgba(240,240,255,0.95)"; });
+      _capsule.addEventListener("mouseleave", () => { _capsule.style.background = "rgba(255,255,255,0.92)"; });
+      _capsule.addEventListener("click", (e) => { e.stopPropagation(); this.handleToggleClick(); });
+
+      // column wrapper: face on top, capsule below
+      const _col = document.createElement("div");
+      _col.id = "ava-face-col";
+      _col.style.cssText = "display:flex;flex-direction:column;align-items:center;";
+      _col.appendChild(_iw);
+      _col.appendChild(_capsule);
+
+      this._faceWidget = _iw;
+      this._faceRing = _ring;
+      this._faceBadge = _badge;
+      this._faceCapsule = _capsule;
+
+      // hook voiceManager to track talking state + missed voices
+      if (this.voiceManager) {
+        const vm = this.voiceManager as any;
+        const origPlay = vm._playSpeech.bind(vm);
+        vm._playSpeech = async (script: string) => {
+          this._lastVoiceScript = script;
+          if (this.voiceManager?.isMuted) {
+            this._missedVoiceCount++;
+            this.renderToggle();
+            return;
+          }
+          this._isTalking = true;
+          this.renderToggle();
+          try { await origPlay(script); }
+          finally { this._isTalking = false; this.renderToggle(); }
+        };
+        const origStop = vm.stopCurrent.bind(vm);
+        vm.stopCurrent = () => {
+          origStop();
+          this._isTalking = false;
+          this.renderToggle();
+        };
+      }
+
+      this.toggleBtn = _col;
       this.root.appendChild(this.toggleBtn);
     } else {
       // Mobile FAB outside shadow DOM for fixed positioning
@@ -233,7 +320,7 @@ export class AVAWidget {
       case "nudge":
         this.currentNudge = payload;
         this.hasUnread = true;
-        if (this.state === "minimized") {
+        if (this.state === "minimized" && !this._faceWidget) {
           this.state = "signal";
           if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
           this.signalCollapseTimeout = setTimeout(() => {
@@ -335,8 +422,35 @@ export class AVAWidget {
   }
 
   private renderToggle(): void {
+    if (this._faceWidget && this._faceRing) {
+      const muted = this.voiceManager?.isMuted ?? false;
+      this._faceWidget.style.filter = muted ? "grayscale(70%) brightness(0.85)" : "none";
+      // ring
+      if (this._isTalking && !muted) {
+        this._faceRing.style.display = "block";
+        this._faceRing.style.animation = "ava-ring 0.55s ease-in-out infinite";
+      } else {
+        this._faceRing.style.animation = "none";
+        this._faceRing.style.display = "none";
+      }
+      // missed-voices badge
+      if (this._faceBadge) {
+        if (muted && this._missedVoiceCount > 0) {
+          this._faceBadge.textContent = String(this._missedVoiceCount);
+          this._faceBadge.style.display = "block";
+        } else {
+          this._faceBadge.style.display = "none";
+        }
+      }
+      // capsule tooltip
+      if (this._faceCapsule) {
+        this._faceCapsule.title = this.state === "expanded" ? "Close chat" : "Open chat";
+      }
+      return;
+    }
+    // fallback: original capsule button (mobile or face-widget not created)
     updateToggleButton(
-      this.toggleBtn,
+      this.toggleBtn as HTMLButtonElement,
       this.state,
       this.hasUnread,
       this.config,
@@ -346,6 +460,19 @@ export class AVAWidget {
 
   private renderNudge(): void {
     this.nudgeContainer.innerHTML = "";
+    // Face-widget mode: no popup bubble — messages go silently into the chat window
+    if (this._faceWidget && this.currentNudge) {
+      if (!this.messages.some((m) => m.id === this.currentNudge!.intervention_id)) {
+        this.messages.push({
+          id: this.currentNudge.intervention_id,
+          type: "assistant",
+          content: this.currentNudge.message || "",
+          payload: this.currentNudge,
+          timestamp: Date.now(),
+        });
+      }
+      return;
+    }
     if (
       (this.state === "minimized" || this.state === "signal") &&
       this.currentNudge

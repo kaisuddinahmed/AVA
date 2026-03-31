@@ -86,6 +86,12 @@ export function injectGlobalStyles(
       100% { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0);    }
     }
 
+    /* AVA face-widget ring pulse while talking */
+    @keyframes ava-ring {
+      0%,100% { box-shadow: 0 0 0 3px rgba(99,102,241,0.8), 0 0 16px rgba(99,102,241,0.3); }
+      50%      { box-shadow: 0 0 0 5px rgba(99,102,241,0.5), 0 0 28px rgba(99,102,241,0.6); }
+    }
+
     *, *::before, *::after {
       box-sizing: border-box;
     }
