@@ -18,6 +18,8 @@ export class BehaviorCollector {
   private pageEnterTime = Date.now();
   private rageClickTracker = { count: 0, lastTime: 0, lastX: 0, lastY: 0 };
   private scrollMilestones = new Set<number>();
+  private scrollBackFired = false;
+  private lastCartActionAt: number = 0;
   private lastProductModalId: string | null = null;
   private productModalOpenedAt: number = 0;
   private sizeGuideOpenedAt: number = 0;
@@ -301,6 +303,7 @@ export class BehaviorCollector {
         const product = this.extractProductContext(target);
         const qtyEl = document.getElementById("modal-qty");
         const qty = parseInt(qtyEl?.textContent?.trim() || "1");
+        this.lastCartActionAt = Date.now();
         this.send("cart", "add_to_cart", {
           ...product,
           quantity: qty,
@@ -313,6 +316,7 @@ export class BehaviorCollector {
       const quickAdd = target.closest(".btn-add[data-id]") as HTMLElement | null;
       if (quickAdd) {
         const product = this.extractProductContext(target);
+        this.lastCartActionAt = Date.now();
         this.send("cart", "quick_add", {
           product_id: quickAdd.dataset.id,
           ...product,
@@ -344,11 +348,34 @@ export class BehaviorCollector {
         }
       }
 
-      // --- Category navigation ---
-      const navCategory = target.closest(".nav-category, [data-cat]") as HTMLElement | null;
+      // --- Top-level gender nav buttons (Men / Women — .nav-link, no data-cat) ---
+      const topNavBtn = target.closest(".nav-link") as HTMLElement | null;
+      if (topNavBtn) {
+        const label = topNavBtn.textContent?.trim();
+        if (label) {
+          this.send("navigation", "category_browse", {
+            category: label,
+            gender: label.toLowerCase(),
+            level: "top",
+          });
+          return;
+        }
+      }
+
+      // --- Subcategory navigation links (.nav-category or .nav-menu-action with data-gender) ---
+      const navCategory = target.closest(".nav-category, .nav-menu-action, [data-cat]") as HTMLElement | null;
       if (navCategory) {
+        const gender = navCategory.getAttribute("data-gender");       // "men" | "women" | null
+        const label  = navCategory.getAttribute("data-label") || navCategory.textContent?.trim();
+        const catType = navCategory.getAttribute("data-cat");
+        const genderPart = gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "";
+        const category = [genderPart, label].filter(Boolean).join(": "); // "Men: Shoes" | "Women: Accessories"
         this.send("navigation", "category_browse", {
-          category: navCategory.getAttribute("data-cat") || navCategory.textContent?.trim(),
+          category,
+          gender:        gender    || null,
+          sub_category:  label     || null,
+          cat_type:      catType   || null,
+          level: "sub",
         });
         return;
       }
@@ -541,6 +568,31 @@ export class BehaviorCollector {
           this.scrollMilestones.add(95);
           this.send("navigation", "scroll_without_click", { scroll_depth: depth, click_count: 0 }, "F015");
         }
+      }
+
+      // ── Scroll-back detection ─────────────────────────────────
+      // Scroll-back-to-top: was deep (≥50%), now near top (≤15%)
+      if (!this.scrollBackFired && this.scrollDepth >= 50 && depth <= 15) {
+        this.scrollBackFired = true;
+        this.send("navigation", "scroll_back_to_top", {
+          peak_depth_pct: this.scrollDepth,
+          current_depth_pct: depth,
+        });
+      }
+      // Reset so it can fire again if user scrolls deep again
+      if (depth >= 50) this.scrollBackFired = false;
+
+      // Scroll-back after cart action: within 60s of add-to-cart, scrolled up ≥30%
+      if (
+        this.lastCartActionAt > 0 &&
+        Date.now() - this.lastCartActionAt < 60000 &&
+        this.scrollDepth - depth >= 30
+      ) {
+        this.lastCartActionAt = 0; // fire once per cart action
+        this.send("navigation", "scroll_back_after_cart", {
+          peak_depth_pct: this.scrollDepth,
+          current_depth_pct: depth,
+        });
       }
     };
     window.addEventListener("scroll", handler, { passive: true });

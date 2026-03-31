@@ -1,571 +1,684 @@
-import { useMemo, useState } from "react";
-import type { BehaviorGroup, EvaluationData, FrictionAnalytics, OverviewAnalytics, RevenueAttribution, ScoreTier } from "../types";
-import { useApi } from "../hooks/use-api";
-import { fmtTime, fmtNum, fmtPct, fmtScore, tierColor } from "../lib/format";
-import { SignalBars } from "./SignalBars";
-import { CompositeRing } from "./CompositeRing";
+import { useState, useMemo, type ReactNode } from 'react';
 
-const BEHAVIOR_GROUP_COLOR: Record<BehaviorGroup, string> = {
-  HIGH_INTENT: "#22c55e",
-  COMPARISON:  "#38bdf8",
-  HESITATION:  "#f59e0b",
-  DISCOVERY:   "#6b7280",
-  EXIT_RISK:   "#ef4444",
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Props {
-  evaluations: EvaluationData[];
+interface MswimSignals {
+  intent: number;
+  friction: number;
+  clarity: number;
+  receptivity: number;
+  value: number;
+}
+
+interface Mswim {
+  tier: 'MONITOR' | 'PASSIVE' | 'NUDGE' | 'ACTIVE' | 'ESCALATE';
+  composite_score: number;
+  signals: MswimSignals;
+  gate_override?: string;
+}
+
+interface Evaluation {
+  id?: string;
+  session_id: string;
+  mswim: Mswim;
+  narrative?: string;
+  frictionId?: string;
+  friction_id?: string;
+  engine?: string;
+  intervention_id?: string;
+  timestamp?: number;
+  createdAt?: string;
+}
+
+interface OverviewData {
+  activeSessions?: number;
+  totalEvaluations?: number;
+  tierDistribution?: Record<string, number>;
+  totalAttributedRevenue?: number;
+  interventionEfficiency?: {
+    fired: number;
+    converted: number;
+    conversionRate: number;
+    dismissalRate: number;
+  };
+}
+
+interface FrictionItem {
+  frictionId: string;
+  category: string;
+  count: number;
+  resolutionRate?: number;
+  avgSeverity?: number;
+  confidence?: string;
+}
+
+interface FrictionAnalytics { byFriction: FrictionItem[]; }
+
+interface RevenueAttribution {
+  totalAttributedRevenue: number;
+  interventionsFired: number;
+  sampleSize?: number;
+  sessionsImpacted?: number;
+}
+
+interface ShadowStats {
+  tierAgreementRate?: number;
+  decisionAgreementRate?: number;
+  avgCompositeDivergence?: number;
+}
+
+interface EvaluateTabProps {
+  evaluations: Evaluation[];
   selectedSession: string | null;
-  overview: OverviewAnalytics | null;
-  shadowStats: any | null;
-  shadowDivergences: any[] | null;
+  overview: OverviewData | null;
+  shadowStats: ShadowStats | null;
+  shadowDivergences: unknown[] | null;
   frictionAnalytics: FrictionAnalytics | null;
   revenueAttribution: RevenueAttribution | null;
 }
 
-const TIERS: ScoreTier[] = ["MONITOR", "PASSIVE", "NUDGE", "ACTIVE", "ESCALATE"];
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
-/** Plain-English labels for each tier — business-owner friendly */
-const TIER_PLAIN: Record<ScoreTier, string> = {
-  MONITOR:  "just browsing, no risk",
-  PASSIVE:  "mild interest, low urgency",
-  NUDGE:    "showing intent, light friction",
-  ACTIVE:   "at-risk of leaving — intervening",
-  ESCALATE: "high-risk, immediate action",
-};
+function fmt(n: number | undefined | null) { return (n ?? 0).toLocaleString('en-US'); }
+function pct(n: number | undefined | null) { return n != null ? `${(n * 100).toFixed(1)}%` : '—'; }
+function score(n: number) { return Math.round(n).toString(); }
 
-function compositeToTier(score: number): ScoreTier {
-  if (score >= 80) return "ESCALATE";
-  if (score >= 65) return "ACTIVE";
-  if (score >= 50) return "NUDGE";
-  if (score >= 30) return "PASSIVE";
-  return "MONITOR";
+function tierColor(tier: string) {
+  const map: Record<string, string> = {
+    MONITOR: 'var(--tier-monitor)',
+    PASSIVE: 'var(--tier-passive)',
+    NUDGE: 'var(--tier-nudge)',
+    ACTIVE: 'var(--tier-active)',
+    ESCALATE: 'var(--tier-escalate)',
+  };
+  return map[tier] ?? 'var(--muted)';
 }
 
-/** Collapsible section for the shadow/dev section */
-function DevSection({ title, children, defaultOpen = false }: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
+function tierDesc(tier: string) {
+  const map: Record<string, string> = {
+    MONITOR: 'just browsing, no risk',
+    PASSIVE: 'mild interest, low urgency',
+    NUDGE: 'showing intent, light friction',
+    ACTIVE: 'at-risk of leaving — intervening',
+    ESCALATE: 'high-risk, immediate action',
+  };
+  return map[tier] ?? '';
+}
+
+function scoreToTier(s: number) {
+  if (s >= 80) return 'ESCALATE';
+  if (s >= 65) return 'ACTIVE';
+  if (s >= 50) return 'NUDGE';
+  if (s >= 30) return 'PASSIVE';
+  return 'MONITOR';
+}
+
+const SIGNAL_KEYS: Array<{ key: keyof MswimSignals; label: string; color: string }> = [
+  { key: 'intent',      label: 'INT', color: '#59b8e6' },
+  { key: 'friction',    label: 'FRI', color: '#ff9d65' },
+  { key: 'clarity',     label: 'CLR', color: '#35d3a1' },
+  { key: 'receptivity', label: 'REC', color: '#f0c75e' },
+  { key: 'value',       label: 'VAL', color: '#c888e5' },
+];
+
+function formatTime(ts: number | string | undefined) {
+  if (!ts) return '—';
+  const d = new Date(typeof ts === 'string' ? ts : ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+}
+
+function confidenceColor(c: string) {
+  return c === 'high' ? 'var(--accent)' : c === 'medium' ? 'var(--tier-nudge)' : 'var(--muted)';
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Section({
+  title, badge, defaultOpen = false, children,
+}: {
+  title: string; badge?: string; defaultOpen?: boolean; children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="card" style={{ marginBottom: 12 }}>
-      <div className="card-head" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => setOpen(o => !o)}>
-        <span>{title}</span>
-        <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, opacity: 0.6 }}>{open ? "▲ collapse" : "▼ expand"}</span>
+      <div
+        className="card-head"
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span>
+          {title}
+          {badge && (
+            <span style={{
+              marginLeft: 8, fontSize: 9, background: 'rgba(53,211,161,0.15)',
+              color: 'var(--accent)', borderRadius: 3, padding: '1px 5px',
+            }}>
+              {badge}
+            </span>
+          )}
+        </span>
+        <span style={{ fontWeight: 400, textTransform: 'none', fontSize: 10, opacity: 0.6 }}>
+          {open ? '▲ collapse' : '▼ expand'}
+        </span>
       </div>
       {open && <div className="card-body">{children}</div>}
     </div>
   );
 }
 
-export function EvaluateTab({ evaluations, selectedSession, overview, shadowStats, shadowDivergences, frictionAnalytics, revenueAttribution }: Props) {
-  const filtered = useMemo(
-    () => selectedSession ? evaluations.filter((e) => e.session_id === selectedSession) : evaluations,
-    [evaluations, selectedSession]
+/** Inline signal bar chips for each MSWIM dimension */
+function SignalChips({ signals }: { signals: MswimSignals }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+      {SIGNAL_KEYS.map(({ key, label, color }) => {
+        const val = Math.round(signals[key] ?? 0);
+        return (
+          <div key={key} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '2px 6px', borderRadius: 3,
+            background: 'rgba(6,20,30,0.8)', border: `1px solid ${color}33`,
+          }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--muted)', letterSpacing: '0.03em' }}>
+              {label}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, color }}>
+              {val}
+            </span>
+            {/* Mini bar */}
+            <div style={{
+              width: 20, height: 3, background: 'rgba(8,26,34,0.8)',
+              borderRadius: 2, overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${Math.min(100, val)}%`, height: '100%',
+                background: color, borderRadius: 2,
+              }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
+}
 
-  const tierDist = useMemo(() => {
-    if (overview?.tierDistribution) return overview.tierDistribution;
-    const dist: Record<string, number> = {};
-    for (const e of filtered) {
-      const t = e.mswim.tier;
-      dist[t] = (dist[t] ?? 0) + 1;
-    }
-    return dist;
-  }, [overview, filtered]);
+/** Composite score arc ring */
+function ScoreRing({ score: s, tier }: { score: number; tier: string }) {
+  const size = 56;
+  const r = (size - 6) / 2;
+  const circ = 2 * Math.PI * r;
+  const fill = Math.min(100, Math.max(0, s));
+  const dash = circ - (fill / 100) * circ;
+  const color = tierColor(tier);
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="rgba(8,26,34,0.8)" strokeWidth={5} />
+        <circle cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke={color} strokeWidth={5}
+          strokeDasharray={circ} strokeDashoffset={dash}
+          strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.4s ease' }} />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color,
+      }}>
+        {Math.round(s)}
+      </div>
+    </div>
+  );
+}
 
-  const totalTier = Object.values(tierDist).reduce((a, b) => a + b, 0);
-  const latest = filtered[0] ?? null;
+// ─── Eval Row ─────────────────────────────────────────────────────────────────
 
-  const avgComposite = useMemo(() => {
-    if (filtered.length === 0) return 0;
-    return filtered.reduce((sum, e) => sum + e.mswim.composite_score, 0) / filtered.length;
-  }, [filtered]);
-
-  // Counts for AI summary card
-  const atRiskCount = useMemo(() => {
-    const active = (tierDist as Record<string, number>)["ACTIVE"] ?? 0;
-    const escalate = (tierDist as Record<string, number>)["ESCALATE"] ?? 0;
-    return active + escalate;
-  }, [tierDist]);
-
-  const escalatedCount = useMemo(() => {
-    return (tierDist as Record<string, number>)["ESCALATE"] ?? 0;
-  }, [tierDist]);
-
-  const totalEvals = overview?.totalEvaluations ?? filtered.length;
-
-  // Model experiments — find running experiments with modelId variants
-  const { data: experimentsData } = useApi<any>("/experiments?status=running&limit=10", { pollMs: 20000 });
-  const modelExperiments = useMemo(() => {
-    if (!experimentsData?.experiments) return [];
-    return experimentsData.experiments.filter((exp: any) => {
-      try {
-        const variants = JSON.parse(exp.variants);
-        return variants.some((v: any) => v.modelId);
-      } catch { return false; }
-    });
-  }, [experimentsData]);
+function EvalRow({ ev }: { ev: Evaluation }) {
+  const mswim = ev.mswim ?? { tier: "MONITOR" as const, composite_score: 0, signals: { intent: 0, friction: 0, clarity: 0, receptivity: 0, value: 0 } };
+  const [expanded, setExpanded] = useState(false);
+  const fId = ev.frictionId || ev.friction_id;
+  const ts = ev.timestamp ?? (ev.createdAt ? new Date(ev.createdAt).getTime() : undefined);
+  const color = tierColor(mswim.tier);
+  const score = mswim.composite_score;
+  const isHighRisk = mswim.tier === 'ACTIVE' || mswim.tier === 'ESCALATE';
+  const hasIntervention = !!ev.intervention_id;
 
   return (
-    <div className="tab-content">
+    <div
+      style={{
+        padding: '10px 18px',
+        borderBottom: '1px solid rgba(26,61,74,0.45)',
+        borderLeft: `3px solid ${color}${isHighRisk ? 'cc' : '44'}`,
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+      }}
+      onClick={() => setExpanded(e => !e)}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(53,211,161,0.04)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      {/* Row header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Time */}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)',
+          minWidth: 72, flexShrink: 0,
+        }}>
+          {formatTime(ts)}
+        </span>
 
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 1 — AI SUMMARY CARD  (plain English for business owners)
-          "Here's what AVA's AI is seeing right now."
-      ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(53,211,161,0.07) 0%, var(--card) 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35), 0 0 0 1px rgba(53,211,161,0.1)" }}>
-        <div className="card-body" style={{ padding: "20px 22px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 20 }}>
-            {/* Left: headline summary */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                AVA Intelligence Summary
-              </div>
-              {totalEvals === 0 ? (
-                <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.5 }}>
-                  Waiting for sessions to evaluate...
-                </div>
-              ) : (
-                <div style={{ fontSize: 16, color: "var(--text)", lineHeight: 1.65 }}>
-                  <span style={{ color: "var(--accent)", fontWeight: 700 }}>{fmtNum(totalEvals)}</span> sessions evaluated today
-                  {atRiskCount > 0 ? (
-                    <>
-                      {" · "}
-                      <span style={{ color: "var(--tier-active)", fontWeight: 700 }}>{fmtNum(atRiskCount)}</span> at active risk right now
-                    </>
-                  ) : (
-                    <> · <span style={{ color: "var(--accent)" }}>no high-risk sessions</span></>
-                  )}
-                  {escalatedCount > 0 && (
-                    <>
-                      {" · "}
-                      <span style={{ color: "var(--tier-escalate)", fontWeight: 700 }}>{fmtNum(escalatedCount)}</span> escalated
-                    </>
-                  )}
-                  {latest?.engine && (
-                    <>
-                      {" · "}
-                      <span style={{ color: "var(--muted)" }}>engine: </span>
-                      <span style={{ color: "var(--info)" }}>{latest.engine.toUpperCase()}</span>
-                    </>
-                  )}
-                </div>
-              )}
-              {latest && (
-                <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
-                  Latest session classified as{" "}
-                  <span style={{ color: tierColor(latest.mswim.tier), fontWeight: 700 }}>{latest.mswim.tier}</span>
-                  {" "}— {TIER_PLAIN[latest.mswim.tier as ScoreTier] ?? "unknown"}.
-                  {latest.mswim.gate_override && (
-                    <> Gate override: <span className="gate-tag" style={{ marginLeft: 4 }}>{latest.mswim.gate_override}</span></>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* Right: current composite + avg */}
-            <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
-              <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
-                <div className="label">Now</div>
-                <div className="value" style={{ color: latest ? tierColor(latest.mswim.tier) : undefined }}>
-                  {latest ? fmtScore(latest.mswim.composite_score) : "—"}
-                </div>
-                <div className="sub">{latest?.mswim.tier ?? "waiting"}</div>
-              </div>
-              <div className="metric-box" style={{ minWidth: 90, textAlign: "center" }}>
-                <div className="label">Avg Score</div>
-                <div className="value" style={{ color: tierColor(compositeToTier(avgComposite)) }}>
-                  {totalEvals > 0 ? fmtScore(avgComposite) : "—"}
-                </div>
-                <div className="sub">{totalEvals > 0 ? compositeToTier(avgComposite) : "no data"}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        {/* Tier badge */}
+        <span className={`tier-badge ${mswim.tier}`} style={{ flexShrink: 0 }}>
+          {mswim.tier}
+        </span>
 
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 2 — SIGNAL STATE + TIER DISTRIBUTION
-          The MSWIM scoring view — how AVA is weighing each signal.
-      ═══════════════════════════════════════════════════════════ */}
-      <div className="grid-2" style={{ marginBottom: 16 }}>
-        {/* MSWIM Composite + Signal Bars */}
-        <div className="card">
-          <div className="card-head">Current MSWIM Signal State</div>
-          <div className="card-body">
-            {latest ? (
-              <>
-                <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-                  <CompositeRing score={latest.mswim.composite_score} tier={latest.mswim.tier} />
-                  <div style={{ flex: 1 }}>
-                    <SignalBars signals={latest.mswim.signals} />
-                  </div>
-                </div>
-                {/* Signal plain-English hint */}
-                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>
-                  {buildSignalHint(latest.mswim.signals)}
-                </div>
-                {latest.mswim.gate_override && (
-                  <div style={{ marginTop: 8 }}>
-                    <span className="gate-tag">{latest.mswim.gate_override}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="empty-state" style={{ padding: 20 }}>
-                <p className="muted">Waiting for first evaluation...</p>
-              </div>
-            )}
+        {/* Confidence bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 5, flex: 1, maxWidth: 120, flexShrink: 0,
+        }}>
+          <div style={{
+            flex: 1, height: 4, background: 'rgba(8,26,34,0.7)',
+            borderRadius: 2, overflow: 'hidden',
+          }}>
+            <div style={{
+              width: `${score}%`, height: '100%', background: color,
+              borderRadius: 2, transition: 'width 0.4s ease',
+            }} />
           </div>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10,
+            color, fontWeight: 700, minWidth: 22,
+          }}>
+            {Math.round(score)}
+          </span>
         </div>
 
-        {/* Tier Distribution */}
-        <div className="card">
-          <div className="card-head">
-            Session Risk Distribution
-            <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, marginLeft: 8, opacity: 0.6 }}>
-              {fmtNum(totalTier)} sessions
-            </span>
-          </div>
-          <div className="card-body">
-            {totalTier === 0 ? (
-              <div className="empty-state" style={{ padding: 20 }}>
-                <p className="muted">No evaluations yet</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {TIERS.map((tier) => {
-                  const count = (tierDist as Record<string, number>)[tier] ?? 0;
-                  const pct = totalTier > 0 ? (count / totalTier) * 100 : 0;
-                  return (
-                    <div key={tier}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                        <span className="tier-badge" style={{ minWidth: 72, justifyContent: "center", color: tierColor(tier), borderColor: tierColor(tier) }}>
-                          {tier}
-                        </span>
-                        <div style={{ flex: 1, height: 6, background: "rgba(8,26,34,0.6)", borderRadius: 3, overflow: "hidden" }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: tierColor(tier), borderRadius: 3, transition: "width 400ms ease" }} />
-                        </div>
-                        <span className="mono muted" style={{ fontSize: 10, minWidth: 28, textAlign: "right" }}>{count}</span>
-                      </div>
-                      <div style={{ fontSize: 9, color: "var(--muted)", paddingLeft: 84 }}>{TIER_PLAIN[tier]}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        {/* Session id (truncated) */}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
+          flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {ev.session_id.slice(0, 16)}…
+        </span>
 
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 3 — FRICTION HOTSPOTS
-          What's blocking conversion across all sessions.
-      ═══════════════════════════════════════════════════════════ */}
-      {overview?.frictionHotspots && overview.frictionHotspots.length > 0 && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-head">
-            Friction Hotspots
-            <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, marginLeft: 8, opacity: 0.6 }}>
-              recurring blockers across sessions
-            </span>
-          </div>
-          <div className="card-body">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-              {overview.frictionHotspots.slice(0, 8).map((f, i) => (
-                <div key={f.frictionId} style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 8px",
-                  background: "rgba(8,26,34,0.5)",
-                  borderRadius: 4,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}>
-                  <span style={{ fontSize: 9, color: "var(--muted)", minWidth: 16, textAlign: "right", opacity: 0.5 }}>#{i + 1}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warn)" }}>{f.frictionId}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "capitalize" }}>{f.category}</div>
-                  </div>
-                  <span style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: f.count >= 10 ? "var(--tier-escalate)" : f.count >= 5 ? "var(--warn)" : "var(--muted)",
-                  }}>{f.count}×</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+        {/* Friction tag */}
+        {fId && (
+          <span className="friction-tag" style={{ flexShrink: 0 }}>{fId}</span>
+        )}
 
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 4 — EVALUATION FEED
-          The AI's running commentary on each session.
-      ═══════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-head">
-          <span>AI Evaluation Feed</span>
-          <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10 }}>{filtered.length} evaluations</span>
-        </div>
-        {filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">🧠</div>
-            <p>Waiting for evaluations...</p>
-            <p className="muted" style={{ fontSize: 11 }}>Events are buffered and evaluated in batches</p>
-          </div>
-        ) : (
-          <div className="scroll-list">
-            {filtered.map((ev, i) => (
-              <div className="eval-row" key={ev.evaluation_id ?? i}>
-                <div className="eval-header">
-                  <span className="time">{fmtTime(ev.timestamp)}</span>
-                  <span className={`tier-badge ${ev.mswim.tier}`} style={{ color: tierColor(ev.mswim.tier), borderColor: tierColor(ev.mswim.tier) }}>{ev.mswim.tier}</span>
-                  <span className="mono muted" style={{ fontSize: 10 }}>composite {fmtScore(ev.mswim.composite_score)}</span>
-                  {ev.mswim.gate_override && <span className="gate-tag">{ev.mswim.gate_override}</span>}
-                  {ev.engine && (
-                    <span className="signal-chip">
-                      <span className="signal-label">engine</span>
-                      <span className="signal-value">{ev.engine}</span>
-                    </span>
-                  )}
-                </div>
-                <div className="signal-bar">
-                  {Object.entries(ev.mswim.signals).map(([key, val]) => (
-                    <span className="signal-chip" key={key}>
-                      <span className="signal-label">{key.slice(0, 3)}</span>
-                      <span className="signal-value">{fmtScore(val)}</span>
-                    </span>
-                  ))}
-                  {ev.abandonment_score != null && (
-                    <span className="signal-chip" style={{
-                      borderColor: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)",
-                    }}>
-                      <span className="signal-label" style={{ color: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)" }}>abd</span>
-                      <span className="signal-value" style={{ color: ev.abandonment_score >= 80 ? "var(--tier-escalate)" : ev.abandonment_score >= 50 ? "var(--warn)" : "var(--tier-nudge)" }}>{ev.abandonment_score}</span>
-                    </span>
-                  )}
-                </div>
-                {ev.frictions_found.length > 0 && (
-                  <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {ev.frictions_found.map((f, fi) => (
-                      <span key={fi} className="friction-tag" style={{ fontSize: 9 }}>
-                        {f.friction_id} ({(f.confidence * 100).toFixed(0)}%)
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {ev.behavior_patterns && ev.behavior_patterns.length > 0 && (
-                  <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: 9, color: "var(--muted)", marginRight: 2 }}>behavior:</span>
-                    {/* Deduplicate groups and show color-coded chips */}
-                    {[...new Map(ev.behavior_patterns.map((p) => [p.group, p])).values()].map((p) => (
-                      <span
-                        key={p.group}
-                        title={`${p.group}: ${ev.behavior_patterns!.filter((x) => x.group === p.group).map((x) => `${x.patternId} (${(x.confidence * 100).toFixed(0)}%)`).join(", ")}`}
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: "1px 6px",
-                          borderRadius: 10,
-                          border: `1px solid ${BEHAVIOR_GROUP_COLOR[p.group]}`,
-                          color: BEHAVIOR_GROUP_COLOR[p.group],
-                          background: `${BEHAVIOR_GROUP_COLOR[p.group]}14`,
-                          cursor: "default",
-                        }}
-                      >
-                        {p.group.replace("_", " ")}
-                      </span>
-                    ))}
-                    <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 2 }}>
-                      ({ev.behavior_patterns.length} pattern{ev.behavior_patterns.length !== 1 ? "s" : ""})
-                    </span>
-                  </div>
-                )}
-                {ev.narrative && <div className="narrative">{ev.narrative}</div>}
-              </div>
-            ))}
-          </div>
+        {/* Intervention badge */}
+        {hasIntervention && (
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 700,
+            color: 'var(--accent)', background: 'rgba(53,211,161,0.15)',
+            border: '1px solid rgba(53,211,161,0.4)',
+            borderRadius: 3, padding: '2px 6px', flexShrink: 0,
+          }}>
+            🎙 VOICE
+          </span>
+        )}
+
+        {/* Engine tag */}
+        {ev.engine && (
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 9,
+            color: 'var(--muted)', flexShrink: 0,
+          }}>
+            {ev.engine.toUpperCase()}
+          </span>
         )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 5 — FRICTION INTELLIGENCE
-          Per-F-code breakdown: detections, intervention rate, resolution %.
-      ═══════════════════════════════════════════════════════════ */}
-      {frictionAnalytics && frictionAnalytics.byFriction.length > 0 && (
-        <DevSection title="Friction Intelligence — Resolution Rates" defaultOpen={false}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                  {["F-Code", "Category", "Detections", "Interventions", "Conversions", "Dismissals", "Resolution"].map((h) => (
-                    <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {frictionAnalytics.byFriction.slice(0, 20).map((row) => (
-                  <tr key={row.frictionId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td style={{ padding: "5px 8px", fontWeight: 700, color: "var(--warn)" }}>{row.frictionId}</td>
-                    <td style={{ padding: "5px 8px", color: "var(--muted)", textTransform: "capitalize" }}>{row.category}</td>
-                    <td style={{ padding: "5px 8px" }} className="mono">{row.detections}</td>
-                    <td style={{ padding: "5px 8px" }} className="mono">{row.interventionsFired}</td>
-                    <td style={{ padding: "5px 8px", color: "var(--tier-nudge)" }} className="mono">{row.conversions}</td>
-                    <td style={{ padding: "5px 8px", color: "var(--tier-active)" }} className="mono">{row.dismissals}</td>
-                    <td style={{ padding: "5px 8px" }}>
-                      {row.interventionsFired > 0 ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 48, height: 4, background: "rgba(8,26,34,0.8)", borderRadius: 2, overflow: "hidden" }}>
-                            <div style={{ width: `${row.resolutionRate * 100}%`, height: "100%", background: row.resolutionRate >= 0.3 ? "var(--tier-nudge)" : row.resolutionRate >= 0.1 ? "var(--warn)" : "var(--tier-active)", borderRadius: 2 }} />
-                          </div>
-                          <span className="mono">{fmtPct(row.resolutionRate)}</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: "var(--muted)" }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </DevSection>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 6 — REVENUE ATTRIBUTION
-          Cart lift attributed to AVA interventions per friction type.
-      ═══════════════════════════════════════════════════════════ */}
-      {revenueAttribution && revenueAttribution.totalConvertedInterventions > 0 && (
-        <DevSection title="Revenue Attribution — Cart Lift per Friction" defaultOpen={false}>
-          <div className="grid-3" style={{ marginBottom: 12 }}>
-            <div className="metric-box">
-              <div className="label">Total Attributed Revenue</div>
-              <div className="value" style={{ color: "var(--tier-nudge)" }}>${fmtNum(revenueAttribution.totalAttributedRevenue)}</div>
-              <div className="sub">cart lift from conversions</div>
-            </div>
-            <div className="metric-box">
-              <div className="label">Conversions Tracked</div>
-              <div className="value">{fmtNum(revenueAttribution.totalConvertedInterventions)}</div>
-              <div className="sub">with cart data</div>
-            </div>
-            <div className="metric-box">
-              <div className="label">Avg Lift / Conversion</div>
-              <div className="value" style={{ color: "var(--info)" }}>${revenueAttribution.avgLiftPerConversion.toFixed(2)}</div>
-              <div className="sub">per converted intervention</div>
-            </div>
-          </div>
-          {revenueAttribution.byFriction.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {revenueAttribution.byFriction.slice(0, 10).map((row) => {
-                const maxLift = revenueAttribution.byFriction[0]?.totalLift ?? 1;
-                const pct = maxLift > 0 ? (row.totalLift / maxLift) * 100 : 0;
-                return (
-                  <div key={row.frictionId} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ minWidth: 40, fontSize: 10, fontWeight: 700, color: "var(--warn)" }}>{row.frictionId}</span>
-                    <div style={{ flex: 1, height: 6, background: "rgba(8,26,34,0.6)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ width: `${pct}%`, height: "100%", background: "var(--tier-nudge)", borderRadius: 3 }} />
-                    </div>
-                    <span className="mono" style={{ fontSize: 10, minWidth: 56, textAlign: "right", color: "var(--tier-nudge)" }}>${row.totalLift.toFixed(2)}</span>
-                    <span className="mono muted" style={{ fontSize: 9, minWidth: 40 }}>{row.conversions}×</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </DevSection>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════
-          ROW 7 — SHADOW MODE  (collapsed by default — dev-facing)
-          Compare MSWIM-only vs LLM+MSWIM accuracy.
-      ═══════════════════════════════════════════════════════════ */}
-      {modelExperiments.length > 0 && (
-        <DevSection title="Model A/B Tests" defaultOpen={true}>
-          {modelExperiments.map((exp: any) => {
-            let variants: any[] = [];
-            try { variants = JSON.parse(exp.variants); } catch { /* empty */ }
-            return (
-              <div key={exp.id} style={{ marginBottom: 12, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", flex: 1 }}>{exp.name}</span>
-                  <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "rgba(107,201,160,0.2)", color: "var(--accent)" }}>
-                    {exp.status}
+      {/* Expanded: signals + narrative */}
+      {expanded && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(26,61,74,0.4)' }}>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <ScoreRing score={mswim.composite_score} tier={mswim.tier} />
+            <div style={{ flex: 1 }}>
+              <SignalChips signals={mswim.signals} />
+              {ev.narrative && (
+                <div style={{
+                  marginTop: 8, fontSize: 13, color: 'var(--muted)',
+                  lineHeight: 1.55,
+                }}>
+                  {ev.narrative}
+                </div>
+              )}
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--muted)' }}>
+                <span style={{ color }}>
+                  {mswim.tier}
+                </span>
+                {' — '}
+                {tierDesc(mswim.tier)}
+                {mswim.gate_override && (
+                  <span className="gate-tag" style={{ marginLeft: 8 }}>
+                    {mswim.gate_override}
                   </span>
-                </div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  {variants.map((v: any) => (
-                    <div key={v.id} className="metric-box" style={{ minWidth: 120 }}>
-                      <div className="label">{v.name}</div>
-                      <div className="value" style={{ fontSize: 10, wordBreak: "break-all" }}>
-                        {v.modelId || "base model"}
-                      </div>
-                      <div className="sub">weight: {(v.weight * 100).toFixed(0)}%</div>
-                    </div>
-                  ))}
-                </div>
+                )}
               </div>
-            );
-          })}
-        </DevSection>
-      )}
-
-      {shadowStats && (
-        <DevSection title="Shadow Mode — MSWIM vs LLM+MSWIM (Dev)">
-          <div className="grid-4" style={{ marginBottom: 12 }}>
-            <div className="metric-box">
-              <div className="label">Tier Match</div>
-              <div className="value">{fmtPct(shadowStats.tierMatchRate ?? 0)}</div>
-              <div className="sub">agreement</div>
-            </div>
-            <div className="metric-box">
-              <div className="label">Decision Match</div>
-              <div className="value">{fmtPct(shadowStats.decisionMatchRate ?? 0)}</div>
-              <div className="sub">agreement</div>
-            </div>
-            <div className="metric-box">
-              <div className="label">Avg Divergence</div>
-              <div className="value warn">{fmtScore(shadowStats.avgCompositeDivergence ?? 0)}</div>
-              <div className="sub">composite pts</div>
-            </div>
-            <div className="metric-box">
-              <div className="label">Comparisons</div>
-              <div className="value">{fmtNum(shadowStats.totalComparisons ?? 0)}</div>
-              <div className="sub">total</div>
             </div>
           </div>
-          {shadowDivergences && shadowDivergences.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6, fontWeight: 600, textTransform: "uppercase" }}>Top Divergences</div>
-              {shadowDivergences.slice(0, 5).map((d: any, i: number) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  <span className="tier-badge" style={{ color: tierColor(d.prodTier), borderColor: tierColor(d.prodTier) }}>{d.prodTier}</span>
-                  <span style={{ fontSize: 9, color: "var(--muted)" }}>→</span>
-                  <span className="tier-badge" style={{ color: tierColor(d.shadowTier), borderColor: tierColor(d.shadowTier) }}>{d.shadowTier}</span>
-                  <span className="mono" style={{ fontSize: 10, color: "var(--warn)", marginLeft: "auto" }}>Δ{fmtScore(d.compositeDivergence)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </DevSection>
+        </div>
       )}
     </div>
   );
 }
 
-/** Build a one-line plain-English signal hint from 5 MSWIM signals */
-function buildSignalHint(signals: { intent: number; friction: number; clarity: number; receptivity: number; value: number }): string {
-  const hints: string[] = [];
-  if (signals.intent >= 70) hints.push("strong purchase intent");
-  else if (signals.intent <= 30) hints.push("low intent");
-  if (signals.friction >= 60) hints.push("high friction detected");
-  else if (signals.friction <= 20) hints.push("friction-free");
-  if (signals.receptivity >= 70) hints.push("receptive to messages");
-  else if (signals.receptivity <= 25) hints.push("low receptivity");
-  if (signals.value >= 65) hints.push("high cart value");
-  if (hints.length === 0) return "Signals within normal range.";
-  return hints.join(", ") + ".";
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export function EvaluateTab({
+  evaluations, selectedSession, overview,
+  shadowStats, frictionAnalytics, revenueAttribution,
+}: EvaluateTabProps) {
+  const filtered = useMemo(() =>
+    selectedSession
+      ? evaluations.filter(e => e.session_id === selectedSession)
+      : evaluations,
+    [evaluations, selectedSession]
+  );
+
+  // Derived stats
+  const tierDist = useMemo(() => {
+    if (overview?.tierDistribution) return overview.tierDistribution;
+    const dist: Record<string, number> = {};
+    for (const ev of filtered) {
+      dist[ev.mswim?.tier ?? "MONITOR"] = (dist[ev.mswim?.tier ?? "MONITOR"] ?? 0) + 1;
+    }
+    return dist;
+  }, [overview, filtered]);
+
+  const totalEvals = (overview?.totalEvaluations ?? filtered.length);
+  const avgScore = filtered.length > 0
+    ? filtered.reduce((s, e) => s + (e.mswim?.composite_score ?? 0), 0) / filtered.length
+    : 0;
+  const atRisk = (tierDist['ACTIVE'] ?? 0) + (tierDist['ESCALATE'] ?? 0);
+  const escalated = tierDist['ESCALATE'] ?? 0;
+
+  // Evaluation throughput (evals in last 60s)
+  const throughput = useMemo(() => {
+    const cutoff = Date.now() - 60_000;
+    return filtered.filter(e => {
+      const ts = e.timestamp ?? (e.createdAt ? new Date(e.createdAt).getTime() : 0);
+      return ts > cutoff;
+    }).length;
+  }, [filtered]);
+
+  // Intervention rate
+  const interventionRate = filtered.length > 0
+    ? filtered.filter(e => e.intervention_id).length / filtered.length
+    : 0;
+
+  const latest = filtered[0] ?? null;
+  const maxFriction = frictionAnalytics?.byFriction[0]?.count ?? 1;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+      {/* ── Metrics Strip ────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', gap: 0, borderBottom: '1px solid var(--line)',
+        background: 'var(--surface)', flexShrink: 0,
+      }}>
+        {[
+          {
+            label: 'Sessions Evaluated',
+            value: fmt(totalEvals),
+            color: 'var(--accent)',
+            sub: 'since activation',
+          },
+          {
+            label: 'Avg MSWIM Score',
+            value: totalEvals > 0 ? score(avgScore) : '—',
+            color: tierColor(scoreToTier(avgScore)),
+            sub: totalEvals > 0 ? scoreToTier(avgScore) : 'no data',
+          },
+          {
+            label: 'At-Risk Sessions',
+            value: fmt(atRisk),
+            color: atRisk > 0 ? 'var(--tier-active)' : 'var(--accent)',
+            sub: escalated > 0 ? `${escalated} escalated` : 'none escalated',
+          },
+          {
+            label: 'Intervention Rate',
+            value: totalEvals > 0 ? pct(interventionRate) : '—',
+            color: 'var(--info)',
+            sub: 'evals → voice nudge',
+          },
+        ].map(m => (
+          <div key={m.label} style={{
+            flex: 1, padding: '10px 18px',
+            borderRight: '1px solid var(--line)',
+          }}>
+            <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {m.label}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: m.color, lineHeight: 1.2, marginTop: 2 }}>
+              {m.value}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{m.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── HERO: AI Evaluation Feed ──────────────────────────────────── */}
+      <div style={{
+        flexShrink: 0, height: '58vh', minHeight: 280,
+        display: 'flex', flexDirection: 'column',
+        padding: '14px 20px 0',
+        background: 'var(--bg)',
+      }}>
+        <div className="card" style={{
+          flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(53,211,161,0.1)',
+        }}>
+          {/* Hero header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            padding: '10px 18px', borderBottom: '1px solid var(--line)',
+            background: 'var(--surface)', flexShrink: 0,
+          }}>
+            <div style={{ flex: 1 }}>
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text)',
+              }}>
+                AI Evaluation Feed
+              </span>
+              {latest && (
+                <span style={{
+                  fontSize: 12, color: 'var(--muted)', marginLeft: 12,
+                }}>
+                  Latest:{' '}
+                  <span style={{ color: tierColor(latest.mswim?.tier ?? "MONITOR"), fontWeight: 700 }}>
+                    {latest.mswim?.tier ?? "MONITOR"}
+                  </span>
+                  {' — '}
+                  {tierDesc(latest.mswim?.tier ?? "MONITOR")}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
+              {throughput > 0 && (
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
+                }}>
+                  {throughput}/min
+                </span>
+              )}
+
+              {/* Tier distribution pills */}
+              {(['ESCALATE', 'ACTIVE', 'NUDGE', 'PASSIVE', 'MONITOR'] as const).map(t => {
+                const count = tierDist[t] ?? 0;
+                if (count === 0) return null;
+                return (
+                  <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span className={`tier-badge ${t}`} style={{ padding: '1px 6px', fontSize: 9 }}>
+                      {t}
+                    </span>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
+                    }}>
+                      {count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Evaluations list */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {filtered.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🧠</div>
+                <p>No evaluations yet</p>
+                <p className="muted">
+                  Events are buffered and evaluated in batches
+                </p>
+              </div>
+            ) : (
+              filtered.map((ev, i) => (
+                <EvalRow key={ev.id ?? `${ev.session_id}-${i}`} ev={ev} />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Analytics (scrollable below hero) ─────────────────────────── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 20px' }}>
+
+        {/* Friction Intelligence */}
+        {frictionAnalytics && (frictionAnalytics.byFriction?.length ?? 0) > 0 && (
+          <Section
+            title="Friction Intelligence — Resolution Rates"
+            badge={`${frictionAnalytics.byFriction?.length ?? 0} friction types`}
+            defaultOpen={true}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {(frictionAnalytics.byFriction ?? []).slice(0, 10).map(f => {
+                const res = f.resolutionRate ?? 0;
+                const sev = f.avgSeverity ?? 0;
+                return (
+                  <div key={f.frictionId} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '52px 80px 1fr 52px 48px',
+                    gap: 10, alignItems: 'center',
+                    padding: '6px 10px', background: 'rgba(6,20,30,0.5)',
+                    borderRadius: 5, fontSize: 12,
+                  }}>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--warn)',
+                    }}>
+                      {f.frictionId}
+                    </span>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.03em',
+                    }}>
+                      {f.category}
+                    </span>
+                    {/* Resolution bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{
+                        flex: 1, height: 5, background: 'rgba(8,26,34,0.7)',
+                        borderRadius: 2, overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${res * 100}%`, height: '100%',
+                          background: res >= 0.5 ? 'var(--accent)' : res >= 0.3 ? 'var(--tier-nudge)' : 'var(--warn)',
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                      <span style={{
+                        fontFamily: 'var(--font-mono)', fontSize: 9,
+                        color: 'var(--muted)', minWidth: 28,
+                      }}>
+                        {pct(res)} res
+                      </span>
+                    </div>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--text)', textAlign: 'right',
+                    }}>
+                      {fmt(f.count)}
+                    </span>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 9,
+                      color: sev >= 70 ? 'var(--tier-escalate)' : sev >= 40 ? 'var(--warn)' : 'var(--muted)',
+                      textAlign: 'right',
+                    }}>
+                      sev {Math.round(sev)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {/* Revenue Attribution */}
+        {revenueAttribution && (
+          <Section title="Revenue Attribution" defaultOpen={false}>
+            <div className="grid-4">
+              {[
+                { label: 'Total Attributed', value: `$${(revenueAttribution.totalAttributedRevenue ?? 0).toFixed(2)}`, color: 'var(--accent)' },
+                { label: 'Interventions Fired', value: fmt(revenueAttribution.interventionsFired), color: 'var(--text)' },
+                { label: 'Sessions Impacted', value: fmt(revenueAttribution.sessionsImpacted ?? 0), color: 'var(--info)' },
+                { label: 'Sample Size', value: fmt(revenueAttribution.sampleSize ?? 0), color: 'var(--muted)' },
+              ].map(m => (
+                <div key={m.label} className="metric-box">
+                  <div className="label">{m.label}</div>
+                  <div className="value" style={{ color: m.color }}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Developer: Shadow Mode — collapsed */}
+        {shadowStats && (
+          <Section title="Shadow Mode — MSWIM vs LLM+MSWIM" defaultOpen={false}>
+            <div style={{
+              fontSize: 10, color: 'var(--muted)', marginBottom: 10,
+              fontFamily: 'var(--font-mono)', letterSpacing: '0.04em',
+            }}>
+              DEVELOPER · shadow evaluation vs production
+            </div>
+            <div className="grid-3" style={{ marginBottom: 12 }}>
+              {[
+                {
+                  label: 'Tier Agreement',
+                  value: shadowStats.tierAgreementRate !== undefined
+                    ? pct(shadowStats.tierAgreementRate) : '—',
+                  color: (shadowStats.tierAgreementRate ?? 1) < 0.7 ? 'var(--warn)' : 'var(--accent)',
+                  sub: 'shadow vs prod',
+                },
+                {
+                  label: 'Decision Match',
+                  value: shadowStats.decisionAgreementRate !== undefined
+                    ? pct(shadowStats.decisionAgreementRate) : '—',
+                  color: (shadowStats.decisionAgreementRate ?? 1) < 0.75 ? 'var(--warn)' : 'var(--accent)',
+                  sub: 'agreement',
+                },
+                {
+                  label: 'Avg Divergence',
+                  value: shadowStats.avgCompositeDivergence !== undefined
+                    ? score(shadowStats.avgCompositeDivergence) : '—',
+                  color: 'var(--warn)',
+                  sub: 'composite pts',
+                },
+              ].map(m => (
+                <div key={m.label} className="metric-box">
+                  <div className="label">{m.label}</div>
+                  <div className="value" style={{ color: m.color }}>{m.value}</div>
+                  <div className="sub">{m.sub}</div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+      </div>
+    </div>
+  );
 }

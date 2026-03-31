@@ -168,7 +168,7 @@ export async function handleVoiceQuery(
       ],
       max_tokens: 120,
       temperature: 0.65,
-    });
+    }, { signal: AbortSignal.timeout(15000) });
 
     const raw = completion.choices[0]?.message?.content?.trim();
     if (raw) {

@@ -1,14 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useActivation } from "./hooks/use-activation";
 import { useWS } from "./hooks/use-ws";
 import { useDashboardStore } from "./hooks/use-dashboard-store";
 import { useApi } from "./hooks/use-api";
 import { Header } from "./components/Header";
 import { TabBar } from "./components/TabBar";
-import { SessionBar } from "./components/SessionBar";
 import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
-import { InterventionsTab } from "./components/InterventionsTab";
+import { InterveneTab } from "./components/InterveneTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
 import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse, NetworkStatus } from "./types";
 
@@ -24,9 +23,10 @@ export function App() {
   // Build since query for analytics — use a 24h lookback window so charts
   // show meaningful data even on first activation. The Live Feed uses the
   // real activatedAt (no backdate) so it only shows THIS session's events.
-  const analyticsLookback = activatedAt
-    ? new Date(Math.min(Date.now() - 24 * 60 * 60 * 1000, new Date(activatedAt).getTime())).toISOString()
-    : null;
+  const analyticsLookback = useMemo(() => {
+    if (!activatedAt) return null;
+    return new Date(Math.min(Date.now() - 24 * 60 * 60 * 1000, new Date(activatedAt).getTime())).toISOString();
+  }, [activatedAt]);
   const sinceQuery = analyticsLookback ? `since=${encodeURIComponent(analyticsLookback)}` : "";
   const sinceSuffix = sinceQuery ? `?${sinceQuery}` : "";
 
@@ -187,12 +187,6 @@ export function App() {
               intervene: state.intervCount,
             }}
           />
-          <SessionBar
-            sessions={sessions}
-            selected={state.selectedSessionId}
-            onSelect={(id) => dispatch({ type: "SELECT_SESSION", sessionId: id })}
-          />
-
           {state.activeTab === "track" && (
             <TrackTab
               events={state.events}
@@ -224,7 +218,7 @@ export function App() {
           )}
 
           {state.activeTab === "intervene" && (
-            <InterventionsTab
+            <InterveneTab
               interventions={state.interventions}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}

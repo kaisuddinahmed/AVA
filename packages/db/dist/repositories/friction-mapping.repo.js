@@ -12,12 +12,8 @@ export async function createFrictionMapping(data) {
 export async function createFrictionMappings(data) {
     if (data.length === 0)
         return { count: 0 };
-    // createMany crashes in Prisma WASM — loop single creates instead
     const db = prisma;
-    for (const row of data) {
-        await db.frictionMapping.create({ data: row });
-    }
-    return { count: data.length };
+    return db.frictionMapping.createMany({ data });
 }
 export async function getFrictionMapping(id) {
     const db = prisma;
@@ -91,8 +87,6 @@ export async function countHighConfidenceFrictions(siteConfigId, analyzerRunId, 
 }
 export async function deleteFrictionMappingsBySite(siteConfigId) {
     const db = prisma;
-    return db.frictionMapping.deleteMany({
-        where: { siteConfigId },
-    });
+    return db.frictionMapping.deleteMany({ where: { siteConfigId } });
 }
 //# sourceMappingURL=friction-mapping.repo.js.map

@@ -47,6 +47,7 @@ export async function ttsProxy(req: Request, res: Response): Promise<void> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(12000),
       },
     );
 
@@ -110,6 +111,7 @@ export async function sstProxy(req: Request, res: Response): Promise<void> {
         "Content-Type": contentType,
       },
       body: audioBuffer,
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!upstream.ok) {

@@ -191,6 +191,21 @@ export class AVAWidget {
 
     this.shadow.appendChild(this.root);
     this.render();
+
+    // Welcome every new visitor with voice greeting after 1.5s
+    setTimeout(() => {
+      if (this.state !== "minimized") return; // don't interrupt if already interacting
+      this.handleIntervention({
+        type: "nudge",
+        intervention_id: "ava_welcome",
+        action_code: "WELCOME",
+        message: "Hi, I am AVA. I am here to assist you with your shopping today. Just tap on me and let me know how can I help you.",
+        voice_enabled: true,
+        voice_script: "Hi, I am AVA. I am here to assist you with your shopping today. Just tap on me and let me know how I can help you.",
+        cta_label: "Let's chat",
+        cta_action: "open_assistant",
+      } as InterventionPayload);
+    }, 1500);
   }
 
   // ---- PUBLIC: called by bridge ----
@@ -674,6 +689,15 @@ export class AVAWidget {
       this.currentNudge = null;
       this.hasUnread = false;
       if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
+      // Seed welcome as first message if panel has never been opened before
+      if (this.messages.length === 0) {
+        this.messages.push({
+          id: "ava_welcome",
+          type: "assistant",
+          content: "Hi, I am AVA. I am here to assist you with your shopping today. Just tap on me and let me know how can I help you.",
+          timestamp: Date.now(),
+        });
+      }
     }
     this.render();
   }

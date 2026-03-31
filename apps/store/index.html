@@ -795,10 +795,13 @@
         { id: "boots-leather", name: "Classic Chelsea Boots", category: "footwear", price: 180, image: "https://images.unsplash.com/photo-1607792246387-4765c382c5a7?q=80&w=500", specs: ["Genuine Leather","Elastic Side","Non-slip Sole"], reviews: [{id:"r6",user:"BootFan",rating:5,text:"Break in easily and look distinct.",date:"2024-02-14"},{id:"r7",user:"WinterWalker",rating:5,text:"Warm and waterproof.",date:"2023-12-01"},{id:"r8",user:"StylishDad",rating:4,text:"Good quality leather.",date:"2023-11-15"},{id:"r9",user:"ConcertGoer",rating:5,text:"Comfortable for standing all night.",date:"2023-10-20"},{id:"r10",user:"UrbanHiker",rating:4,text:"Soles have good grip.",date:"2024-01-10"}], description: "Step out with confidence in our Classic Chelsea Boots. Constructed from premium full-grain leather with signature elastic side panels and rear pull-tab. A durable rubber outsole with non-slip tread. Versatile for suits or denim.", isDemo: true, colors: ["Black","Brown"], sizes: ["US 7","US 8","US 9","US 10","US 11"] },
         { id: "smart-ring-fashion", name: "Luxury Smart Ring", category: "accessories", price: 299, image: "https://images.unsplash.com/photo-1671960610018-f2fdebbe5b47?q=80&w=500", specs: ["Sleep Tracking","Gold Finish","7 Days Battery"], reviews: [{id:"r1",user:"TechGeek",rating:5,text:"Tracking is very accurate.",date:"2024-01-25"},{id:"r2",user:"SleepyHead",rating:5,text:"Helped me improve my sleep.",date:"2024-02-05"},{id:"r3",user:"FashionTech",rating:4,text:"Looks like jewelry, acts like a tracker.",date:"2023-12-15"},{id:"r4",user:"BatteryLife",rating:5,text:"Battery actually lasts a week.",date:"2024-01-10"},{id:"r5",user:"EarlyAdopter",rating:4,text:"App is easy to use.",date:"2023-11-30"}], description: "Experience wearable technology with our Luxury Smart Ring. 18k gold finish with sensors monitoring sleep, heart rate, and activity. Connects via Bluetooth with 7-day battery life and 50m water resistance.", isDemo: true, colors: ["Gold","Silver","Black"], sizes: ["6","7","8","9","10"] },
       ];
+      const DEMO_IMAGE_BY_ID = Object.fromEntries(
+        DEMO_PRODUCTS.map((product) => [product.id, product.image]),
+      );
 
       const CATEGORIES = ["clothing","footwear","watches","accessories","lifestyle","beauty","home","tech"];
       const GENDERS = ["men", "women"];
-      const TARGET_PER_CATEGORY_PER_GENDER = 40;
+      const TARGET_PER_CATEGORY_PER_GENDER = 12;
       const WOMEN_CLOTHING_IMGS = ["https://images.unsplash.com/photo-1434389677669-e08b4cac3105?q=80&w=500","https://images.unsplash.com/photo-1485968579580-b6d095142e6e?q=80&w=500","https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=500","https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=500","https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=500","https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=500"];
       const MEN_CLOTHING_IMGS = ["https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=500","https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?q=80&w=500","https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=500","https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?q=80&w=500","https://images.unsplash.com/photo-1617137968427-85924c800a22?q=80&w=500","https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?q=80&w=500"];
       const FOOTWEAR_IMGS = ["https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=500","https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=500","https://images.unsplash.com/photo-1460353581641-37baddab0fa2?q=80&w=500","https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=500","https://images.unsplash.com/photo-1543508282-6319a3e2621f?q=80&w=500","https://images.unsplash.com/photo-1562183241-b937e95585b6?q=80&w=500","https://images.unsplash.com/photo-1549298916-b41d501d3772?q=80&w=500","https://images.unsplash.com/photo-1595341888016-a392ef81b7de?q=80&w=500","https://images.unsplash.com/photo-1603808033192-082d6919d3e1?q=80&w=500","https://images.unsplash.com/photo-1515955656352-a1fa3ffcd111?q=80&w=500"];
@@ -821,7 +824,7 @@
           clothing: ["Oxford Shirt","Bomber Jacket","Polo Shirt","Henley Tee","Cargo Trousers","Chino Pants","Denim Jacket","Tailored Blazer","Crew Sweatshirt","Overshirt"],
           footwear: ["Running Sneakers","Chelsea Boots","Derby Shoes","High-top Sneakers","Leather Loafers","Trainer Shoes","Trail Sneakers","Slip-on Shoes","Oxford Shoes","Desert Boots"],
           watches: ["Chronograph","Field Watch","Sport Watch","Pilot Watch","Automatic Watch","Tactical Watch","Steel Watch","Dive Watch","Quartz Watch","Classic Watch"],
-          accessories: ["Leather Belt","Messenger Bag","Card Holder","Travel Wallet","Baseball Cap","Weekend Duffel","Wayfarer Shades","Chain Bracelet","Backpack","Crossbody Bag"],
+          accessories: ["Messenger Bag","Travel Wallet","Weekend Duffel","Wayfarer Shades","Chain Bracelet","Backpack","Crossbody Bag","Leather Satchel","Aviator Shades","Leather Belt"],
           lifestyle: ["Desk Lamp","Travel Kit","Room Diffuser","Wall Clock","Bluetooth Speaker","Coffee Set","Organizer Tray","Workspace Mat","Gym Bottle","Shoe Rack"],
           beauty: ["Beard Oil","Face Wash","Aftershave","Hair Clay","Grooming Kit","Shave Cream","Moisturizer","Body Spray","Trimmer Set","SPF Lotion"],
           home: ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
@@ -831,7 +834,7 @@
           clothing: ["Floral Dress","Blouse Top","Pleated Skirt","Cardigan","Midi Dress","Wrap Top","Knit Sweater","Tailored Trousers","Cropped Jacket","Jumpsuit"],
           footwear: ["Heeled Sandals","Ankle Boots","Platform Sneakers","Ballet Flats","Court Heels","Running Sneakers","Loafers","Slides","Wedge Sandals","Strappy Heels"],
           watches: ["Chronograph","Jewelry Watch","Slim Watch","Rose Gold Watch","Classic Watch","Quartz Watch","Dress Watch","Smart Watch","Steel Watch","Automatic Watch"],
-          accessories: ["Shoulder Bag","Mini Tote","Silk Scarf","Statement Belt","Sun Hat","Wallet","Sunglasses","Layered Necklace","Bracelet","Crossbody Bag"],
+          accessories: ["Shoulder Bag","Mini Tote","Sunglasses","Layered Necklace","Bracelet","Crossbody Bag","Aviator Shades","Clutch Bag","Silk Scarf","Statement Belt"],
           lifestyle: ["Aroma Diffuser","Accent Lamp","Desk Organizer","Vase Set","Bluetooth Speaker","Vanity Mirror","Travel Pouch","Scented Candle","Wellness Kit","Storage Basket"],
           beauty: ["Vitamin Serum","Face Cleanser","Hydrating Mist","Lip Tint","Eyeshadow Palette","Sheet Mask","Body Lotion","SPF Cream","Perfume Set","Glow Primer"],
           home: ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
@@ -845,26 +848,30 @@
       const COLORS = ["Black","White","Red","Blue","Green","Beige","Gold","Silver"];
       const INTROS = ["Experience the epitome of style and comfort with this exceptional piece.","Redefine your everyday look with a product designed for the modern lifestyle.","Crafted with precision and care, this item represents the pinnacle of our collection.","Discover a new standard of quality with materials sourced from the finest suppliers.","Elevate your wardrobe instantly with this versatile and striking addition."];
       const FILLER = "Furthermore, our commitment to sustainability means this product was created with eco-friendly practices in mind. The ergonomic design ensures tailored fit and maximum comfort throughout the day, making it an essential companion for your busy lifestyle.";
-      const CATEGORY_IMAGE_CONTEXT = {
+      const CURATED_IMAGE_RULES = {
         men: {
-          clothing: ["mens-fashion", "apparel"],
-          footwear: ["mens-shoes", "footwear"],
-          watches: ["watch", "mens-accessories"],
-          accessories: ["mens-fashion", "accessories"],
-          lifestyle: ["lifestyle", "design"],
-          beauty: ["mens-grooming", "skincare"],
-          home: ["home-decor", "interior"],
-          tech: ["technology", "gadgets"],
+          clothing: [
+            { match: /(shirt|tee|polo|henley|sweatshirt|overshirt)/i, images: [MEN_CLOTHING_IMGS[0], MEN_CLOTHING_IMGS[2], MEN_CLOTHING_IMGS[5]] },
+            { match: /(jacket|blazer|coat)/i, images: [MEN_CLOTHING_IMGS[1], MEN_CLOTHING_IMGS[3], MEN_CLOTHING_IMGS[4]] },
+            { match: /(trousers|pants)/i, images: [MEN_CLOTHING_IMGS[0], MEN_CLOTHING_IMGS[3], MEN_CLOTHING_IMGS[5]] },
+          ],
+          accessories: [
+            { match: /(bag|wallet|satchel|duffel|backpack|crossbody)/i, images: [DEMO_IMAGE_BY_ID["leather-bag"], ACCESSORY_IMGS[6], ACCESSORY_IMGS[1]] },
+            { match: /(shades|sunglasses|glasses)/i, images: [DEMO_IMAGE_BY_ID["chic-shades"], ACCESSORY_IMGS[5], ACCESSORY_IMGS[4]] },
+            { match: /(belt|bracelet|chain|scarf)/i, images: [ACCESSORY_IMGS[0], ACCESSORY_IMGS[2], ACCESSORY_IMGS[3]] },
+          ],
         },
         women: {
-          clothing: ["womens-fashion", "apparel"],
-          footwear: ["womens-shoes", "footwear"],
-          watches: ["watch", "womens-accessories"],
-          accessories: ["womens-fashion", "accessories"],
-          lifestyle: ["lifestyle", "design"],
-          beauty: ["beauty", "skincare"],
-          home: ["home-decor", "interior"],
-          tech: ["technology", "gadgets"],
+          clothing: [
+            { match: /(dress|skirt|jumpsuit)/i, images: [WOMEN_CLOTHING_IMGS[0], WOMEN_CLOTHING_IMGS[2], WOMEN_CLOTHING_IMGS[5]] },
+            { match: /(blouse|top|cardigan|sweater)/i, images: [WOMEN_CLOTHING_IMGS[1], WOMEN_CLOTHING_IMGS[3], WOMEN_CLOTHING_IMGS[4]] },
+            { match: /(jacket|trousers)/i, images: [WOMEN_CLOTHING_IMGS[1], WOMEN_CLOTHING_IMGS[3], WOMEN_CLOTHING_IMGS[4]] },
+          ],
+          accessories: [
+            { match: /(bag|tote|wallet|clutch|crossbody)/i, images: [DEMO_IMAGE_BY_ID["leather-bag"], ACCESSORY_IMGS[6], ACCESSORY_IMGS[1]] },
+            { match: /(shades|sunglasses)/i, images: [DEMO_IMAGE_BY_ID["chic-shades"], ACCESSORY_IMGS[5], ACCESSORY_IMGS[4]] },
+            { match: /(necklace|bracelet|scarf|belt)/i, images: [ACCESSORY_IMGS[0], ACCESSORY_IMGS[2], ACCESSORY_IMGS[3]] },
+          ],
         },
       };
 
@@ -876,36 +883,30 @@
         return Math.abs(hash);
       }
 
-      function normalizeImageKeyword(value) {
-        return value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
+      function getCategoryImagePool(category, gender) {
+        return (
+          (GENDERED_CAT_IMGS[gender] && GENDERED_CAT_IMGS[gender][category]) ||
+          CAT_IMGS[category] ||
+          DEMO_PRODUCTS.map((product) => product.image)
+        ).filter(Boolean);
       }
 
       function getFallbackImage(category, gender, seed = 0) {
-        const pool =
-          (GENDERED_CAT_IMGS[gender] && GENDERED_CAT_IMGS[gender][category]) ||
-          CAT_IMGS[category] ||
-          DEMO_PRODUCTS.map((product) => product.image);
+        const pool = getCategoryImagePool(category, gender);
         if (!pool.length) return DEMO_PRODUCTS[0].image;
         return pool[Math.abs(seed) % pool.length];
       }
 
-      function buildGeneratedImageUrl({ id, category, gender, noun }) {
-        const context =
-          (CATEGORY_IMAGE_CONTEXT[gender] &&
-            CATEGORY_IMAGE_CONTEXT[gender][category]) ||
-          [normalizeImageKeyword(category)];
-        const nounTerms = noun
-          .split(/\s+/)
-          .map(normalizeImageKeyword)
-          .filter(Boolean)
-          .slice(0, 3);
-        const tags = Array.from(new Set([...context, ...nounTerms])).slice(0, 4);
-        const query = tags.map((tag) => encodeURIComponent(tag)).join(",");
-        const lock = hashString(`${id}:${category}:${gender}:${noun}`) % 100000;
-        return `https://loremflickr.com/800/1000/${query}?lock=${lock}`;
+      function getCuratedImage(category, gender, noun, seed = 0) {
+        const rules =
+          (CURATED_IMAGE_RULES[gender] && CURATED_IMAGE_RULES[gender][category]) ||
+          [];
+        const match = rules.find((rule) => rule.match.test(noun));
+        const pool = (match?.images || getCategoryImagePool(category, gender)).filter(
+          Boolean,
+        );
+        if (!pool.length) return getFallbackImage(category, gender, seed);
+        return pool[Math.abs(seed) % pool.length];
       }
 
       function genDesc(name) {
@@ -945,14 +946,15 @@
               const price = PRICE_SEEDS[n % PRICE_SEEDS.length];
               const COLOR_PAIRS = [["Black","White"],["Navy","Beige"],["Red","Black"],["Green","Brown"],["Gold","Silver"],["Blue","White"]];
               const colorPair = COLOR_PAIRS[n % COLOR_PAIRS.length];
+              const imageSeed = hashString(`${id}:${noun}:${cat}:${gender}`) + i + n;
               products.push({
                 id,
                 name,
                 category: cat,
                 gender,
                 price,
-                image: buildGeneratedImageUrl({ id, category: cat, gender, noun }),
-                fallbackImage: getFallbackImage(cat, gender, i + n),
+                image: getCuratedImage(cat, gender, noun, imageSeed),
+                fallbackImage: getFallbackImage(cat, gender, imageSeed),
                 specs: ["Premium Material","Sustainable","New Season"],
                 reviews,
                 description: genDesc(name),
@@ -1059,7 +1061,25 @@
       const listeners = [];
       const notify = () => listeners.forEach(l => l());
 
-      function getCart() { try { return JSON.parse(STORAGE.getItem(KEY_CART) || "[]"); } catch { return []; } }
+      function getCart() {
+        try {
+          const stored = JSON.parse(STORAGE.getItem(KEY_CART) || "[]");
+          const normalized = stored.map((item) => {
+            const latest = ALL_PRODUCTS.find((product) => product.id === item.id);
+            return latest
+              ? { ...latest, quantity: item.quantity ?? 1 }
+              : item.image?.includes("loremflickr.com") && item.fallbackImage
+                ? { ...item, image: item.fallbackImage }
+                : item;
+          });
+          if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
+            STORAGE.setItem(KEY_CART, JSON.stringify(normalized));
+          }
+          return normalized;
+        } catch {
+          return [];
+        }
+      }
       function addToCart(productId) {
         const cart = getCart();
         const existing = cart.find(i => i.id === productId);

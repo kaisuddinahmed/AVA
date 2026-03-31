@@ -9,11 +9,7 @@ export async function createEvent(data) {
     return prisma.trackEvent.create({ data });
 }
 export async function createEventBatch(events) {
-    // createMany crashes in Prisma WASM — loop single creates instead
-    for (const ev of events) {
-        await prisma.trackEvent.create({ data: ev });
-    }
-    return { count: events.length };
+    return prisma.trackEvent.createMany({ data: events });
 }
 export async function getEvent(id) {
     return prisma.trackEvent.findUnique({ where: { id } });

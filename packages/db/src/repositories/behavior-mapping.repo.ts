@@ -32,10 +32,8 @@ export async function createBehaviorMappings(
   data: CreateBehaviorMappingInput[],
 ) {
   if (data.length === 0) return { count: 0 };
-  // createMany crashes in Prisma WASM — loop single creates instead
   const db = prisma as any;
-  for (const row of data) { await db.behaviorPatternMapping.create({ data: row }); }
-  return { count: data.length };
+  return db.behaviorPatternMapping.createMany({ data });
 }
 
 export async function getBehaviorMapping(id: string) {
@@ -151,7 +149,5 @@ export async function countHighConfidenceBehaviors(
 
 export async function deleteBehaviorMappingsBySite(siteConfigId: string) {
   const db = prisma as any;
-  return db.behaviorPatternMapping.deleteMany({
-    where: { siteConfigId },
-  });
+  return db.behaviorPatternMapping.deleteMany({ where: { siteConfigId } });
 }

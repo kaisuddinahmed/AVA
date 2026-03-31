@@ -11,9 +11,7 @@ AVA is a plug-and-play AI shopping assistant for e-commerce. Six core capabiliti
 5. **Plug-and-play install** — one snippet, auto site analysis, automated friction fix suggestions
 6. **Merchant reporting** — revenue attribution, weekly insights, actionable recommendations
 
-Implementation backlog (12 prioritized stories): `@BACKLOG.md`
-
-Runtime flow: **ONBOARDING** (analyze → map → verify → activate) → **TRACK** → **EVALUATE** → **INTERVENE**. Managed via **OPERATE**.
+Runtime flow: **ONBOARDING** (analyze → map → verify → activate) → **TRACK** → **EVALUATE** → **INTERVENE**.
 
 ---
 
@@ -21,17 +19,17 @@ Runtime flow: **ONBOARDING** (analyze → map → verify → activate) → **TRA
 
 Turborepo monorepo. Key workspaces:
 
-| Path | Role | Port |
-|---|---|---|
-| `apps/server` | Express HTTP API | 8080 |
-| `apps/server` | WebSocket server | 8081 |
-| `apps/dashboard` | React + Vite merchant UI | 3000 |
-| `apps/store` | Static demo store | 3001 |
-| `apps/wizard` | Integration wizard standalone | 3002 |
-| `apps/demo` | Three-panel demo (wizard + store + dashboard) | 4002 |
-| `apps/widget` | Vanilla TS IIFE, Shadow DOM | — |
-| `packages/shared` | All shared types + catalogs | — |
-| `packages/db` | Prisma ORM + all repositories | — |
+| Path              | Role                                          | Port |
+| ----------------- | --------------------------------------------- | ---- |
+| `apps/server`     | Express HTTP API                              | 8080 |
+| `apps/server`     | WebSocket server                              | 8081 |
+| `apps/dashboard`  | React + Vite merchant UI                      | 3000 |
+| `apps/store`      | Static demo store                             | 3001 |
+| `apps/wizard`     | Integration wizard standalone                 | 3002 |
+| `apps/demo`       | Three-panel demo (wizard + store + dashboard) | 4002 |
+| `apps/widget`     | Vanilla TS IIFE, Shadow DOM                   | —    |
+| `packages/shared` | All shared types + catalogs                   | —    |
+| `packages/db`     | Prisma ORM + all repositories                 | —    |
 
 Import shared types as `@ava/shared`. Import DB as `@ava/db`.
 
@@ -54,15 +52,17 @@ Tiers: 0–29 MONITOR · 30–49 PASSIVE · 50–64 NUDGE · 65–79 ACTIVE · 8
 Weights always load from `ScoringConfig` table — never hardcoded.
 
 **Evaluation engine** — controlled by `EVAL_ENGINE` env var:
+
 - `llm` (default) — Groq Llama 3.3 70B
 - `fast` — zero LLM calls, signal synthesis only
 - `auto` — fast-first, escalates to LLM when composite ≥65 or max friction severity ≥75
 
 **Go-live thresholds:**
+
 - `active`: behavior coverage ≥85%, friction coverage ≥80%, confidence ≥0.50, critical journeys passing
 - `limited_active`: below thresholds — PASSIVE + NUDGE only, high-confidence mappings only
 
-**Dashboard is fixed at 3 tabs: TRACK / EVALUATE / OPERATE.** New analytics always go inside TRACK as collapsible sections. Never add a 4th tab.
+**Dashboard is fixed at 3 tabs: TRACK / EVALUATE / INTERVENE.** New analytics always go inside TRACK as collapsible sections. Never add a 4th tab.
 
 **Widget is zero-dependency vanilla TS.** No npm packages. Shadow DOM for style isolation. Voice uses plain `fetch` for both Deepgram TTS and STT — never an SDK.
 
@@ -119,6 +119,7 @@ npm run eval:verbose         # Per-datapoint detail
 ## Environment Variables
 
 **Required:**
+
 ```
 GROQ_API_KEY=
 DATABASE_URL=
@@ -127,6 +128,7 @@ WS_PORT=8081
 ```
 
 **Optional (defaults shown):**
+
 ```
 EVAL_ENGINE=llm                  # llm | fast | auto
 SHADOW_MODE_ENABLED=false
@@ -168,12 +170,12 @@ Priority test targets: MSWIM signal calculators (known inputs → expected outpu
 
 ## Demo Port Architecture — Never Break
 
-| Port | App | Role |
-|---|---|---|
-| 3002 | `apps/wizard` | Integration wizard — owns the activation flow |
-| 3001 | `apps/store` | Demo store — widget loads here after activation |
-| 3000 | `apps/dashboard` | Merchant dashboard — activates after wizard completes |
-| 4002 | `apps/demo` | Three-panel shell (iframes: 3002 + 3001 + 3000) — display only, never standalone |
+| Port | App              | Role                                                                             |
+| ---- | ---------------- | -------------------------------------------------------------------------------- |
+| 3002 | `apps/wizard`    | Integration wizard — owns the activation flow                                    |
+| 3001 | `apps/store`     | Demo store — widget loads here after activation                                  |
+| 3000 | `apps/dashboard` | Merchant dashboard — activates after wizard completes                            |
+| 4002 | `apps/demo`      | Three-panel shell (iframes: 3002 + 3001 + 3000) — display only, never standalone |
 
 **Activation is exclusively wizard-driven. These rules are absolute:**
 

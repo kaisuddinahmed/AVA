@@ -16,16 +16,12 @@ export interface VisitorAddressData {
 }
 
 export async function upsertAddress(data: VisitorAddressData) {
-  // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
   const key = { visitorKey: data.visitorKey, siteUrl: data.siteUrl };
-  const existing = await prisma.visitorAddress.findUnique({ where: { visitorKey_siteUrl: key } });
-  if (existing) {
-    return prisma.visitorAddress.update({
-      where: { visitorKey_siteUrl: key },
-      data: { addressLine1: data.addressLine1, addressLine2: data.addressLine2 ?? "", city: data.city, state: data.state, postalCode: data.postalCode, country: data.country ?? "US", lastUsedAt: new Date() },
-    });
-  }
-  return prisma.visitorAddress.create({ data: { ...data, addressLine2: data.addressLine2 ?? "", country: data.country ?? "US", lastUsedAt: new Date() } });
+  return (prisma as any).visitorAddress.upsert({
+    where: { visitorKey_siteUrl: key },
+    update: { addressLine1: data.addressLine1, addressLine2: data.addressLine2 ?? "", city: data.city, state: data.state, postalCode: data.postalCode, country: data.country ?? "US", lastUsedAt: new Date() },
+    create: { ...data, addressLine2: data.addressLine2 ?? "", country: data.country ?? "US", lastUsedAt: new Date() },
+  });
 }
 
 export async function getAddress(visitorKey: string, siteUrl: string) {

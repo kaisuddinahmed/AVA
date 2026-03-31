@@ -310,7 +310,22 @@
         // Cart utilities — reads from the same sessionStorage key as index.html
         const STORAGE = sessionStorage;
         const KEY_CART = 'techspace_cart';
-        function getCart() { try { return JSON.parse(STORAGE.getItem(KEY_CART) || '[]'); } catch { return []; } }
+        function getCart() {
+            try {
+                const stored = JSON.parse(STORAGE.getItem(KEY_CART) || '[]');
+                const normalized = stored.map((item) =>
+                    item.image?.includes('loremflickr.com') && item.fallbackImage
+                        ? { ...item, image: item.fallbackImage }
+                        : item
+                );
+                if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
+                    STORAGE.setItem(KEY_CART, JSON.stringify(normalized));
+                }
+                return normalized;
+            } catch {
+                return [];
+            }
+        }
         function removeFromCart(productId) {
             let cart = getCart();
             const existing = cart.find(i => i.id === productId);

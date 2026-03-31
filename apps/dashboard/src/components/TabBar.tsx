@@ -1,31 +1,27 @@
-import type { TabId } from "../types";
-
-interface Props {
-  active: TabId;
-  onSelect: (tab: TabId) => void;
-  counts: Record<TabId, number>;
+interface TabBarProps {
+  active: string;
+  onSelect: (tab: string) => void;
+  counts: Record<string, number>;
 }
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "track",     label: "Track" },
-  { id: "evaluate",  label: "Evaluate" },
-  { id: "intervene", label: "Intervene" },
+const TABS = [
+  { id: 'track', label: 'Track' },
+  { id: 'evaluate', label: 'Evaluate' },
+  { id: 'intervene', label: 'Intervene' },
 ];
 
-export function TabBar({ active, onSelect, counts }: Props) {
+export function TabBar({ active, onSelect, counts }: TabBarProps) {
   return (
     <div className="tab-bar">
-      {TABS.map((t) => (
+      {TABS.map(tab => (
         <button
-          key={t.id}
-          className={active === t.id ? "active" : ""}
-          onClick={() => onSelect(t.id)}
+          key={tab.id}
+          className={active === tab.id ? 'active' : ''}
+          onClick={() => onSelect(tab.id)}
         >
-          {t.label}
-          {counts[t.id] > 0 && (
-            <span style={{ marginLeft: 6, opacity: 0.6 }}>
-              {counts[t.id]}
-            </span>
+          {tab.label}
+          {counts[tab.id] > 0 && (
+            <span style={{ marginLeft: 6, opacity: 0.6 }}>{counts[tab.id]}</span>
           )}
         </button>
       ))}

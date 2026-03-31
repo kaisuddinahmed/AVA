@@ -28,15 +28,11 @@ export async function upsertSiteConfig(data: {
   platform: string;
   trackingConfig: string;
 }) {
-  // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
-  const existing = await prisma.siteConfig.findUnique({ where: { siteUrl: data.siteUrl } });
-  if (existing) {
-    return prisma.siteConfig.update({
-      where: { siteUrl: data.siteUrl },
-      data: { platform: data.platform, trackingConfig: data.trackingConfig },
-    });
-  }
-  return prisma.siteConfig.create({ data });
+  return (prisma as any).siteConfig.upsert({
+    where: { siteUrl: data.siteUrl },
+    update: { platform: data.platform, trackingConfig: data.trackingConfig },
+    create: data,
+  });
 }
 
 /** Create a new site config. */
@@ -119,8 +115,6 @@ export async function getSiteConfigBySiteKey(siteKey: string) {
  * invalidate an already-installed snippet.
  */
 export async function generateSiteKeyForSite(siteUrl: string) {
-  // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
-  // Equivalent find-then-create/update pattern:
   const existing = await prisma.siteConfig.findUnique({ where: { siteUrl } });
   const key = existing?.siteKey || ("avak_" + randomBytes(8).toString("hex"));
   if (existing) {
@@ -159,10 +153,9 @@ export async function upsertActivationPolicy(
     tier: string;
   }>,
 ) {
-  // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
-  const existing = await prisma.activationPolicy.findUnique({ where: { siteConfigId } });
-  if (existing) {
-    return prisma.activationPolicy.update({ where: { siteConfigId }, data });
-  }
-  return prisma.activationPolicy.create({ data: { siteConfigId, ...data } });
+  return (prisma as any).activationPolicy.upsert({
+    where: { siteConfigId },
+    update: data,
+    create: { siteConfigId, ...data },
+  });
 }
