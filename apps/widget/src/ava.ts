@@ -105,6 +105,7 @@ export class AVAWidget {
   private _faceBadge: HTMLDivElement | null = null;
   private _faceCapsule: HTMLDivElement | null = null;
   private _isTalking = false;
+  private _lastInputWasVoice = false; // true = mic, false = keyboard → gates TTS on replies
   private _missedVoiceCount = 0;
   private _lastVoiceScript: string | null = null;
 
@@ -784,6 +785,7 @@ export class AVAWidget {
    * Shows it as a user message, stops TTS playback, and sends it to the server.
    */
   private handleVoiceTranscript(transcript: string): void {
+    this._lastInputWasVoice = true;
     // Stop any TTS that may be playing so the reply isn't overlaid
     this.voiceManager?.stopCurrent();
 
@@ -928,6 +930,7 @@ export class AVAWidget {
 
   private handleSendMessage(): void {
     if (!this.inputValue.trim()) return;
+    this._lastInputWasVoice = false;
     this.messages.push({
       id: `msg_${Date.now()}`,
       type: "user",
