@@ -1,4 +1,27 @@
-import { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, type ReactNode } from "react";
+
+// ─── Error Boundary ────────────────────────────────────────────────────────────
+
+interface EBState { err: Error | null; }
+class TabErrorBoundary extends React.Component<{ tab: string; children: ReactNode }, EBState> {
+  state: EBState = { err: null };
+  static getDerivedStateFromError(err: Error): EBState { return { err }; }
+  componentDidUpdate(prev: { tab: string }) {
+    if (prev.tab !== this.props.tab) this.setState({ err: null });
+  }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+          <div style={{ fontSize: 20, marginBottom: 8 }}>⚠️</div>
+          <div>Failed to render this panel — data may be incomplete.</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 10, marginTop: 6, opacity: 0.6 }}>{this.state.err.message}</div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useActivation } from "./hooks/use-activation";
 import { useWS } from "./hooks/use-ws";
 import { useDashboardStore } from "./hooks/use-dashboard-store";
@@ -188,7 +211,7 @@ export function App() {
             }}
           />
           {state.activeTab === "track" && (
-            <TrackTab
+            <TabErrorBoundary tab="track"><TrackTab
               events={state.events}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
@@ -202,11 +225,11 @@ export function App() {
               croFindings={croData?.findings ?? null}
               frictionAnalytics={frictionAnalytics ?? null}
               revenueAttribution={revenueAttribution ?? null}
-            />
+            /></TabErrorBoundary>
           )}
 
           {state.activeTab === "evaluate" && (
-            <EvaluateTab
+            <TabErrorBoundary tab="evaluate"><EvaluateTab
               evaluations={state.evaluations}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
@@ -214,11 +237,11 @@ export function App() {
               shadowDivergences={shadowDivergences?.data ?? null}
               frictionAnalytics={frictionAnalytics ?? null}
               revenueAttribution={revenueAttribution ?? null}
-            />
+            /></TabErrorBoundary>
           )}
 
           {state.activeTab === "intervene" && (
-            <InterveneTab
+            <TabErrorBoundary tab="intervene"><InterveneTab
               interventions={state.interventions}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
@@ -226,7 +249,7 @@ export function App() {
               analyticsParams={analyticsParams}
               webhookStats={webhookStats ?? null}
               networkStatus={networkStatus ?? null}
-            />
+            /></TabErrorBoundary>
           )}
         </>
       )}

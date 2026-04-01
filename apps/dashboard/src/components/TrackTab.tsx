@@ -65,7 +65,7 @@ interface CROFinding {
   page: string;
   eventCount: number;
   sessionsImpacted: number;
-  avgSeverity: number;
+  avgSeverity: number | null;
   suggestion: string;
 }
 
@@ -919,7 +919,7 @@ function FrictionPanel({
                     {f.frictionId} — {f.page}
                   </span>
                   <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                    sev {f.avgSeverity.toFixed(0)}
+                    sev {(f.avgSeverity ?? 0).toFixed(0)}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{f.suggestion}</div>
@@ -1136,7 +1136,7 @@ export function TrackTab({
 
       {/* ── HERO: Live Event Feed (50vh) ───────────────────────────────── */}
       <div style={{
-        flexShrink: 0, height: '50vh', minHeight: 260,
+        flexShrink: 0, height: '58vh', minHeight: 280,
         display: 'flex', flexDirection: 'column',
         padding: '12px 20px 0',
         background: 'var(--bg)',

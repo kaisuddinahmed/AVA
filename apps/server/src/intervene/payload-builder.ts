@@ -1,5 +1,5 @@
 import type { EvaluationResult } from "../evaluate/evaluate.service.js";
-import { getMessageTemplate } from "./message-templates.js";
+import { getMessageTemplate, type SessionContext } from "./message-templates.js";
 import {
   extractProductsFromEvents,
   findAlternatives,
@@ -28,9 +28,10 @@ export async function buildPayload(
   frictionId: string,
   evaluation: EvaluationResult,
   sessionEvents?: SessionEvent[],
-  voiceDisabled?: boolean
+  voiceDisabled?: boolean,
+  sessionCtx?: SessionContext
 ): Promise<Record<string, unknown>> {
-  const template = getMessageTemplate(type, frictionId);
+  const template = getMessageTemplate(type, frictionId, sessionCtx);
 
   // Voice is enabled for nudge/active/escalate tiers only, when the template
   // has a voice script, and the session budget has not been exhausted/muted.

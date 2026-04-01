@@ -242,8 +242,18 @@ export class AVAWidget {
           }
           this._isTalking = true;
           this.renderToggle();
-          try { await origPlay(script); }
-          finally { this._isTalking = false; this.renderToggle(); }
+          await origPlay(script);
+          // origPlay resolves when audio STARTS, not ends — hook the ended event
+          if (vm.currentAudio) {
+            vm.currentAudio.addEventListener("ended", () => {
+              this._isTalking = false; this.renderToggle();
+            }, { once: true });
+            vm.currentAudio.addEventListener("error", () => {
+              this._isTalking = false; this.renderToggle();
+            }, { once: true });
+          } else {
+            this._isTalking = false; this.renderToggle();
+          }
         };
         const origStop = vm.stopCurrent.bind(vm);
         vm.stopCurrent = () => {
@@ -286,11 +296,9 @@ export class AVAWidget {
         type: "nudge",
         intervention_id: "ava_welcome",
         action_code: "WELCOME",
-        message: "Hi, I am AVA. I am here to assist you with your shopping today. Just tap on me and let me know how can I help you.",
+        message: "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.",
         voice_enabled: true,
-        voice_script: "Hi, I am AVA. I am here to assist you with your shopping today. Just tap on me and let me know how I can help you.",
-        cta_label: "Let's chat",
-        cta_action: "open_assistant",
+        voice_script: "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.",
       } as InterventionPayload);
     }, 1500);
   }

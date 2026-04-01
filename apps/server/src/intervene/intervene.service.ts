@@ -3,6 +3,7 @@ import type { DecisionOutput } from "../evaluate/decision-engine.js";
 import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
 import { buildPayload } from "./payload-builder.js";
+import type { SessionContext } from "./message-templates.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 import { config } from "../config.js";
@@ -70,6 +71,17 @@ export async function handleDecision(
     return { eventType: e.eventType, frictionId: e.frictionId, signals };
   });
 
+  // Build session context for tiered template selection
+  const sessionCtx: SessionContext | undefined = session
+    ? {
+        isRepeatVisitor: session.isRepeatVisitor,
+        totalDismissals: session.totalDismissals,
+        totalConversions: session.totalConversions,
+        totalInterventionsFired: session.totalInterventionsFired,
+        cartValue: session.cartValue,
+      }
+    : undefined;
+
   // Build the intervention payload (async: may derive product suggestions)
   const payload = await buildPayload(
     effectiveDecision.type ?? "passive",
@@ -77,7 +89,8 @@ export async function handleDecision(
     effectiveDecision.frictionId,
     evaluation,
     sessionEvents,
-    voiceDisabled
+    voiceDisabled,
+    sessionCtx
   );
 
   // Persist intervention (capture cart value for revenue attribution)
