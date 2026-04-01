@@ -289,9 +289,11 @@ export class AVAWidget {
     this.shadow.appendChild(this.root);
     this.render();
 
-    // Welcome every new visitor with voice greeting after 1.5s
+    // Welcome only once per browser session — sessionStorage persists across page navigations
     setTimeout(() => {
       if (this.state !== "minimized") return; // don't interrupt if already interacting
+      if (sessionStorage.getItem("ava_welcomed")) return;
+      sessionStorage.setItem("ava_welcomed", "1");
       this.handleIntervention({
         type: "nudge",
         intervention_id: "ava_welcome",
