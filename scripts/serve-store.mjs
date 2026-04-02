@@ -35,8 +35,8 @@ const storePort = Number.parseInt(process.env.STORE_PORT ?? '3001', 10);
 const storeHost = process.env.STORE_HOST ?? '127.0.0.1';
 
 const srv = http.createServer((req, res) => {
-  let p = req.url === '/' ? '/index.html' : req.url;
-  p = p.split('?')[0];
+  let p = req.url.split('?')[0];          // strip query string first
+  if (p === '/') p = '/index.html';       // then map root to index
   const fp = path.join(base, p);
   if (!fs.existsSync(fp)) {
     res.writeHead(404);
