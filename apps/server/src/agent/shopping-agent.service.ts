@@ -225,7 +225,12 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
         // No search adapter — navigate instead
         navigateTo = result.fallbackUrl;
         responseType = 'navigate';
-        const displayTerm = (intent.category ?? query).replace(/[.,!?;:…]+$/, "").trim();
+        const displayTerm = (intent.category ?? (intent.raw ?? query)
+          .replace(/^(show me|i need|find me|can you find|looking for|search for|let me see|give me|i want|i'm looking for|i am looking for|can i see|display|bring up|get me)\s+/i, "")
+          .replace(/^(some|a|an|the)\s+/i, "")
+          .replace(/[.,!?;:…]+$/, "")
+          .trim()
+          .toLowerCase());
         message = `Here's our ${displayTerm} collection! Are you looking for a specific color or size?`;
       } else {
         products = result.products.slice(0, 5);
