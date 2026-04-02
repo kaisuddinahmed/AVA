@@ -164,6 +164,38 @@ async function genericSearch(cfg: SiteAdapterConfig, intent: ParsedIntent): Prom
   return rank(products);
 }
 
+// ─── Demo store in-memory catalog ────────────────────────────────────────────
+// Used when siteUrl is the local demo store (no real search adapter available).
+
+const DEMO_PRODUCTS: Omit<ProductResult, 'matchScore' | 'matchedAttributes'>[] = [
+  { id: 'trench-coat',       title: 'Classic Trench Coat',      price: 110, currency: 'USD', category: 'clothing',    gender: 'women', tags: ['coat','clothing','trench','waterproof','jacket'], imageUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Waterproof cotton double-breasted belted trench coat' },
+  { id: 'summer-dress',      title: 'Floral Summer Dress',      price: 71,  currency: 'USD', category: 'clothing',    gender: 'women', tags: ['dress','clothing','silk','floral','summer'], imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=500', productUrl: 'http://localhost:3001', description: '100% silk floral print midi dress' },
+  { id: 'urban-sneakers',    title: 'Urban Street Sneakers',    price: 94,  currency: 'USD', category: 'footwear',    gender: 'men',   tags: ['sneakers','shoes','footwear','sport','casual','mesh'], imageUrl: 'https://images.unsplash.com/photo-1607792246307-2c7ba687b50a?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Breathable mesh memory foam high-grip sole sneakers' },
+  { id: 'silver-watch',      title: 'Minimalist Silver Watch',  price: 249, currency: 'USD', category: 'watches',     gender: 'men',   tags: ['watch','watches','silver','stainless','minimalist'], imageUrl: 'https://images.unsplash.com/photo-1461141346587-763ab02bced9?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Stainless steel sapphire glass 5ATM water resistant watch' },
+  { id: 'chic-shades',       title: 'Designer Aviator Shades',  price: 135, currency: 'USD', category: 'accessories', gender: 'unisex',tags: ['sunglasses','accessories','aviator','polarized','uv400'], imageUrl: 'https://images.unsplash.com/photo-1662091131946-338d213f4a39?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Polarized gold frame UV400 aviator sunglasses' },
+  { id: 'leather-bag',       title: 'Vintage Leather Satchel',  price: 169, currency: 'USD', category: 'accessories', gender: 'unisex',tags: ['bag','satchel','leather','accessories','laptop'], imageUrl: 'https://images.unsplash.com/photo-1663585703603-9be01a72a62a?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Full-grain vegetable-tanned leather laptop satchel with brass hardware' },
+  { id: 'boots-leather',     title: 'Classic Chelsea Boots',    price: 144, currency: 'USD', category: 'footwear',    gender: 'men',   tags: ['boots','shoes','footwear','leather','chelsea','formal'], imageUrl: 'https://images.unsplash.com/photo-1607792246387-4765c382c5a7?q=80&w=500', productUrl: 'http://localhost:3001', description: 'Genuine leather elastic side chelsea boots non-slip sole' },
+  { id: 'smart-ring-fashion',title: 'Luxury Smart Ring',        price: 299, currency: 'USD', category: 'accessories', gender: 'unisex',tags: ['ring','smart','accessories','gold','tech','fitness'], imageUrl: 'https://images.unsplash.com/photo-1671960610018-f2fdebbe5b47?q=80&w=500', productUrl: 'http://localhost:3001', description: '18k gold finish smart ring with sleep and heart rate tracking' },
+];
+
+function demoStoreSearch(intent: ParsedIntent): ProductResult[] {
+  const q = [intent.category, intent.raw, ...intent.attributes].join(' ').toLowerCase();
+
+  // Gender filter
+  const womenTerms = ['women','woman','female','ladies','girl'];
+  const menTerms   = ['men','man','male','guy'];
+  const wantWomen  = womenTerms.some(t => q.includes(t));
+  const wantMen    = menTerms.some(t => q.includes(t));
+
+  const filtered = DEMO_PRODUCTS.filter(p => {
+    if (wantWomen && p.gender === 'men')   return false;
+    if (wantMen   && p.gender === 'women') return false;
+    return true;
+  });
+
+  return rank(filtered.map(p => score(p, intent)));
+}
+
 // ─── Fallback navigation URL ──────────────────────────────────────────────────
 
 function fallbackUrl(cfg: SiteAdapterConfig, intent: ParsedIntent): string {
@@ -180,6 +212,8 @@ export interface SearchResult {
   adapterUsed: 'shopify' | 'generic' | 'fallback';
 }
 
+const DEMO_STORE_HOSTNAMES = ['localhost:3001', '127.0.0.1:3001'];
+
 export async function searchProducts(cfg: SiteAdapterConfig, intent: ParsedIntent): Promise<SearchResult> {
   if (cfg.shopifyStorefrontToken) {
     try { return { products: await shopifySearch(cfg, intent), adapterUsed: 'shopify' }; }
@@ -191,5 +225,13 @@ export async function searchProducts(cfg: SiteAdapterConfig, intent: ParsedInten
       if (products.length) return { products, adapterUsed: 'generic' };
     } catch (e) { log.warn('[AVA agent] Generic adapter error, falling back:', e); }
   }
+  // Demo store: use in-memory catalog instead of fallback navigation
+  try {
+    const host = new URL(cfg.siteUrl).host;
+    if (DEMO_STORE_HOSTNAMES.some(h => host.includes(h))) {
+      const products = demoStoreSearch(intent);
+      if (products.length) return { products, adapterUsed: 'generic' };
+    }
+  } catch { /* malformed siteUrl — proceed to fallback */ }
   return { products: [], fallbackUrl: fallbackUrl(cfg, intent), adapterUsed: 'fallback' };
 }

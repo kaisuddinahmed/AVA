@@ -578,7 +578,13 @@ export class AVAWidget {
     } else {
       const lead = [...this.messages]
         .reverse()
-        .find((m) => m.type === "assistant" || m.type === "system");
+        .find((m) =>
+          (m.type === "assistant" &&
+            m.payload?.action_code !== "VOICE_REPLY" &&
+            m.payload?.action_code !== "AGENT_VOICE" &&
+            m.payload?.action_code !== "WELCOME") ||
+          m.type === "system",
+        );
 
       if (lead && lead.content) {
         const leadCard = renderLeadCard({

@@ -1323,6 +1323,58 @@
         window.browseHeroCategory(slide.category);
       };
 
+      // AVA Search — called by the widget when agent responds with product intent.
+      // Types into the native search box on behalf of the user so the site's own
+      // search handler does all the work (looks like the user is searching).
+      window.__AVA_SEARCH__ = (query) => {
+        if (!query) return;
+        const si = document.getElementById("store-search");
+        if (!si) return;
+
+        // Strip conversational filler so "show me sneakers" → "sneakers"
+        let term = query
+          .replace(/^(show me|i need|find me|can you find|looking for|search for|let me see|give me|i want|i'm looking for|i am looking for|can i see|display|bring up|get me)\s+/i, "")
+          .replace(/^(some|a|an|the)\s+/i, "")
+          .trim()
+          .toLowerCase();
+        if (!term) term = query.toLowerCase();
+
+        // "show all" / "all" / "everything" → just scroll to the current results
+        // without wiping the search box (keeps whatever filter is already active)
+        if (/^(show all|all|everything|all products|show everything|all results)$/i.test(term)) {
+          document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+
+        // Scroll search bar into view and focus it
+        si.scrollIntoView({ behavior: "smooth", block: "center" });
+        si.focus();
+
+        // Clear any previous value
+        si.value = "";
+        si.dispatchEvent(new Event("input", { bubbles: true }));
+
+        // Type character by character — fires native input events so the store's
+        // own search handler renders results in real time
+        const chars = term.split("");
+        let i = 0;
+        const typeNext = () => {
+          if (i < chars.length) {
+            si.value += chars[i++];
+            si.dispatchEvent(new Event("input", { bubbles: true }));
+            setTimeout(typeNext, 55);
+          } else {
+            // Close autocomplete dropdown after typing completes
+            document.getElementById("search-dropdown")?.classList.add("hidden");
+            // Scroll down to grid so user sees results
+            setTimeout(() => {
+              document.getElementById("product-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 200);
+          }
+        };
+        setTimeout(typeNext, 250);
+      };
+
       // 1. Render Function
       function render(products) {
         currentProducts = products; // Update global reference

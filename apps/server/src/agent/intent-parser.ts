@@ -24,6 +24,31 @@ const ORDINALS: Record<string, number> = {
   fourth: 3, '4th': 3,
 };
 
+// ─── Product keyword fast-path ────────────────────────────────────────────────
+// Short queries that are just product types should always be 'search', no LLM needed.
+
+const PRODUCT_TERMS = [
+  'boot','boots','shoe','shoes','sneaker','sneakers','loafer','loafers','heel','heels',
+  'sandal','sandals','footwear',
+  'shirt','shirts','tee','tees','blouse','blouses','top','tops',
+  'dress','dresses','skirt','skirts','jacket','jackets','coat','coats',
+  'sweater','sweaters','hoodie','hoodies','jeans','pants','trousers',
+  'suit','suits','blazer','blazers','shorts','clothing','clothes','outfit','wear','apparel',
+  'watch','watches','timepiece',
+  'bag','bags','purse','purses','wallet','wallets','belt','belts',
+  'sunglasses','sunglass','hat','hats','scarf','scarves','jewelry','jewellery',
+  'accessory','accessories',
+  'perfume','fragrance','skincare','makeup','beauty','cosmetic',
+];
+
+function isProductOnlyQuery(q: string): string | null {
+  const words = q.trim().toLowerCase().split(/\s+/);
+  // Only apply for short queries (≤5 words) to avoid overriding real commands
+  if (words.length > 5) return null;
+  const matched = PRODUCT_TERMS.find(term => q.toLowerCase().includes(term));
+  return matched ?? null;
+}
+
 // ─── Action detection (pure regex, no LLM) ────────────────────────────────────
 
 function detectAction(q: string): AgentAction | null {
@@ -86,6 +111,12 @@ function extractPrice(q: string): PriceConstraint | undefined {
 // ─── Fast path ────────────────────────────────────────────────────────────────
 
 function tryFastParse(q: string): Partial<ParsedIntent> | null {
+  // Product-only short queries → immediate 'search' (no LLM needed)
+  const productMatch = isProductOnlyQuery(q);
+  if (productMatch && !detectAction(q)) {
+    return { action: 'search', category: q.trim(), attributes: [], confidence: 'high' };
+  }
+
   const action = detectAction(q);
   if (!action) return null;
 

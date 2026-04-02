@@ -56,6 +56,8 @@ export interface ProductResult {
   variants?: ProductVariant[];
   vendor?: string;
   tags?: string[];
+  category?: string;
+  gender?: string;
   matchScore: number;
   matchedAttributes: string[];
 }
@@ -101,6 +103,7 @@ export interface AgentResponse {
     addToCartSelector?: string;
   };
   navigateTo?: string;
+  searchQuery?: string;
   turnIndex: number;
 }
 

@@ -11,6 +11,9 @@ dist
 build
 *.tsbuildinfo
 
+# Widget IIFE bundle is the runtime artefact — track it explicitly
+!apps/widget/dist/ava-widget.iife.js
+
 # Misc
 .DS_Store
 .env

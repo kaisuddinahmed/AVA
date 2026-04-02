@@ -214,16 +214,18 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
   let products: ProductResult[] | undefined;
   let navigateTo: string | undefined;
   let cartTarget: AgentResponse['cartTarget'] | undefined;
+  let searchQuery: string | undefined;
 
   // ── Route by action ──
   switch (intent.action) {
     case 'search': {
       const result = await searchProducts(siteConfig, intent);
+      searchQuery = intent.raw ?? query;
       if (result.fallbackUrl) {
         // No search adapter — navigate instead
         navigateTo = result.fallbackUrl;
         responseType = 'navigate';
-        message = `I don't have direct access to the product catalog here, but let me take you to the search results for "${intent.category ?? query}".`;
+        message = `Here are the search results for "${intent.category ?? query}" — take a look!`;
       } else {
         products = result.products.slice(0, 5);
         ctx.lastResults = products;
@@ -308,16 +310,41 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
     case 'clarify': {
       responseType = 'clarification';
       message = intent.clarificationPrompt ?? 'Could you tell me a bit more about what you\'re looking for?';
+      // Still filter the store if we know the category — better UX to show relevant products
+      // while asking for refinement rather than showing everything
+      if (intent.category) searchQuery = intent.category;
+      else if (intent.raw) searchQuery = intent.raw;
       await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_CLARIFY', intent,
         [], ctx.turnIndex, Date.now() - t0);
       break;
     }
 
     case 'show_more': {
-      // Re-run last search with offset — for now surfaces same results with note
-      products = ctx.lastResults;
-      responseType = 'products';
-      message = 'Here\'s what I have. Would you like me to refine the search — perhaps a different price range or specific features?';
+      if (ctx.lastResults.length > 0) {
+        products = ctx.lastResults;
+        responseType = 'products';
+        searchQuery = intent.raw;
+        message = 'Here\'s what I have. Would you like me to refine the search — perhaps a different price range or specific features?';
+      } else {
+        // No prior search — derive category from conversation history and search fresh
+        const lastUserMsg = [...ctx.history].reverse().find(m => m.role === 'user' && m.content !== query);
+        const fallbackQuery = lastUserMsg?.content ?? intent.raw ?? query;
+        const freshIntent = { ...intent, action: 'search' as const, category: fallbackQuery, raw: fallbackQuery };
+        const result = await searchProducts(siteConfig, freshIntent);
+        searchQuery = fallbackQuery;
+        if (result.fallbackUrl) {
+          navigateTo = result.fallbackUrl;
+          responseType = 'navigate';
+          message = `Let me show you what we have for "${fallbackQuery}".`;
+        } else {
+          products = result.products.slice(0, 5);
+          ctx.lastResults = products;
+          responseType = 'products';
+          message = products.length
+            ? await generateNarration(ctx, pageContext, freshIntent, products)
+            : `I couldn't find results for "${fallbackQuery}". Could you be more specific?`;
+        }
+      }
       break;
     }
 
@@ -334,7 +361,7 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
   pushHistory(ctx, 'assistant', message, products);
   const turnIndex = ctx.turnIndex++;
 
-  return { sessionId, responseType, message, products, cartTarget, navigateTo, turnIndex };
+  return { sessionId, responseType, message, products, cartTarget, navigateTo, searchQuery, turnIndex };
 }
 
 // ─── Voice integration helpers ────────────────────────────────────────────────
@@ -381,6 +408,7 @@ export async function broadcastAgentResponse(
     products: agentResponse.products,
     cartTarget: agentResponse.cartTarget,
     navigateTo: agentResponse.navigateTo,
+    searchQuery: agentResponse.searchQuery,
     voice_enabled: voicePlayback,
     voice_script: voicePlayback ? voiceScript : undefined,
   };
