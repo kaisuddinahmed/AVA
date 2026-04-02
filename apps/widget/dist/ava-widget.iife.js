@@ -1886,6 +1886,14 @@ var AVA = (() => {
       };
       document.addEventListener("click", _fireWelcome, { once: true, capture: true });
       document.addEventListener("touchstart", _fireWelcome, { once: true, capture: true, passive: true });
+      // Allow the demo shell (4002) to reset the welcome flag before reloading
+      // the store iframe — so the next page load fires the welcome voice again.
+      window.addEventListener("message", (e) => {
+        if (e.data?.type === "ava:reset-welcome") {
+          sessionStorage.removeItem("ava_welcomed");
+          this._welcomeSpoken = false;
+        }
+      });
     }
     // ---- PUBLIC: called by bridge ----
     handleIntervention(payload) {

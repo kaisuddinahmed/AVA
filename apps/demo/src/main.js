@@ -27,6 +27,7 @@ app.innerHTML = `
         <div class="card-header">
           <h2>Demo Store</h2>
           <span class="hint">Customer journey view</span>
+          <button id="store-refresh-btn" title="Refresh store only" style="margin-left:auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:inherit;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap;">&#x21BB; Refresh Store</button>
         </div>
         <iframe id="store-frame" title="Demo Store" src="http://localhost:3001" allow="microphone; camera; clipboard-write" style="width:100%;height:100%;border:none;display:block;"></iframe>
       </section>
@@ -140,6 +141,20 @@ handleViewport(mql);
 const getWizardFrame = () => document.getElementById("wizard-frame");
 const getStoreFrame = () => document.getElementById("store-frame");
 const getDashboardFrame = () => document.getElementById("dashboard-frame");
+
+// Refresh Store button — clears welcome flag first so voice re-fires on next load
+const refreshBtn = document.getElementById("store-refresh-btn");
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", () => {
+    const f = getStoreFrame();
+    if (!f) return;
+    // Tell the widget to clear ava_welcomed so welcome voice fires on next load
+    f.contentWindow?.postMessage({ type: "ava:reset-welcome" }, "http://localhost:3001");
+    const src = f.src;
+    f.src = "";
+    setTimeout(() => { f.src = src; }, 30);
+  });
+}
 
 window.addEventListener("message", (event) => {
   // Accept messages from known local origins + same-origin

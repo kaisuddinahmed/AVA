@@ -304,6 +304,14 @@ export class AVAWidget {
         voice_script: "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.",
       } as InterventionPayload);
     }, 1500);
+
+    // Allow demo shell (4002) to reset the welcome flag before reloading the
+    // store iframe — so the next page load fires the welcome voice again.
+    window.addEventListener("message", (e: MessageEvent) => {
+      if ((e.data as { type?: string })?.type === "ava:reset-welcome") {
+        sessionStorage.removeItem("ava_welcomed");
+      }
+    });
   }
 
   // ---- PUBLIC: called by bridge ----
