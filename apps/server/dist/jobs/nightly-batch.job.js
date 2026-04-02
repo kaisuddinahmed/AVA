@@ -1,0 +1,285 @@
+// ============================================================================
+// Nightly Batch Job — orchestrates daily maintenance + analysis tasks.
+// Each subtask is independent and catches its own errors.
+// ============================================================================
+import { DriftSnapshotRepo, JobRunRepo } from "@ava/db";
+import { prisma } from "@ava/db";
+import { generateInsightSnapshot } from "../insights/insights.service.js";
+import { runCROAnalysis } from "../insights/cro-analysis.service.js";
+import { runNetworkFlywheel } from "./network-flywheel.job.js";
+import { getQualityStats } from "../training/training-quality.service.js";
+import { loadTestSet, evaluate, } from "./eval-harness-lib.js";
+import { runDriftCheck } from "./drift-detector.js";
+import { checkAllRolloutsHealth } from "../rollout/rollout-health.service.js";
+import { config } from "../config.js";
+import { checkRetrainTriggers } from "../training/retrain-trigger.service.js";
+import { logger } from "../logger.js";
+const log = logger.child({ service: "jobs" });
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+/**
+ * Run the full nightly batch. Each subtask runs independently;
+ * a failure in one does not block the others.
+ */
+export async function runNightlyBatch() {
+    const startedAt = new Date().toISOString();
+    const subtasks = [];
+    const errors = [];
+    // 1. Aggregate training quality stats for last 24h
+    subtasks.push(await runSubtask("training_quality_aggregate", aggregateTrainingQuality));
+    // 2. Run eval harness against recent data
+    subtasks.push(await runSubtask("eval_harness", runEvalHarnessCheck));
+    // 3. Compute drift snapshots (24h and 7d windows)
+    subtasks.push(await runSubtask("drift_snapshots", computeDriftSnapshots));
+    // 4. Check drift alerts
+    subtasks.push(await runSubtask("drift_alerts", checkDriftAlerts));
+    // 5. Check rollout health and auto-promote/rollback
+    subtasks.push(await runSubtask("rollout_health", checkRollouts));
+    // 6. Generate daily summary
+    subtasks.push(await runSubtask("daily_summary", generateDailySummary));
+    // 7. Cleanup stale data
+    subtasks.push(await runSubtask("cleanup", cleanupStaleData));
+    // 8. Generate merchant insight snapshots for all active sites
+    subtasks.push(await runSubtask("merchant_insights", generateMerchantInsights));
+    // 9. Run CRO analysis for all active sites
+    subtasks.push(await runSubtask("cro_analysis", runCROAnalysisBatch));
+    // 10. Network flywheel — weekly cross-merchant pattern aggregation
+    // Only runs on Sundays (day 0) to reduce load; other days it's a no-op.
+    const dayOfWeek = new Date().getDay();
+    if (dayOfWeek === 0) {
+        subtasks.push(await runSubtask("network_flywheel", runFlywheelAggregation));
+    }
+    // 11. Automated retraining check — runs AFTER eval_harness and drift_alerts
+    const evalResult = subtasks.find((s) => s.name === "eval_harness");
+    const evalRegressionDetected = evalResult?.summary?.regressionDetected === true;
+    subtasks.push(await runSubtask("retrain_check", () => checkRetrain(evalRegressionDetected)));
+    // Collect errors
+    for (const st of subtasks) {
+        if (st.status === "failed" && st.error) {
+            errors.push(`${st.name}: ${st.error}`);
+        }
+    }
+    const completedAt = new Date().toISOString();
+    const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+    return { startedAt, completedAt, durationMs, subtasks, errors };
+}
+// ---------------------------------------------------------------------------
+// Subtask runner
+// ---------------------------------------------------------------------------
+async function runSubtask(name, fn) {
+    const start = Date.now();
+    try {
+        const summary = await fn();
+        return {
+            name,
+            status: "completed",
+            durationMs: Date.now() - start,
+            summary,
+        };
+    }
+    catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        log.error(`[NightlyBatch] Subtask ${name} failed:`, errorMsg);
+        return {
+            name,
+            status: "failed",
+            durationMs: Date.now() - start,
+            summary: {},
+            error: errorMsg,
+        };
+    }
+}
+// ---------------------------------------------------------------------------
+// Subtasks
+// ---------------------------------------------------------------------------
+/**
+ * Aggregate training data quality stats for the last 24 hours.
+ */
+async function aggregateTrainingQuality() {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const stats = await getQualityStats({
+        since: yesterday.toISOString(),
+    });
+    return {
+        period: "24h",
+        total: stats.total,
+        gradeDistribution: stats.gradeDistribution,
+        avgQualityScore: stats.avgQualityScore,
+    };
+}
+/**
+ * Run eval harness against recent training data to detect regressions.
+ */
+async function runEvalHarnessCheck() {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const datapoints = await loadTestSet({
+        testSize: 500,
+        sampling: "stratified",
+        outcomeFilter: "converted,dismissed,ignored",
+        since: yesterday.toISOString(),
+    });
+    if (datapoints.length === 0) {
+        return { skipped: true, reason: "No recent training data" };
+    }
+    const report = evaluate(datapoints, ["converted", "dismissed", "ignored"], { sampling: "stratified", since: yesterday.toISOString() });
+    // Abandonment prediction accuracy: % of sessions with abandonmentScore ≥80
+    // in last 24h that ended without a conversion (true positives for abandonment).
+    const highAbandonmentEvals = await prisma.evaluation.findMany({
+        where: {
+            timestamp: { gte: yesterday },
+            abandonmentScore: { gte: 80 },
+        },
+        select: { sessionId: true },
+        distinct: ["sessionId"],
+    });
+    let abandonmentPredictionAccuracy = null;
+    if (highAbandonmentEvals.length > 0) {
+        const sessionIds = highAbandonmentEvals.map((e) => e.sessionId);
+        const actuallyAbandoned = await prisma.session.count({
+            where: {
+                id: { in: sessionIds },
+                totalConversions: 0,
+                status: "ended",
+            },
+        });
+        abandonmentPredictionAccuracy =
+            Math.round((actuallyAbandoned / highAbandonmentEvals.length) * 100) / 100;
+    }
+    return {
+        totalEvaluated: report.overall.totalEvaluated,
+        interventionEffectiveness: report.tierAccuracy.interventionEffectiveness,
+        fireConversionRate: report.decisionMetrics.fireConversionRate,
+        fireDismissalRate: report.decisionMetrics.fireDismissalRate,
+        regressionDetected: report.regressionFlags.detected,
+        regressionIssues: report.regressionFlags.issues,
+        // Story 7: abandonment-score ≥80 prediction accuracy
+        highAbandonmentScoreSessions: highAbandonmentEvals.length,
+        abandonmentPredictionAccuracy,
+    };
+}
+/**
+ * Compute 24h and 7d drift snapshots from ShadowComparison + Intervention data.
+ */
+async function computeDriftSnapshots() {
+    // These are computed as part of the drift check
+    return { note: "Drift snapshots computed in drift_alerts subtask" };
+}
+/**
+ * Run drift detection and create alerts.
+ */
+async function checkDriftAlerts() {
+    const result = await runDriftCheck();
+    return {
+        snapshotsComputed: result.snapshots.length,
+        alertsCreated: result.alerts.length,
+        isHealthy: result.summary.isHealthy,
+        activeAlertCount: result.summary.activeAlertCount,
+        criticalAlertCount: result.summary.criticalAlertCount,
+    };
+}
+/**
+ * Check all active rollouts for health and auto-promote/rollback.
+ */
+async function checkRollouts() {
+    await checkAllRolloutsHealth();
+    return { checked: true };
+}
+/**
+ * Generate a daily summary (aggregated from other subtask results).
+ */
+async function generateDailySummary() {
+    const lastRun = await JobRunRepo.getLastRun("nightly_batch");
+    return {
+        previousRunAt: lastRun?.startedAt?.toISOString() ?? null,
+        previousRunStatus: lastRun?.status ?? null,
+        generatedAt: new Date().toISOString(),
+    };
+}
+/**
+ * Generate merchant insight snapshots (weekly digest + AI recommendations)
+ * for all active sites that have sessions in the last 7 days.
+ */
+async function generateMerchantInsights() {
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const activeSites = await prisma.session.findMany({
+        where: { startedAt: { gte: since7d } },
+        select: { siteUrl: true },
+        distinct: ["siteUrl"],
+    });
+    let generated = 0;
+    for (const { siteUrl } of activeSites) {
+        try {
+            await generateInsightSnapshot(siteUrl);
+            generated++;
+        }
+        catch (err) {
+            log.error(`[NightlyBatch] Insight generation failed for ${siteUrl}:`, err);
+        }
+    }
+    return { sitesProcessed: activeSites.length, snapshotsGenerated: generated };
+}
+/**
+ * Run CRO structural analysis for all active sites.
+ */
+async function runCROAnalysisBatch() {
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const activeSites = await prisma.session.findMany({
+        where: { startedAt: { gte: since30d } },
+        select: { siteUrl: true },
+        distinct: ["siteUrl"],
+    });
+    let analyzed = 0;
+    let totalFindings = 0;
+    for (const { siteUrl } of activeSites) {
+        try {
+            const findings = await runCROAnalysis(siteUrl);
+            totalFindings += findings.length;
+            analyzed++;
+        }
+        catch (err) {
+            log.error(`[NightlyBatch] CRO analysis failed for ${siteUrl}:`, err);
+        }
+    }
+    return { sitesAnalyzed: analyzed, totalFindingsGenerated: totalFindings };
+}
+/**
+ * Cleanup stale data: prune old drift snapshots and job runs.
+ */
+async function cleanupStaleData() {
+    const snapshotRetention = new Date(Date.now() - config.drift.snapshotRetentionDays * 24 * 60 * 60 * 1000);
+    const jobRunRetention = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days
+    const [snapshotResult, jobRunResult] = await Promise.all([
+        DriftSnapshotRepo.pruneOldSnapshots(snapshotRetention),
+        JobRunRepo.pruneOldRuns(jobRunRetention),
+    ]);
+    return {
+        prunedSnapshots: snapshotResult.count,
+        prunedJobRuns: jobRunResult.count,
+        snapshotRetentionDays: config.drift.snapshotRetentionDays,
+    };
+}
+/**
+ * Weekly network flywheel — aggregate anonymized cross-merchant patterns.
+ */
+async function runFlywheelAggregation() {
+    const result = await runNetworkFlywheel();
+    return {
+        patternsUpdated: result.patternsUpdated,
+        patternsSkipped: result.patternsSkipped,
+        merchantsContributing: result.merchantsContributing,
+        totalSessionsAnalyzed: result.totalSessionsAnalyzed,
+    };
+}
+/**
+ * Check automated retraining conditions and trigger if needed.
+ */
+async function checkRetrain(evalRegressionDetected) {
+    const result = await checkRetrainTriggers(evalRegressionDetected);
+    return {
+        triggered: result.triggered,
+        reasons: result.reasons,
+        triggerId: result.triggerId ?? null,
+    };
+}
+//# sourceMappingURL=nightly-batch.job.js.map

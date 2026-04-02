@@ -1,0 +1,1 @@
+{"version":3,"file":"value.signal.d.ts","sourceRoot":"","sources":["../../../../src/evaluate/mswim/signals/value.signal.ts"],"names":[],"mappings":"AAEA;;;GAGG;AACH,wBAAgB,YAAY,CAC1B,OAAO,EAAE,MAAM,EACf,GAAG,EAAE;IACH,SAAS,EAAE,MAAM,CAAC;IAClB,UAAU,EAAE,OAAO,CAAC;IACpB,eAAe,EAAE,OAAO,CAAC;IACzB,YAAY,EAAE,MAAM,CAAC;CACtB,GACA,MAAM,CAuBR"}
