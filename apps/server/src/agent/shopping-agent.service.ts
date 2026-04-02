@@ -226,7 +226,7 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
         navigateTo = result.fallbackUrl;
         responseType = 'navigate';
         const displayTerm = (intent.category ?? query).replace(/[.,!?;:…]+$/, "").trim();
-        message = `Here are the search results for "${displayTerm}" — take a look!`;
+        message = `Here's our ${displayTerm} collection! Are you looking for a specific color or size?`;
       } else {
         products = result.products.slice(0, 5);
         ctx.lastResults = products;
