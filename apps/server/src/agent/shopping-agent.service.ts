@@ -220,12 +220,13 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
   switch (intent.action) {
     case 'search': {
       const result = await searchProducts(siteConfig, intent);
-      searchQuery = intent.raw ?? query;
+      searchQuery = (intent.raw ?? query).replace(/[.,!?;:…]+$/, "").trim();
       if (result.fallbackUrl) {
         // No search adapter — navigate instead
         navigateTo = result.fallbackUrl;
         responseType = 'navigate';
-        message = `Here are the search results for "${intent.category ?? query}" — take a look!`;
+        const displayTerm = (intent.category ?? query).replace(/[.,!?;:…]+$/, "").trim();
+        message = `Here are the search results for "${displayTerm}" — take a look!`;
       } else {
         products = result.products.slice(0, 5);
         ctx.lastResults = products;

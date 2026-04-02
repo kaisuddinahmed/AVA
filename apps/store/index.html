@@ -1335,6 +1335,7 @@
         let term = query
           .replace(/^(show me|i need|find me|can you find|looking for|search for|let me see|give me|i want|i'm looking for|i am looking for|can i see|display|bring up|get me)\s+/i, "")
           .replace(/^(some|a|an|the)\s+/i, "")
+          .replace(/[.,!?;:…]+$/, "")   // strip trailing punctuation from voice transcription
           .trim()
           .toLowerCase();
         if (!term) term = query.toLowerCase();
