@@ -142,18 +142,23 @@ const getWizardFrame = () => document.getElementById("wizard-frame");
 const getStoreFrame = () => document.getElementById("store-frame");
 const getDashboardFrame = () => document.getElementById("dashboard-frame");
 
-// Refresh Store button — clears welcome flag first so voice re-fires on next load
+// Helper: reload the store iframe with ?ava_fresh=1 so the widget clears
+// its sessionStorage welcome lock and re-fires the welcome voice.
+function reloadStore(f) {
+  if (!f) return;
+  try {
+    const url = new URL(f.src);
+    url.searchParams.set("ava_fresh", "1");
+    f.src = url.toString();
+  } catch {
+    f.src = f.src;
+  }
+}
+
+// Refresh Store button
 const refreshBtn = document.getElementById("store-refresh-btn");
 if (refreshBtn) {
-  refreshBtn.addEventListener("click", () => {
-    const f = getStoreFrame();
-    if (!f) return;
-    // Tell the widget to clear ava_welcomed so welcome voice fires on next load
-    f.contentWindow?.postMessage({ type: "ava:reset-welcome" }, "http://localhost:3001");
-    const src = f.src;
-    f.src = "";
-    setTimeout(() => { f.src = src; }, 30);
-  });
+  refreshBtn.addEventListener("click", () => reloadStore(getStoreFrame()));
 }
 
 window.addEventListener("message", (event) => {
@@ -193,8 +198,7 @@ window.addEventListener("message", (event) => {
 
   // ── Wizard → Demo: reset site to dormant, reload store ──────────────────
   if (msg.type === "ava:wizard:reset") {
-    const storeFrame = getStoreFrame();
-    if (storeFrame) storeFrame.src = storeFrame.src;
+    reloadStore(getStoreFrame());
     return;
   }
 
@@ -207,10 +211,7 @@ window.addEventListener("message", (event) => {
     }
 
     // Reload store so widget re-runs its activation gate and appears
-    const storeFrame = getStoreFrame();
-    if (storeFrame) {
-      storeFrame.src = storeFrame.src;
-    }
+    reloadStore(getStoreFrame());
     return;
   }
 });

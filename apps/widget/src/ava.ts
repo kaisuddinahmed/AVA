@@ -290,6 +290,17 @@ export class AVAWidget {
     this.shadow.appendChild(this.root);
     this.render();
 
+    // If the demo shell reloaded the store with ?ava_fresh=1, clear the welcome
+    // lock synchronously — no postMessage timing issues.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("ava_fresh") === "1") {
+        sessionStorage.removeItem("ava_welcomed");
+        url.searchParams.delete("ava_fresh");
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch {}
+
     // Welcome only once per browser session — sessionStorage persists across page navigations
     setTimeout(() => {
       if (this.state !== "minimized") return; // don't interrupt if already interacting
@@ -304,14 +315,6 @@ export class AVAWidget {
         voice_script: "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.",
       } as InterventionPayload);
     }, 1500);
-
-    // Allow demo shell (4002) to reset the welcome flag before reloading the
-    // store iframe — so the next page load fires the welcome voice again.
-    window.addEventListener("message", (e: MessageEvent) => {
-      if ((e.data as { type?: string })?.type === "ava:reset-welcome") {
-        sessionStorage.removeItem("ava_welcomed");
-      }
-    });
   }
 
   // ---- PUBLIC: called by bridge ----

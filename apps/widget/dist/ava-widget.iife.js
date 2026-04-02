@@ -1857,6 +1857,18 @@ var AVA = (() => {
       }
       this.shadow.appendChild(this.root);
       this.render();
+      // If the demo shell reloaded the store with ?ava_fresh=1, clear the
+      // welcome lock synchronously so it fires again on this page load.
+      (function _checkFreshParam() {
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.get("ava_fresh") === "1") {
+            sessionStorage.removeItem("ava_welcomed");
+            url.searchParams.delete("ava_fresh");
+            window.history.replaceState({}, "", url.toString());
+          }
+        } catch {}
+      })();
       // Fire welcome on first click/touch — scroll excluded because it doesn't
       // unlock browser audio autoplay. Deferred via microtask so VoiceManager's
       // own gesture listener (activate) runs first, setting _userActivated = true
@@ -1886,14 +1898,6 @@ var AVA = (() => {
       };
       document.addEventListener("click", _fireWelcome, { once: true, capture: true });
       document.addEventListener("touchstart", _fireWelcome, { once: true, capture: true, passive: true });
-      // Allow the demo shell (4002) to reset the welcome flag before reloading
-      // the store iframe — so the next page load fires the welcome voice again.
-      window.addEventListener("message", (e) => {
-        if (e.data?.type === "ava:reset-welcome") {
-          sessionStorage.removeItem("ava_welcomed");
-          this._welcomeSpoken = false;
-        }
-      });
     }
     // ---- PUBLIC: called by bridge ----
     handleIntervention(payload) {
