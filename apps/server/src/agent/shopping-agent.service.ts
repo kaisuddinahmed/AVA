@@ -332,23 +332,33 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
         searchQuery = intent.raw;
         message = 'Here\'s what I have. Would you like me to refine the search — perhaps a different price range or specific features?';
       } else {
-        // No prior search — derive category from conversation history and search fresh
-        const lastUserMsg = [...ctx.history].reverse().find(m => m.role === 'user' && m.content !== query);
-        const fallbackQuery = lastUserMsg?.content ?? intent.raw ?? query;
-        const freshIntent = { ...intent, action: 'search' as const, category: fallbackQuery, raw: fallbackQuery };
-        const result = await searchProducts(siteConfig, freshIntent);
-        searchQuery = fallbackQuery;
-        if (result.fallbackUrl) {
-          navigateTo = result.fallbackUrl;
-          responseType = 'navigate';
-          message = `Let me show you what we have for "${fallbackQuery}".`;
+        // No prior search — derive category from conversation history and search fresh.
+        // Skip "show all / show more" type meta-commands when scanning history for the real product term.
+        const SHOW_ALL_RE = /\b(show me all|show all|see all|all of (them|it)|all products?|everything|show more|more options|see more|what else|other options)\b/i;
+        const lastUserMsg = [...ctx.history].reverse().find(m =>
+          m.role === 'user' && m.content !== query && !SHOW_ALL_RE.test(m.content)
+        );
+        const fallbackQuery = lastUserMsg?.content ?? intent.category ?? null;
+        if (fallbackQuery) {
+          const freshIntent = { ...intent, action: 'search' as const, category: fallbackQuery, raw: fallbackQuery };
+          const result = await searchProducts(siteConfig, freshIntent);
+          searchQuery = fallbackQuery;
+          if (result.fallbackUrl) {
+            navigateTo = result.fallbackUrl;
+            responseType = 'navigate';
+            message = `Here's our full ${fallbackQuery} collection! Let me know if you'd like to filter by size or color.`;
+          } else {
+            products = result.products.slice(0, 5);
+            ctx.lastResults = products;
+            responseType = 'products';
+            message = products.length
+              ? await generateNarration(ctx, pageContext, freshIntent, products)
+              : `I couldn't find any ${fallbackQuery} right now. Could you describe what you're looking for?`;
+          }
         } else {
-          products = result.products.slice(0, 5);
-          ctx.lastResults = products;
-          responseType = 'products';
-          message = products.length
-            ? await generateNarration(ctx, pageContext, freshIntent, products)
-            : `I couldn't find results for "${fallbackQuery}". Could you be more specific?`;
+          // No context at all — ask what they want to see
+          responseType = 'clarification';
+          message = 'Sure! What are you looking for? I can help you find shoes, clothing, accessories, and more.';
         }
       }
       break;

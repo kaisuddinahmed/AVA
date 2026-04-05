@@ -53,6 +53,8 @@ function detectAction(q) {
         return 'show_cheaper';
     if (/\b(more expensive|higher.end|premium|luxury|pricier)\b/i.test(q))
         return 'show_more_expensive';
+    if (/\b(show me all|show all|see all|all of (them|it)|all products?|everything)\b/i.test(q))
+        return 'show_more';
     if (/\b(show more|more options|see more|what else|other options)\b/i.test(q))
         return 'show_more';
     if (/\b(go to|take me to|navigate to|browse to)\b/i.test(q))
