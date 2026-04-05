@@ -1,0 +1,62 @@
+{
+  "site": {
+    "name": "AVA | Premium Fashion",
+    "logoType": "text",
+    "logoText": "AVA",
+    "logoImageUrl": ""
+  },
+  "banners": [
+    {
+      "id": "banner-1",
+      "category": "clothing",
+      "label": "New Season",
+      "title": "Redefine Your Look.",
+      "description": "Discover statement clothing picks curated for everyday confidence.",
+      "image": "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=1600",
+      "active": true
+    },
+    {
+      "id": "banner-2",
+      "category": "footwear",
+      "label": "Street Ready",
+      "title": "Step Into The Season.",
+      "description": "Explore fresh footwear drops designed for movement and style.",
+      "image": "https://images.unsplash.com/photo-1464863979621-258859e62245?q=80&w=1600",
+      "active": true
+    },
+    {
+      "id": "banner-3",
+      "category": "beauty",
+      "label": "Face + Body",
+      "title": "Glow With Essentials.",
+      "description": "Discover beauty must-haves for daily routines and standout looks.",
+      "image": "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?q=80&w=1600",
+      "active": true
+    }
+  ],
+  "navCategories": {
+    "men": [
+      { "id": "men-new-in",     "label": "New In",      "action": "new-in", "cat": "clothing",    "active": true },
+      { "id": "men-clothing",   "label": "Clothing",                        "cat": "clothing",    "active": true },
+      { "id": "men-shoes",      "label": "Shoes",                           "cat": "footwear",    "active": true },
+      { "id": "men-accessories","label": "Accessories",                     "cat": "accessories", "active": true },
+      { "id": "men-brands",     "label": "Brands",                          "cat": "lifestyle",   "active": true },
+      { "id": "men-activewear", "label": "Activewear",                      "cat": "clothing",    "active": true },
+      { "id": "men-grooming",   "label": "Grooming",                        "cat": "beauty",      "active": true },
+      { "id": "men-tailoring",  "label": "Tailoring",                       "cat": "clothing",    "active": true },
+      { "id": "men-sale",       "label": "Sale",        "action": "sale",   "cat": "clothing",    "active": true }
+    ],
+    "women": [
+      { "id": "women-new-in",     "label": "New In",       "action": "new-in", "cat": "clothing",    "active": true },
+      { "id": "women-clothing",   "label": "Clothing",                          "cat": "clothing",    "active": true },
+      { "id": "women-dresses",    "label": "Dresses",                           "cat": "clothing",    "active": true },
+      { "id": "women-shoes",      "label": "Shoes",                             "cat": "footwear",    "active": true },
+      { "id": "women-beauty",     "label": "Face + Body",                       "cat": "beauty",      "active": true },
+      { "id": "women-accessories","label": "Accessories",                       "cat": "accessories", "active": true },
+      { "id": "women-brands",     "label": "Brands",                            "cat": "lifestyle",   "active": true },
+      { "id": "women-activewear", "label": "Activewear",                        "cat": "clothing",    "active": true },
+      { "id": "women-sale",       "label": "Sale",         "action": "sale",    "cat": "clothing",    "active": true }
+    ]
+  },
+  "productOverrides": {}
+}

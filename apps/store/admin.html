@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AVA Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: "Inter", sans-serif; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .nav-item { cursor: pointer; transition: all .15s; }
+    .nav-item.active { background: #000; color: #fff; }
+    .nav-item:not(.active):hover { background: #f3f4f6; }
+    input:focus, textarea:focus, select:focus { border-color: #000 !important; outline: none; }
+    .toast { transition: opacity .3s; }
+    .tab-btn.active { border-bottom: 2px solid #000; color: #000; font-weight: 700; }
+    .tab-btn { border-bottom: 2px solid transparent; color: #9ca3af; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .prod-form { display: none; }
+    .prod-form.open { display: grid; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-black">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+  <div class="flex items-center gap-3">
+    <span class="font-black text-xl tracking-tighter uppercase">AVA</span>
+    <span class="text-[10px] font-bold uppercase tracking-widest bg-gray-100 text-gray-500 px-2 py-1 rounded">Admin</span>
+  </div>
+  <div class="flex items-center gap-4">
+    <span id="save-status" class="text-xs text-gray-400 italic"></span>
+    <a href="http://localhost:3001" target="_blank" class="text-xs font-bold uppercase tracking-wide hover:underline">View Store →</a>
+  </div>
+</header>
+
+<div class="flex min-h-[calc(100vh-61px)]">
+
+  <!-- Sidebar -->
+  <nav class="w-52 bg-white border-r border-gray-200 p-3 flex flex-col gap-1 shrink-0">
+    <button class="nav-item active text-left px-3 py-2 text-xs font-bold uppercase tracking-wide rounded" data-section="site">⚙ Site</button>
+    <button class="nav-item text-left px-3 py-2 text-xs font-bold uppercase tracking-wide rounded" data-section="banners">🖼 Banners</button>
+    <button class="nav-item text-left px-3 py-2 text-xs font-bold uppercase tracking-wide rounded" data-section="categories">📂 Categories</button>
+    <button class="nav-item text-left px-3 py-2 text-xs font-bold uppercase tracking-wide rounded" data-section="products">📦 Products</button>
+  </nav>
+
+  <!-- Main -->
+  <main class="flex-1 p-8 overflow-y-auto">
+
+    <!-- ═══════════════════ SITE ═══════════════════ -->
+    <section id="section-site" class="section active max-w-2xl">
+      <h2 class="text-xl font-black uppercase tracking-tighter mb-6">Site Settings</h2>
+      <div class="bg-white border border-gray-200 p-6 rounded space-y-5">
+
+        <div>
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Site Title (browser tab)</label>
+          <input id="site-name" type="text" class="w-full border border-gray-300 px-3 py-2 text-sm rounded" placeholder="AVA | Premium Fashion" />
+        </div>
+
+        <div>
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">Logo Type</label>
+          <div class="flex gap-6">
+            <label class="flex items-center gap-2 cursor-pointer text-sm font-bold">
+              <input type="radio" name="logo-type" value="text" checked /> Text
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm font-bold">
+              <input type="radio" name="logo-type" value="image" /> Image URL
+            </label>
+          </div>
+        </div>
+
+        <div id="logo-text-wrap">
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Logo Text</label>
+          <input id="logo-text" type="text" class="w-full border border-gray-300 px-3 py-2 text-sm rounded" placeholder="AVA" />
+        </div>
+
+        <div id="logo-image-wrap" class="hidden">
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Logo Image URL</label>
+          <input id="logo-image-url" type="text" class="w-full border border-gray-300 px-3 py-2 text-sm rounded" placeholder="https://..." />
+          <div id="logo-preview" class="mt-2"></div>
+        </div>
+
+        <button onclick="saveSite()" class="bg-black text-white px-5 py-2 text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition rounded">Save Site Settings</button>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ BANNERS ═══════════════════ -->
+    <section id="section-banners" class="section max-w-3xl">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-black uppercase tracking-tighter">Hero Banners</h2>
+        <button onclick="addBanner()" class="bg-black text-white px-4 py-2 text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition rounded">+ Add Banner</button>
+      </div>
+      <div id="banners-list" class="space-y-4"></div>
+      <div class="mt-6">
+        <button onclick="saveBanners()" class="bg-black text-white px-5 py-2 text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition rounded">Save Banners</button>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ CATEGORIES ═══════════════════ -->
+    <section id="section-categories" class="section max-w-2xl">
+      <h2 class="text-xl font-black uppercase tracking-tighter mb-6">Categories</h2>
+
+      <!-- Men / Women tabs -->
+      <div class="flex gap-6 border-b border-gray-200 mb-0">
+        <button class="tab-btn active pb-3 text-sm uppercase tracking-wide" data-tab="men">Men</button>
+        <button class="tab-btn pb-3 text-sm uppercase tracking-wide" data-tab="women">Women</button>
+      </div>
+
+      <div id="tab-men" class="tab-panel active bg-white border border-t-0 border-gray-200 rounded-b"></div>
+      <div id="tab-women" class="tab-panel bg-white border border-t-0 border-gray-200 rounded-b"></div>
+
+      <div class="mt-6">
+        <button onclick="saveCategories()" class="bg-black text-white px-5 py-2 text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition rounded">Save Categories</button>
+      </div>
+    </section>
+
+    <!-- ═══════════════════ PRODUCTS ═══════════════════ -->
+    <section id="section-products" class="section max-w-4xl">
+      <h2 class="text-xl font-black uppercase tracking-tighter mb-6">Products</h2>
+
+      <!-- Dropdowns -->
+      <div class="flex gap-4 mb-6">
+        <div class="w-48">
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Category</label>
+          <select id="prod-gender-select" onchange="onGenderChange()" class="w-full border border-gray-300 px-3 py-2 text-sm rounded bg-white">
+            <option value="">— Select —</option>
+            <option value="men">Men</option>
+            <option value="women">Women</option>
+          </select>
+        </div>
+        <div class="w-56">
+          <label class="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">Sub-Category</label>
+          <select id="prod-subcat-select" onchange="loadProducts()" class="w-full border border-gray-300 px-3 py-2 text-sm rounded bg-white" disabled>
+            <option value="">— Select —</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <span id="prod-count" class="text-xs text-gray-400 pb-2"></span>
+        </div>
+      </div>
+
+      <div id="products-list" class="space-y-2"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast fixed bottom-6 right-6 bg-black text-white text-xs font-bold uppercase tracking-wide px-5 py-3 rounded shadow-xl opacity-0 pointer-events-none z-50"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA — mirrors the store's generation logic (deterministic parts only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CATS = ["clothing","footwear","watches","accessories","lifestyle","beauty","home","tech"];
+const TARGET = 12;
+
+const GENDERED_NOUNS = {
+  men: {
+    clothing:    ["Oxford Shirt","Bomber Jacket","Polo Shirt","Henley Tee","Cargo Trousers","Chino Pants","Denim Jacket","Tailored Blazer","Crew Sweatshirt","Overshirt"],
+    footwear:    ["Running Sneakers","Chelsea Boots","Derby Shoes","High-top Sneakers","Leather Loafers","Trainer Shoes","Trail Sneakers","Slip-on Shoes","Oxford Shoes","Desert Boots"],
+    watches:     ["Chronograph","Field Watch","Sport Watch","Pilot Watch","Automatic Watch","Tactical Watch","Steel Watch","Dive Watch","Quartz Watch","Classic Watch"],
+    accessories: ["Messenger Bag","Travel Wallet","Weekend Duffel","Wayfarer Shades","Chain Bracelet","Backpack","Crossbody Bag","Leather Satchel","Aviator Shades","Leather Belt"],
+    lifestyle:   ["Desk Lamp","Travel Kit","Room Diffuser","Wall Clock","Bluetooth Speaker","Coffee Set","Organizer Tray","Workspace Mat","Gym Bottle","Shoe Rack"],
+    beauty:      ["Beard Oil","Face Wash","Aftershave","Hair Clay","Grooming Kit","Shave Cream","Moisturizer","Body Spray","Trimmer Set","SPF Lotion"],
+    home:        ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
+    tech:        ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"],
+  },
+  women: {
+    clothing:    ["Floral Dress","Blouse Top","Pleated Skirt","Cardigan","Midi Dress","Wrap Top","Knit Sweater","Tailored Trousers","Cropped Jacket","Jumpsuit"],
+    footwear:    ["Heeled Sandals","Ankle Boots","Platform Sneakers","Ballet Flats","Court Heels","Running Sneakers","Loafers","Slides","Wedge Sandals","Strappy Heels"],
+    watches:     ["Chronograph","Jewelry Watch","Slim Watch","Rose Gold Watch","Classic Watch","Quartz Watch","Dress Watch","Smart Watch","Steel Watch","Automatic Watch"],
+    accessories: ["Shoulder Bag","Mini Tote","Sunglasses","Layered Necklace","Bracelet","Crossbody Bag","Aviator Shades","Clutch Bag","Silk Scarf","Statement Belt"],
+    lifestyle:   ["Aroma Diffuser","Accent Lamp","Desk Organizer","Vase Set","Bluetooth Speaker","Vanity Mirror","Travel Pouch","Scented Candle","Wellness Kit","Storage Basket"],
+    beauty:      ["Vitamin Serum","Face Cleanser","Hydrating Mist","Lip Tint","Eyeshadow Palette","Sheet Mask","Body Lotion","SPF Cream","Perfume Set","Glow Primer"],
+    home:        ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
+    tech:        ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"],
+  },
+};
+
+const BASE_NOUNS = {
+  clothing: ["Jacket","Coat","Shirt","Tee","Hoodie","Blazer","Trousers","Overshirt","Polo","Knit"],
+  footwear: ["Sneakers","Boots","Loafers","Sandals","Flats","Oxfords","Trainers","Slides","Clogs","Runner"],
+  watches:  ["Chronograph","Timepiece","Dial","Quartz","Automatic","Classic","Sport","Diver","Pilot","Field"],
+  accessories:["Bag","Scarf","Belt","Hat","Cap","Wallet","Glasses","Chain","Bracelet","Backpack"],
+  lifestyle: ["Planter","Lamp","Chair","Speaker","Vase","Diffuser","Clock","Organizer","Stand","Monitor"],
+  beauty:   ["Serum","Cleanser","Perfume","Palette","Essence","Mask","Moisturizer","Sunscreen","Set","Grooming Kit"],
+  home:     ["Throw","Candle","Vase","Lamp","Rug","Table","Organizer","Bedding","Mirror","Shelf"],
+  tech:     ["Headphones","Speaker","Keyboard","Mouse","Monitor","Camera","Smartwatch","Earbuds","Charger","Hub"],
+};
+
+const DEMO_STUBS = [
+  { id:"trench-coat",        name:"Classic Trench Coat",     gender:"women", category:"clothing"    },
+  { id:"summer-dress",       name:"Floral Summer Dress",      gender:"women", category:"clothing"    },
+  { id:"urban-sneakers",     name:"Urban Street Sneakers",    gender:"men",   category:"footwear"    },
+  { id:"silver-watch",       name:"Minimalist Silver Watch",  gender:"men",   category:"watches"     },
+  { id:"chic-shades",        name:"Designer Aviator Shades",  gender:"women", category:"accessories" },
+  { id:"leather-bag",        name:"Vintage Leather Satchel",  gender:"men",   category:"accessories" },
+  { id:"boots-leather",      name:"Classic Chelsea Boots",    gender:"men",   category:"footwear"    },
+  { id:"smart-ring-fashion", name:"Luxury Smart Ring",        gender:"women", category:"accessories" },
+];
+
+// Replicate the store's deterministic product ID + base name generation
+function buildAllStubs() {
+  const stubs = [...DEMO_STUBS];
+  let n = 1;
+  CATS.forEach(cat => {
+    ['men','women'].forEach(gender => {
+      const pool = (GENDERED_NOUNS[gender]?.[cat]) || BASE_NOUNS[cat] || ['Item'];
+      const existing = stubs.filter(p => p.category === cat && p.gender === gender).length;
+      const needed = Math.max(0, TARGET - existing);
+      for (let i = 0; i < needed; i++) {
+        const noun = pool[(i + n) % pool.length];
+        stubs.push({ id: `${gender}-${cat}-${n++}`, name: noun, gender, category: cat, isGenerated: true });
+      }
+    });
+  });
+  return stubs;
+}
+
+const ALL_STUBS = buildAllStubs(); // ~200 product stubs
+
+// Sub-category options per gender (label → cat mapping)
+const SUBCAT_OPTIONS = {
+  men:   [
+    { label:'Clothing',    cat:'clothing'    },
+    { label:'Shoes',       cat:'footwear'    },
+    { label:'Watches',     cat:'watches'     },
+    { label:'Accessories', cat:'accessories' },
+    { label:'Lifestyle',   cat:'lifestyle'   },
+    { label:'Grooming',    cat:'beauty'      },
+    { label:'Home',        cat:'home'        },
+    { label:'Tech',        cat:'tech'        },
+  ],
+  women: [
+    { label:'Clothing',    cat:'clothing'    },
+    { label:'Shoes',       cat:'footwear'    },
+    { label:'Watches',     cat:'watches'     },
+    { label:'Accessories', cat:'accessories' },
+    { label:'Lifestyle',   cat:'lifestyle'   },
+    { label:'Face + Body', cat:'beauty'      },
+    { label:'Home',        cat:'home'        },
+    { label:'Tech',        cat:'tech'        },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+const API = 'http://localhost:3003/api/config';
+let CONFIG = {};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function split(s) { return String(s).split(',').map(x => x.trim()).filter(Boolean); }
+
+function toast(msg, err = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = err ? '#dc2626' : '#000';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 2800);
+}
+
+async function saveConfig(msg) {
+  try {
+    const r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(CONFIG) });
+    if (!r.ok) throw new Error('Server error');
+    toast(msg || 'Saved ✓ — reload the store to apply');
+    document.getElementById('save-status').textContent = 'Saved ' + new Date().toLocaleTimeString();
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('section-' + btn.dataset.section).classList.add('active');
+  });
+});
+
+// Logo type toggle
+document.querySelectorAll('input[name="logo-type"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const isImg = r.value === 'image';
+    document.getElementById('logo-text-wrap').classList.toggle('hidden', isImg);
+    document.getElementById('logo-image-wrap').classList.toggle('hidden', !isImg);
+  });
+});
+document.getElementById('logo-image-url').addEventListener('input', e => {
+  document.getElementById('logo-preview').innerHTML = e.target.value
+    ? `<img src="${e.target.value}" class="h-10 object-contain border border-gray-200 p-1 rounded" onerror="this.style.display='none'" />`
+    : '';
+});
+
+// Category tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOAD CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadConfig() {
+  try {
+    const r = await fetch(API);
+    CONFIG = await r.json();
+    populateSite();
+    populateBanners();
+    populateCategories();
+  } catch {
+    toast('Cannot connect to admin server on port 3003', true);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SITE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function populateSite() {
+  const s = CONFIG.site || {};
+  document.getElementById('site-name').value = s.name || '';
+  document.getElementById('logo-text').value = s.logoText || '';
+  document.getElementById('logo-image-url').value = s.logoImageUrl || '';
+  const t = s.logoType || 'text';
+  document.querySelector(`input[name="logo-type"][value="${t}"]`).checked = true;
+  const isImg = t === 'image';
+  document.getElementById('logo-text-wrap').classList.toggle('hidden', isImg);
+  document.getElementById('logo-image-wrap').classList.toggle('hidden', !isImg);
+}
+
+async function saveSite() {
+  CONFIG.site = {
+    name: document.getElementById('site-name').value.trim(),
+    logoType: document.querySelector('input[name="logo-type"]:checked').value,
+    logoText: document.getElementById('logo-text').value.trim(),
+    logoImageUrl: document.getElementById('logo-image-url').value.trim(),
+  };
+  await saveConfig('Site settings saved.');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BANNERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALL_CATS = ['clothing','footwear','watches','accessories','lifestyle','beauty','home','tech'];
+
+function populateBanners() {
+  document.getElementById('banners-list').innerHTML =
+    (CONFIG.banners || []).map((b, i) => bannerCard(b, i)).join('');
+}
+
+function bannerCard(b, i) {
+  return `
+  <div class="bg-white border border-gray-200 rounded" data-banner-idx="${i}">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase tracking-wide">
+          <input type="checkbox" class="banner-active" ${b.active !== false ? 'checked' : ''} /> Active
+        </label>
+        <span class="text-xs text-gray-400">#${i+1}</span>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="moveBanner(${i},-1)" class="text-xs px-2 py-1 border border-gray-200 rounded hover:border-black text-gray-500">↑</button>
+        <button onclick="moveBanner(${i},1)"  class="text-xs px-2 py-1 border border-gray-200 rounded hover:border-black text-gray-500">↓</button>
+        <button onclick="deleteBanner(${i})" class="text-xs px-2 py-1 border border-red-200 rounded text-red-500 hover:text-red-700">Delete</button>
+      </div>
+    </div>
+    <div class="p-4 grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Label</label>
+        <input class="banner-label w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.label)}" />
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Category</label>
+        <select class="banner-category w-full border border-gray-300 px-2 py-1 text-sm rounded">
+          ${ALL_CATS.map(c=>`<option value="${c}" ${b.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="col-span-2">
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Title</label>
+        <input class="banner-title w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.title)}" />
+      </div>
+      <div class="col-span-2">
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Description</label>
+        <input class="banner-desc w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.description)}" />
+      </div>
+      <div class="col-span-2">
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Image URL</label>
+        <input class="banner-image w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.image)}" />
+      </div>
+      ${b.image ? `<div class="col-span-2"><img src="${esc(b.image)}" class="w-full h-24 object-cover rounded border border-gray-200" /></div>` : ''}
+    </div>
+  </div>`;
+}
+
+function collectBanners() {
+  return Array.from(document.querySelectorAll('[data-banner-idx]')).map((card, i) => ({
+    id: (CONFIG.banners[i] || {}).id || `banner-${Date.now()}-${i}`,
+    active: card.querySelector('.banner-active').checked,
+    label: card.querySelector('.banner-label').value.trim(),
+    category: card.querySelector('.banner-category').value,
+    title: card.querySelector('.banner-title').value.trim(),
+    description: card.querySelector('.banner-desc').value.trim(),
+    image: card.querySelector('.banner-image').value.trim(),
+  }));
+}
+
+function addBanner() {
+  CONFIG.banners = collectBanners();
+  CONFIG.banners.push({ id:`banner-${Date.now()}`, label:'New Banner', title:'New Title', description:'', image:'', category:'clothing', active:true });
+  populateBanners();
+}
+function deleteBanner(i) { CONFIG.banners = collectBanners(); CONFIG.banners.splice(i,1); populateBanners(); }
+function moveBanner(i, dir) {
+  CONFIG.banners = collectBanners();
+  const j = i + dir;
+  if (j < 0 || j >= CONFIG.banners.length) return;
+  [CONFIG.banners[i], CONFIG.banners[j]] = [CONFIG.banners[j], CONFIG.banners[i]];
+  populateBanners();
+}
+async function saveBanners() { CONFIG.banners = collectBanners(); await saveConfig('Banners saved.'); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CATEGORIES  (Men / Women tabs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function populateCategories() {
+  ['men','women'].forEach(gender => {
+    const items = (CONFIG.navCategories?.[gender]) || [];
+    document.getElementById('tab-' + gender).innerHTML = items.map((c, i) => `
+      <div class="flex items-center gap-4 px-5 py-3 border-b border-gray-100 last:border-0" data-cat-gender="${gender}" data-cat-idx="${i}">
+        <label class="flex items-center gap-2 cursor-pointer shrink-0">
+          <input type="checkbox" class="cat-active" ${c.active !== false ? 'checked' : ''} onchange="this.nextElementSibling.textContent=this.checked?'On':'Off'" />
+          <span class="text-[10px] font-bold uppercase w-5 text-gray-400">${c.active !== false ? 'On' : 'Off'}</span>
+        </label>
+        <div class="flex-1">
+          <label class="block text-[10px] font-bold uppercase text-gray-400 mb-0.5">Display Label</label>
+          <input class="cat-label w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(c.label)}" />
+        </div>
+        <span class="text-[10px] text-gray-300 uppercase shrink-0">${c.id}</span>
+      </div>`).join('');
+  });
+}
+
+async function saveCategories() {
+  CONFIG.navCategories = CONFIG.navCategories || {};
+  ['men','women'].forEach(gender => {
+    const rows = document.querySelectorAll(`[data-cat-gender="${gender}"]`);
+    CONFIG.navCategories[gender] = Array.from(rows).map((row, i) => ({
+      ...(CONFIG.navCategories[gender]?.[i] || {}),
+      label:  row.querySelector('.cat-label').value.trim(),
+      active: row.querySelector('.cat-active').checked,
+    }));
+  });
+  await saveConfig('Categories saved.');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCTS  (Gender + SubCategory dropdowns → product list)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function onGenderChange() {
+  const gender = document.getElementById('prod-gender-select').value;
+  const subSelect = document.getElementById('prod-subcat-select');
+  subSelect.innerHTML = '<option value="">— Select —</option>';
+  document.getElementById('products-list').innerHTML = '';
+  document.getElementById('prod-count').textContent = '';
+
+  if (!gender) { subSelect.disabled = true; return; }
+
+  subSelect.disabled = false;
+  (SUBCAT_OPTIONS[gender] || []).forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt.cat;
+    o.textContent = opt.label;
+    subSelect.appendChild(o);
+  });
+}
+
+function loadProducts() {
+  const gender = document.getElementById('prod-gender-select').value;
+  const cat    = document.getElementById('prod-subcat-select').value;
+  if (!gender || !cat) return;
+
+  const prods = ALL_STUBS.filter(p => p.gender === gender && p.category === cat);
+  const overrides = CONFIG.productOverrides || {};
+
+  document.getElementById('prod-count').textContent = `${prods.length} products`;
+  document.getElementById('products-list').innerHTML = prods.map(p => productRow(p, overrides[p.id] || {})).join('');
+}
+
+function productRow(stub, ov) {
+  const name    = ov.name    || stub.name;
+  const price   = ov.price   ?? '';
+  const image   = ov.image   || '';
+  const imgThumb = image ? `<img src="${esc(image)}" class="w-10 h-10 object-cover rounded border border-gray-100 shrink-0" onerror="this.style.display='none'" />` : `<div class="w-10 h-10 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-xs">IMG</div>`;
+  const modified = Object.keys(ov).length > 0;
+
+  return `
+  <div class="bg-white border border-gray-200 rounded" data-prod-id="${esc(stub.id)}">
+    <!-- Row -->
+    <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition select-none" onclick="toggleProdForm('${esc(stub.id)}')">
+      ${imgThumb}
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-sm truncate">${esc(name)}${modified ? ' <span class="text-[10px] text-amber-600 font-bold ml-1">EDITED</span>' : ''}</div>
+        <div class="text-[11px] text-gray-400">${esc(stub.id)} ${price ? '· $'+price : ''}</div>
+      </div>
+      <span class="text-gray-400 text-xs shrink-0 toggle-icon">▼</span>
+    </div>
+
+    <!-- Expanded edit form -->
+    <div class="prod-form grid grid-cols-2 gap-4 px-4 pb-5 pt-4 border-t border-gray-100" id="form-${esc(stub.id)}">
+
+      <div>
+        <label class="field-label">Product Name</label>
+        <input class="field-input prod-name" value="${esc(ov.name || stub.name)}" placeholder="${esc(stub.name)}" />
+      </div>
+      <div>
+        <label class="field-label">Price ($)</label>
+        <input type="number" class="field-input prod-price" value="${ov.price ?? ''}" placeholder="e.g. 129" />
+      </div>
+
+      <div class="col-span-2">
+        <label class="field-label">Image URL</label>
+        <input class="field-input prod-image" value="${esc(ov.image || '')}" placeholder="https://images.unsplash.com/..." oninput="previewImg(this,'prev-${esc(stub.id)}')" />
+        <div id="prev-${esc(stub.id)}" class="mt-2 ${image ? '' : 'hidden'}">
+          ${image ? `<img src="${esc(image)}" class="h-28 w-full object-cover rounded border border-gray-200" />` : ''}
+        </div>
+      </div>
+
+      <div class="col-span-2">
+        <label class="field-label">Description</label>
+        <textarea class="field-input prod-desc resize-none" rows="3">${esc(ov.description || '')}</textarea>
+      </div>
+
+      <div class="col-span-2">
+        <label class="field-label">Return Policy <span class="text-gray-400 font-normal normal-case">(per-product override)</span></label>
+        <textarea class="field-input prod-return resize-none" rows="2" placeholder="Leave blank to use site default">${esc(ov.returnPolicy || '')}</textarea>
+      </div>
+
+      <div>
+        <label class="field-label">Colors / Variants <span class="text-gray-400 font-normal normal-case">(comma-separated)</span></label>
+        <input class="field-input prod-colors" value="${esc((ov.colors||[]).join(', '))}" placeholder="Black, White, Navy" />
+      </div>
+      <div>
+        <label class="field-label">Sizes <span class="text-gray-400 font-normal normal-case">(comma-separated)</span></label>
+        <input class="field-input prod-sizes" value="${esc((ov.sizes||[]).join(', '))}" placeholder="XS, S, M, L, XL" />
+      </div>
+
+      <div>
+        <label class="field-label">Specs <span class="text-gray-400 font-normal normal-case">(comma-separated)</span></label>
+        <input class="field-input prod-specs" value="${esc((ov.specs||[]).join(', '))}" placeholder="100% Cotton, Slim Fit" />
+      </div>
+      <div>
+        <label class="field-label">Stock</label>
+        <input type="number" class="field-input prod-stock" value="${ov.stock ?? ''}" placeholder="50" />
+      </div>
+
+      <div class="col-span-2">
+        <label class="field-label">Size Guide URL <span class="text-gray-400 font-normal normal-case">(link to image or PDF)</span></label>
+        <input class="field-input prod-sizeguide" value="${esc(ov.sizeGuideUrl || '')}" placeholder="https://..." />
+      </div>
+
+      <div class="col-span-2 flex items-center justify-between pt-2">
+        <label class="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase tracking-wide">
+          <input type="checkbox" class="prod-active" ${(ov.active ?? true) !== false ? 'checked' : ''} />
+          Show in Store
+        </label>
+        <div class="flex gap-3">
+          <button onclick="clearProductOverride('${esc(stub.id)}')" class="px-3 py-1.5 text-xs font-bold uppercase tracking-wide border border-gray-300 rounded hover:border-black text-gray-500">Reset to Default</button>
+          <button onclick="saveProduct('${esc(stub.id)}')" class="px-5 py-1.5 text-xs font-bold uppercase tracking-wide bg-black text-white rounded hover:bg-gray-800">Save Product</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleProdForm(id) {
+  const card = document.querySelector(`[data-prod-id="${id}"]`);
+  if (!card) return;
+  const form = card.querySelector('.prod-form');
+  const icon = card.querySelector('.toggle-icon');
+  const isOpen = form.classList.contains('open');
+  form.classList.toggle('open', !isOpen);
+  if (icon) icon.textContent = isOpen ? '▼' : '▲';
+}
+
+function previewImg(input, previewId) {
+  const div = document.getElementById(previewId);
+  if (!div) return;
+  if (input.value) {
+    div.classList.remove('hidden');
+    div.innerHTML = `<img src="${esc(input.value)}" class="h-28 w-full object-cover rounded border border-gray-200" onerror="this.parentElement.classList.add('hidden')" />`;
+  } else {
+    div.classList.add('hidden');
+    div.innerHTML = '';
+  }
+}
+
+function getProductFormData(id) {
+  const card = document.querySelector(`[data-prod-id="${id}"]`);
+  if (!card) return null;
+  const v = sel => card.querySelector(sel)?.value?.trim();
+  const n = sel => { const val = card.querySelector(sel)?.value; return val !== '' && val != null ? parseFloat(val) : undefined; };
+  const i = sel => { const val = card.querySelector(sel)?.value; return val !== '' && val != null ? parseInt(val) : undefined; };
+  return {
+    name:         v('.prod-name') || undefined,
+    price:        n('.prod-price'),
+    image:        v('.prod-image') || undefined,
+    description:  v('.prod-desc') || undefined,
+    returnPolicy: v('.prod-return') || undefined,
+    colors:       split(v('.prod-colors') || ''),
+    sizes:        split(v('.prod-sizes') || ''),
+    specs:        split(v('.prod-specs') || ''),
+    stock:        i('.prod-stock'),
+    sizeGuideUrl: v('.prod-sizeguide') || undefined,
+    active:       card.querySelector('.prod-active').checked,
+  };
+}
+
+function saveProduct(id) {
+  const data = getProductFormData(id);
+  if (!data) return;
+
+  // Remove undefined fields
+  Object.keys(data).forEach(k => {
+    if (data[k] === undefined || (Array.isArray(data[k]) && data[k].length === 0)) {
+      delete data[k];
+    }
+  });
+
+  CONFIG.productOverrides = CONFIG.productOverrides || {};
+  CONFIG.productOverrides[id] = { ...data, id };
+
+  // Re-render just this row header to show EDITED badge
+  const card = document.querySelector(`[data-prod-id="${id}"]`);
+  if (card) {
+    const nameEl = card.querySelector('.flex-1 .font-bold');
+    if (nameEl && data.name) {
+      nameEl.innerHTML = `${esc(data.name)} <span class="text-[10px] text-amber-600 font-bold ml-1">EDITED</span>`;
+    }
+  }
+
+  saveConfig(`Product "${data.name || id}" saved.`);
+}
+
+function clearProductOverride(id) {
+  if (!confirm('Reset this product to its default values?')) return;
+  CONFIG.productOverrides = CONFIG.productOverrides || {};
+  delete CONFIG.productOverrides[id];
+  saveConfig(`Product ${id} reset to defaults.`).then(() => loadProducts());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSS helpers injected via Tailwind (avoids repeating classes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const style = document.createElement('style');
+style.textContent = `
+  .field-label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; margin-bottom:4px; }
+  .field-input  { display:block; width:100%; border:1px solid #d1d5db; border-radius:4px; padding:6px 10px; font-size:13px; }
+  .field-input:focus { border-color:#000; outline:none; }
+`;
+document.head.appendChild(style);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+
+loadConfig();
+</script>
+</body>
+</html>

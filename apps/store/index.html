@@ -42,7 +42,7 @@
       >
         <div class="flex items-center gap-2">
           <!-- Text Logo Only -->
-          <span class="font-bold text-2xl tracking-tighter text-black uppercase">AVA</span>
+          <span id="site-logo-text" class="font-bold text-2xl tracking-tighter text-black uppercase">AVA</span>
         </div>
         <div class="hidden md:flex gap-8 text-black items-center mr-auto">
           <a
@@ -56,15 +56,15 @@
             <button class="nav-link hover:underline decoration-2 underline-offset-4">Men</button>
             <div class="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
               <div class="w-56 bg-white border border-gray-200 shadow-xl p-2">
-                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="men" data-label="New In">New In</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Clothing">Clothing</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="men" data-label="Shoes">Shoes</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="men" data-label="Accessories">Accessories</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="men" data-label="Brands">Brands</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Activewear">Activewear</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="men" data-label="Grooming">Grooming</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Tailoring">Tailoring</a>
-                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="men" data-label="Sale">Sale</a>
+                <a href="#" data-nav-id="men-new-in" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="men" data-label="New In">New In</a>
+                <a href="#" data-nav-id="men-clothing" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Clothing">Clothing</a>
+                <a href="#" data-nav-id="men-shoes" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="men" data-label="Shoes">Shoes</a>
+                <a href="#" data-nav-id="men-accessories" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="men" data-label="Accessories">Accessories</a>
+                <a href="#" data-nav-id="men-brands" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="men" data-label="Brands">Brands</a>
+                <a href="#" data-nav-id="men-activewear" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Activewear">Activewear</a>
+                <a href="#" data-nav-id="men-grooming" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="men" data-label="Grooming">Grooming</a>
+                <a href="#" data-nav-id="men-tailoring" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="men" data-label="Tailoring">Tailoring</a>
+                <a href="#" data-nav-id="men-sale" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="men" data-label="Sale">Sale</a>
               </div>
             </div>
           </div>
@@ -72,15 +72,15 @@
             <button class="nav-link hover:underline decoration-2 underline-offset-4">Women</button>
             <div class="absolute left-0 top-full pt-2 hidden group-hover:block z-50">
               <div class="w-56 bg-white border border-gray-200 shadow-xl p-2">
-                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="women" data-label="New In">New In</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Clothing">Clothing</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Dresses">Dresses</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="women" data-label="Shoes">Shoes</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="women" data-label="Face + Body">Face + Body</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="women" data-label="Accessories">Accessories</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="women" data-label="Brands">Brands</a>
-                <a href="#" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Activewear">Activewear</a>
-                <a href="#" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="women" data-label="Sale">Sale</a>
+                <a href="#" data-nav-id="women-new-in" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-action="new-in" data-cat="clothing" data-gender="women" data-label="New In">New In</a>
+                <a href="#" data-nav-id="women-clothing" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Clothing">Clothing</a>
+                <a href="#" data-nav-id="women-dresses" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Dresses">Dresses</a>
+                <a href="#" data-nav-id="women-shoes" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="footwear" data-gender="women" data-label="Shoes">Shoes</a>
+                <a href="#" data-nav-id="women-beauty" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="beauty" data-gender="women" data-label="Face + Body">Face + Body</a>
+                <a href="#" data-nav-id="women-accessories" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="accessories" data-gender="women" data-label="Accessories">Accessories</a>
+                <a href="#" data-nav-id="women-brands" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="lifestyle" data-gender="women" data-label="Brands">Brands</a>
+                <a href="#" data-nav-id="women-activewear" class="nav-category block px-3 py-2 text-xs font-bold uppercase tracking-wide text-black hover:bg-gray-100" data-cat="clothing" data-gender="women" data-label="Activewear">Activewear</a>
+                <a href="#" data-nav-id="women-sale" class="nav-menu-action block px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-600 hover:bg-red-50" data-action="sale" data-cat="clothing" data-gender="women" data-label="Sale">Sale</a>
               </div>
             </div>
           </div>
@@ -1008,7 +1008,7 @@
         return products;
       }
 
-      const ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts())).map(
+      let ALL_PRODUCTS = applySaleDiscounts(assignDemoGenders(generateProducts())).map(
         (product, index) => ({
           ...product,
           fallbackImage:
@@ -1154,7 +1154,7 @@
       let currentCategory = null;
       let currentGender = null;
       let currentNavLabel = null;
-      const HERO_SLIDES = [
+      let HERO_SLIDES = [
         {
           category: "clothing",
           label: "New Season",
@@ -1964,6 +1964,13 @@
             e.target.innerText = "Read More";
           }
         };
+
+        // Per-product return policy override from admin config
+        const _adminOverride = (window.__AVA_ADMIN_CONFIG__?.productOverrides || {})[p.id];
+        if (_adminOverride?.returnPolicy) {
+          const _rp = document.getElementById("modal-return-policy");
+          if (_rp) _rp.textContent = _adminOverride.returnPolicy;
+        }
 
         // Return Policy Read More
         const returnPolicy = document.getElementById("modal-return-policy");
@@ -3322,13 +3329,92 @@
         });
       }, 200);
 
-      subscribe(syncCart);
-      syncCart(); // Init
+      // ── Admin Config Loader ───────────────────────────────────────────────────
+      // Tries to fetch store-config.json from the admin server on port 3003.
+      // Falls back to hardcoded defaults if server is not running.
+      (async function initWithAdminConfig() {
+        try {
+          const resp = await Promise.race([
+            fetch('http://localhost:3003/api/config'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 800)),
+          ]);
+          if (resp.ok) {
+            const cfg = await resp.json();
+            window.__AVA_ADMIN_CONFIG__ = cfg; // expose for runtime use (e.g. per-product return policy)
 
-      // Initial Render
-      renderHeroSlide();
-      restartHeroAutoPlay();
-      showHomeTop100();
+            // ── Site logo / title
+            if (cfg.site) {
+              const logoEl = document.getElementById('site-logo-text');
+              if (logoEl) {
+                if (cfg.site.logoType === 'image' && cfg.site.logoImageUrl) {
+                  const img = document.createElement('img');
+                  img.src = cfg.site.logoImageUrl;
+                  img.className = 'h-8 object-contain';
+                  img.alt = cfg.site.logoText || 'Logo';
+                  logoEl.replaceWith(img);
+                } else if (cfg.site.logoText) {
+                  logoEl.textContent = cfg.site.logoText;
+                }
+              }
+              if (cfg.site.name) document.title = cfg.site.name;
+            }
+
+            // ── Hero banners
+            if (Array.isArray(cfg.banners) && cfg.banners.length > 0) {
+              const active = cfg.banners.filter(b => b.active !== false);
+              if (active.length > 0) {
+                HERO_SLIDES.length = 0;
+                active.forEach(b => HERO_SLIDES.push(b));
+              }
+            }
+
+            // ── Nav categories (Men/Women subcategory labels + visibility)
+            if (cfg.navCategories) {
+              ['men', 'women'].forEach(gender => {
+                const items = cfg.navCategories[gender] || [];
+                items.forEach(item => {
+                  const el = document.querySelector(`[data-nav-id="${item.id}"]`);
+                  if (!el) return;
+                  el.textContent = item.label;
+                  el.dataset.label = item.label;
+                  if (item.active === false) {
+                    el.style.display = 'none';
+                  } else {
+                    el.style.display = '';
+                  }
+                });
+              });
+            }
+
+            // ── Product overrides (keyed by product ID)
+            if (cfg.productOverrides && typeof cfg.productOverrides === 'object') {
+              Object.entries(cfg.productOverrides).forEach(([id, override]) => {
+                const idx = ALL_PRODUCTS.findIndex(p => p.id === id);
+                if (override.active === false) {
+                  if (idx >= 0) ALL_PRODUCTS.splice(idx, 1);
+                } else if (idx >= 0) {
+                  ALL_PRODUCTS[idx] = { ...ALL_PRODUCTS[idx], ...override };
+                  // Apply return policy to modal element if currently open for this product
+                  const modalReturnEl = document.getElementById('modal-return-policy');
+                  if (modalReturnEl && override.returnPolicy) {
+                    modalReturnEl.textContent = override.returnPolicy;
+                  }
+                }
+              });
+            }
+          }
+        } catch (_) {
+          // Admin server not running — continue with hardcoded defaults
+        }
+
+        subscribe(syncCart);
+        syncCart(); // Init
+
+        // Initial Render
+        renderHeroSlide();
+        restartHeroAutoPlay();
+        showHomeTop100();
+      })();
 
     </script>
   </body>

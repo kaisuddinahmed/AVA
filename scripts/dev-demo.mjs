@@ -28,6 +28,11 @@ const targets = [
     args: ["scripts/serve-static.mjs", "apps/wizard/dist", "3002"],
   },
   {
+    name: "store-admin",
+    cmd: "node",
+    args: ["apps/store/admin-server.js"],
+  },
+  {
     name: "integration",
     cmd: "node",
     args: ["scripts/serve-static.mjs", "apps/demo/dist", "4002"],
@@ -37,12 +42,13 @@ const targets = [
 const children = [];
 let shuttingDown = false;
 let readyAnnounced = false;
-const requiredPorts = [8080, 3001, 3000, 3002, 4002];
+const requiredPorts = [8080, 3001, 3000, 3002, 3003, 4002];
 const startupPorts = [
   { port: 8080, service: "server" },
   { port: 3001, service: "store" },
   { port: 3000, service: "dashboard" },
   { port: 3002, service: "wizard" },
+  { port: 3003, service: "store-admin" },
   { port: 4002, service: "integration" },
 ];
 const autoCleanEnabled = process.env.AVA_DEMO_AUTOCLEAN !== "0";
@@ -88,7 +94,7 @@ const readinessInterval = setInterval(async () => {
 
   if (allUp) {
     readyAnnounced = true;
-    console.log("[dev:demo] Ready -> http://localhost:4002 (demo), http://localhost:3002 (wizard standalone), http://localhost:3001 (store), http://localhost:3000 (dashboard), http://localhost:8080/health (server)");
+    console.log("[dev:demo] Ready -> http://localhost:4002 (demo), http://localhost:3002 (wizard standalone), http://localhost:3001 (store), http://localhost:3003 (store admin), http://localhost:3000 (dashboard), http://localhost:8080/health (server)");
     clearInterval(readinessInterval);
     return;
   }
