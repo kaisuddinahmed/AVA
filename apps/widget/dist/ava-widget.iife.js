@@ -2097,7 +2097,8 @@ var AVA = (() => {
         const _dupId = this.messages.some((m) => m.id === _n.intervention_id);
         const _dupContent = this.messages.some((m) => m.content === (_n.message || ""));
         if (!_dupId && !_dupContent) {
-          this.messages.push({ id: _n.intervention_id, type: "assistant", content: _n.message || "", payload: _n, timestamp: Date.now() });
+          const _normPayload = (_n.intervention_id === "ava_welcome" && !_n.action_code) ? { ..._n, action_code: "WELCOME" } : _n;
+          this.messages.push({ id: _n.intervention_id, type: "assistant", content: _n.message || "", payload: _normPayload, timestamp: Date.now() });
         }
         return;
       }
@@ -2157,7 +2158,7 @@ var AVA = (() => {
         if (this.isTyping) {
           leadArea.appendChild(renderLeadSkeleton());
         } else {
-          const lead = [...this.messages].reverse().find((m) => (m.type === "assistant" && m.payload?.action_code !== "VOICE_REPLY" && m.payload?.action_code !== "AGENT_VOICE" && m.payload?.action_code !== "WELCOME") || m.type === "system");
+          const lead = [...this.messages].reverse().find((m) => (m.type === "assistant" && m.id !== "ava_welcome" && m.payload?.action_code !== "VOICE_REPLY" && m.payload?.action_code !== "AGENT_VOICE" && m.payload?.action_code !== "WELCOME") || m.type === "system");
           if (lead && lead.content) {
             const leadCard = renderLeadCard({
               config: this.config,
@@ -2185,7 +2186,7 @@ var AVA = (() => {
       // ── Messages ─────────────────────────────────────────────────────────
       this.messagesContainer = contentEl;
       contentEl.innerHTML = "";
-      const isChatReply = (m) => m.type === "assistant" && (m.payload?.action_code === "VOICE_REPLY" || m.payload?.action_code === "AGENT_VOICE" || m.payload?.action_code === "WELCOME");
+      const isChatReply = (m) => m.type === "assistant" && (m.payload?.action_code === "VOICE_REPLY" || m.payload?.action_code === "AGENT_VOICE" || m.payload?.action_code === "WELCOME" || m.id === "ava_welcome");
       const hasSupporting = this.messages.some(
         (m) => m.type === "user" || isChatReply(m) || m.type === "system" && m.id.startsWith("msg_") || m.payload?.products && m.payload.products.length > 0 || m.payload?.comparison
       );

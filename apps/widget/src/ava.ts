@@ -484,12 +484,18 @@ export class AVAWidget {
     this.nudgeContainer.innerHTML = "";
     // Face-widget mode: no popup bubble — messages go silently into the chat window
     if (this._faceWidget && this.currentNudge) {
-      if (!this.messages.some((m) => m.id === this.currentNudge!.intervention_id)) {
+      const _n = this.currentNudge;
+      const _dupId = this.messages.some((m) => m.id === _n.intervention_id);
+      const _dupContent = this.messages.some((m) => m.content === (_n.message || ""));
+      if (!_dupId && !_dupContent) {
+        const _normPayload = (_n.intervention_id === "ava_welcome" && !_n.action_code)
+          ? { ..._n, action_code: "WELCOME" as const }
+          : _n;
         this.messages.push({
-          id: this.currentNudge.intervention_id,
+          id: _n.intervention_id,
           type: "assistant",
-          content: this.currentNudge.message || "",
-          payload: this.currentNudge,
+          content: _n.message || "",
+          payload: _normPayload,
           timestamp: Date.now(),
         });
       }
@@ -591,6 +597,7 @@ export class AVAWidget {
         .reverse()
         .find((m) =>
           (m.type === "assistant" &&
+            m.id !== "ava_welcome" &&
             m.payload?.action_code !== "VOICE_REPLY" &&
             m.payload?.action_code !== "AGENT_VOICE" &&
             m.payload?.action_code !== "WELCOME") ||
