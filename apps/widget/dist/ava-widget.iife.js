@@ -1877,7 +1877,16 @@ var AVA = (() => {
       const _fireWelcome = () => {
         if (sessionStorage.getItem("ava_welcomed")) return;
         sessionStorage.setItem("ava_welcomed", "1");
-        if (!this.messages.some(m => m.id === "ava_welcome")) {
+        // Normalize any existing welcome-content message (server nudge may have arrived first
+        // with a DB UUID as id and wrong action_code). Re-tag it so lead-card filter + isChatReply work.
+        const _existingIdx = this.messages.findIndex(m => m.content === _welcomeMsg || m.id === "ava_welcome");
+        if (_existingIdx >= 0) {
+          this.messages[_existingIdx] = {
+            ...this.messages[_existingIdx],
+            id: "ava_welcome",
+            payload: { ...this.messages[_existingIdx].payload, action_code: "WELCOME", intervention_id: "ava_welcome" }
+          };
+        } else {
           this.messages.push({
             id: "ava_welcome",
             type: "assistant",
@@ -2430,13 +2439,20 @@ var AVA = (() => {
         this.currentNudge = null;
         this.hasUnread = false;
         if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
-        // Ensure welcome message exists in chat
-        if (!this.messages.some(m => m.id === "ava_welcome")) {
-          const msg = "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.";
+        // Ensure welcome message exists in chat — normalize if server nudge arrived first with wrong id/action_code
+        const _welcomeContent = "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.";
+        const _toggleWelcomeIdx = this.messages.findIndex(m => m.content === _welcomeContent || m.id === "ava_welcome");
+        if (_toggleWelcomeIdx >= 0) {
+          this.messages[_toggleWelcomeIdx] = {
+            ...this.messages[_toggleWelcomeIdx],
+            id: "ava_welcome",
+            payload: { ...this.messages[_toggleWelcomeIdx].payload, action_code: "WELCOME", intervention_id: "ava_welcome" }
+          };
+        } else {
           this.messages.push({
             id: "ava_welcome",
             type: "assistant",
-            content: msg,
+            content: _welcomeContent,
             payload: { action_code: "WELCOME", intervention_id: "ava_welcome" },
             timestamp: Date.now()
           });
