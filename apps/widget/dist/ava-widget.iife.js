@@ -1877,16 +1877,18 @@ var AVA = (() => {
       const _fireWelcome = () => {
         if (sessionStorage.getItem("ava_welcomed")) return;
         sessionStorage.setItem("ava_welcomed", "1");
-        // Normalize any existing welcome-content message (server nudge may have arrived first
-        // with a DB UUID as id and wrong action_code). Re-tag it so lead-card filter + isChatReply work.
-        const _existingIdx = this.messages.findIndex(m => m.content === _welcomeMsg || m.id === "ava_welcome");
-        if (_existingIdx >= 0) {
-          this.messages[_existingIdx] = {
-            ...this.messages[_existingIdx],
-            id: "ava_welcome",
-            payload: { ...this.messages[_existingIdx].payload, action_code: "WELCOME", intervention_id: "ava_welcome" }
-          };
-        } else {
+        // Dedup + normalize: collapse ALL welcome-content messages to one, correctly tagged.
+        let _seenW = false;
+        this.messages = this.messages.filter((m) => {
+          if (m.content !== _welcomeMsg && m.id !== "ava_welcome") return true;
+          if (_seenW) return false;
+          _seenW = true;
+          return true;
+        }).map((m) => {
+          if (m.content !== _welcomeMsg && m.id !== "ava_welcome") return m;
+          return { ...m, id: "ava_welcome", payload: { ...m.payload, action_code: "WELCOME", intervention_id: "ava_welcome", voice_script: _welcomeMsg } };
+        });
+        if (!_seenW) {
           this.messages.push({
             id: "ava_welcome",
             type: "assistant",
@@ -2424,7 +2426,9 @@ var AVA = (() => {
         this.hasUnread = false;
       } else {
         let welcomeScript = null;
-        if (this.currentNudge && !this.messages.some((m) => m.id === this.currentNudge?.intervention_id)) {
+        if (this.currentNudge &&
+            !this.messages.some((m) => m.id === this.currentNudge?.intervention_id) &&
+            !this.messages.some((m) => m.content === (this.currentNudge?.message || ""))) {
           const n = this.currentNudge;
           this.messages.push({
             id: n.intervention_id,
@@ -2439,8 +2443,18 @@ var AVA = (() => {
         this.currentNudge = null;
         this.hasUnread = false;
         if (this.signalCollapseTimeout) clearTimeout(this.signalCollapseTimeout);
-        // Ensure welcome message exists in chat — normalize if server nudge arrived first with wrong id/action_code
+        // Normalize ALL messages with welcome content so lead-card filter works correctly
         const _welcomeContent = "Hi, I am AVA. I am here to assist you with your shopping today. Just let me know if you need any assistance.";
+        let _seenWelcome = false;
+        this.messages = this.messages.filter((m) => {
+          if (m.content !== _welcomeContent && m.id !== "ava_welcome") return true;
+          if (_seenWelcome) return false; // drop duplicates
+          _seenWelcome = true;
+          return true;
+        }).map((m) => {
+          if (m.content !== _welcomeContent && m.id !== "ava_welcome") return m;
+          return { ...m, id: "ava_welcome", payload: { ...m.payload, action_code: "WELCOME", intervention_id: "ava_welcome" } };
+        });
         const _toggleWelcomeIdx = this.messages.findIndex(m => m.content === _welcomeContent || m.id === "ava_welcome");
         if (_toggleWelcomeIdx >= 0) {
           this.messages[_toggleWelcomeIdx] = {
