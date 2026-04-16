@@ -1857,13 +1857,14 @@ var AVA = (() => {
       }
       this.shadow.appendChild(this.root);
       this.render();
-      // If the demo shell reloaded the store with ?ava_fresh=1, clear the
-      // welcome lock synchronously so it fires again on this page load.
+      // Always clear the welcome lock on every page load so the welcome voice
+      // fires again after a refresh. _welcomeSpoken (in-memory) prevents double-play
+      // within the same page session. Strip ava_fresh param if present.
       (function _checkFreshParam() {
         try {
+          sessionStorage.removeItem("ava_welcomed");
           const url = new URL(window.location.href);
-          if (url.searchParams.get("ava_fresh") === "1") {
-            sessionStorage.removeItem("ava_welcomed");
+          if (url.searchParams.has("ava_fresh")) {
             url.searchParams.delete("ava_fresh");
             window.history.replaceState({}, "", url.toString());
           }
