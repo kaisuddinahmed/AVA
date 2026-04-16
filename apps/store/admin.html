@@ -407,10 +407,18 @@ function bannerCard(b, i) {
         <input class="banner-desc w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.description)}" />
       </div>
       <div class="col-span-2">
-        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Image URL</label>
-        <input class="banner-image w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.image)}" />
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Image</label>
+        <div class="flex gap-2 items-end">
+          <div class="flex-1">
+            <input type="file" class="banner-image-file w-full border border-gray-300 px-2 py-1 text-sm rounded accept-image" accept="image/*" />
+          </div>
+          <span class="text-[10px] text-gray-400">or</span>
+          <div class="flex-1">
+            <input class="banner-image w-full border border-gray-300 px-2 py-1 text-sm rounded" placeholder="Paste URL" value="${esc(b.image)}" />
+          </div>
+        </div>
       </div>
-      ${b.image ? `<div class="col-span-2"><img src="${esc(b.image)}" class="w-full h-24 object-cover rounded border border-gray-200" /></div>` : ''}
+      ${b.image ? `<div class="col-span-2"><img src="${esc(b.image)}" class="w-full h-24 object-cover rounded border border-gray-200" onerror="this.style.display='none'" /></div>` : ''}
     </div>
   </div>`;
 }
@@ -543,10 +551,18 @@ function productRow(stub, ov) {
       </div>
 
       <div class="col-span-2">
-        <label class="field-label">Image URL</label>
-        <input class="field-input prod-image" value="${esc(ov.image || '')}" placeholder="https://images.unsplash.com/..." oninput="previewImg(this,'prev-${esc(stub.id)}')" />
+        <label class="field-label">Image</label>
+        <div class="flex gap-2 mb-2">
+          <div class="flex-1">
+            <input type="file" class="field-input prod-image-file accept-image" accept="image/*" />
+          </div>
+          <span class="text-[10px] text-gray-400 self-center">or</span>
+          <div class="flex-1">
+            <input class="field-input prod-image" value="${esc(ov.image || '')}" placeholder="Paste URL" oninput="previewImg(this,'prev-${esc(stub.id)}')" />
+          </div>
+        </div>
         <div id="prev-${esc(stub.id)}" class="mt-2 ${image ? '' : 'hidden'}">
-          ${image ? `<img src="${esc(image)}" class="h-28 w-full object-cover rounded border border-gray-200" />` : ''}
+          ${image ? `<img src="${esc(image)}" class="h-28 w-full object-cover rounded border border-gray-200" onerror="this.parentElement.classList.add('hidden')" />` : ''}
         </div>
       </div>
 
@@ -684,6 +700,72 @@ style.textContent = `
   .field-input:focus { border-color:#000; outline:none; }
 `;
 document.head.appendChild(style);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE UPLOADS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFile(file) {
+  if (!file) return null;
+  try {
+    const base64 = await fileToBase64(file);
+    const res = await fetch(API.replace('/config', '/upload'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, base64Data: base64 }),
+    });
+    if (!res.ok) throw new Error('Upload failed');
+    const result = await res.json();
+    return result.path; // e.g., "/uploads/img-1234567890-abcd.png"
+  } catch (e) {
+    toast('Image upload failed: ' + e.message, true);
+    return null;
+  }
+}
+
+// Banner image file input
+document.addEventListener('change', async e => {
+  if (e.target.classList.contains('banner-image-file')) {
+    if (e.target.files.length > 0) {
+      const path = await uploadFile(e.target.files[0]);
+      if (path) {
+        const idx = parseInt(e.target.closest('[data-banner-idx]').dataset.bannerIdx);
+        const urlInput = e.target.closest('[data-banner-idx]').querySelector('.banner-image');
+        urlInput.value = path;
+        // Update preview
+        const previewDiv = e.target.closest('[data-banner-idx]').querySelector('[class*="col-span"]')?.parentElement?.lastElementChild;
+        if (previewDiv) {
+          previewDiv.innerHTML = `<img src="${path}" class="w-full h-24 object-cover rounded border border-gray-200" />`;
+        }
+        toast('Image uploaded ✓');
+      }
+    }
+  }
+
+  // Product image file input
+  if (e.target.classList.contains('prod-image-file')) {
+    if (e.target.files.length > 0) {
+      const path = await uploadFile(e.target.files[0]);
+      if (path) {
+        const form = e.target.closest('.prod-form');
+        const urlInput = form.querySelector('.prod-image');
+        urlInput.value = path;
+        // Update preview
+        previewImg(urlInput, 'prev-' + form.id.substring(5));
+        toast('Image uploaded ✓');
+      }
+    }
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT

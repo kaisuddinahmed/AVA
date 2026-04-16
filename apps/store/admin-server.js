@@ -10,6 +10,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,12 @@ const __dirname = path.dirname(__filename);
 const PORT = 3003;
 const CONFIG_FILE = path.join(__dirname, 'store-config.json');
 const ADMIN_HTML  = path.join(__dirname, 'admin.html');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -111,6 +118,47 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, { ok: true });
     } catch (e) {
       json(res, 400, { error: e.message });
+    }
+    return;
+  }
+
+  // POST /api/upload → save base64 image to disk
+  if (method === 'POST' && pathname === '/api/upload') {
+    try {
+      const data = await body(req);
+      if (!data.base64Data || !data.filename) {
+        json(res, 400, { error: 'Missing base64Data or filename' });
+        return;
+      }
+
+      // Decode base64 and save
+      const base64Str = data.base64Data.split(',').pop(); // remove data:image/png;base64, prefix if present
+      const buffer = Buffer.from(base64Str, 'base64');
+      const ext = path.extname(data.filename) || '.png';
+      const filename = `img-${Date.now()}-${randomBytes(4).toString('hex')}${ext}`;
+      const filepath = path.join(UPLOADS_DIR, filename);
+
+      fs.writeFileSync(filepath, buffer);
+      json(res, 200, { ok: true, path: `/uploads/${filename}` });
+    } catch (e) {
+      json(res, 400, { error: e.message });
+    }
+    return;
+  }
+
+  // GET /uploads/* → serve uploaded images
+  if (method === 'GET' && pathname.startsWith('/uploads/')) {
+    const filename = path.basename(pathname);
+    const filepath = path.join(UPLOADS_DIR, filename);
+    if (fs.existsSync(filepath)) {
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+      const mimeType = mimeTypes[ext] || 'image/png';
+      res.writeHead(200, { ...CORS, 'Content-Type': mimeType });
+      res.end(fs.readFileSync(filepath));
+    } else {
+      res.writeHead(404, CORS);
+      res.end('Not found');
     }
     return;
   }

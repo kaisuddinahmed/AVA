@@ -41,6 +41,9 @@ yarn-error.log*
 # Turborepo cache
 .turbo
 
+# Claude Code local settings
+.claude/
+
 # Internal docs (local reference only)
 docs/
 
