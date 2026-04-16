@@ -353,6 +353,7 @@
                 id="modal-image"
                 src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                 class="w-full h-full object-contain absolute inset-0 p-2 cursor-zoom-in"
+                onclick="zoomProductImage(this)"
               />
               <button
                 id="modal-image-zoom-btn"
@@ -582,23 +583,14 @@
       </div>
     </div>
 
-    <!-- IMAGE ZOOM MODAL -->
-    <div id="image-zoom-modal" class="fixed inset-0 z-[130] hidden">
-      <div class="absolute inset-0 bg-black/90" onclick="closeImageZoom()"></div>
-      <div class="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
-        <div class="relative w-full h-full max-w-6xl pointer-events-auto flex items-center justify-center">
-          <button
-            class="absolute top-3 right-3 z-10 w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white text-xl"
-            onclick="closeImageZoom()"
-          >
-            ✕
-          </button>
-          <img
-            id="image-zoom-target"
-            src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-            class="max-w-full max-h-full object-contain"
-          />
-        </div>
+    <!-- IMAGE ZOOM LIGHTBOX -->
+    <div id="image-zoom-lightbox" class="fixed inset-0 z-[110] hidden bg-black/95 flex items-center justify-center" onclick="if(event.target.id === 'image-zoom-lightbox') closeImageZoom()">
+      <div class="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center">
+        <img id="zoom-image" src="" class="max-w-full max-h-[90vh] object-contain" />
+        <button onclick="closeImageZoom()" class="absolute top-6 right-6 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition text-white">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-4 py-2 rounded">Click to close or press ESC</div>
       </div>
     </div>
 
@@ -1519,44 +1511,20 @@
 
       // --- MODAL LOGIC ---
       const modal = document.getElementById("product-modal");
-      const zoomModal = document.getElementById("image-zoom-modal");
-      const zoomTarget = document.getElementById("image-zoom-target");
       const modalImageEl = document.getElementById("modal-image");
       const modalZoomBtn = document.getElementById("modal-image-zoom-btn");
       let currentModalQty = 1;
-
-      window.openImageZoom = () => {
-        if (!zoomModal || !zoomTarget || !modalImageEl) return;
-        zoomTarget.src = modalImageEl.src;
-        zoomTarget.alt = modalImageEl.alt || "Product image";
-        zoomModal.classList.remove("hidden");
-        document.body.style.overflow = "hidden";
-        if (window.DemoTrigger) {
-          window.DemoTrigger("product_image_zoomed", {
-            product_id: currentModalProductId,
-            product_name: currentModalProductName,
-          });
-        }
-      };
-
-      window.closeImageZoom = () => {
-        if (!zoomModal) return;
-        zoomModal.classList.add("hidden");
-        if (modal.classList.contains("hidden")) {
-          document.body.style.overflow = "";
-        }
-      };
 
       if (modalZoomBtn) {
         modalZoomBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          window.openImageZoom();
+          window.zoomProductImage(modalImageEl);
         };
       }
 
       if (modalImageEl) {
-        modalImageEl.onclick = () => window.openImageZoom();
+        modalImageEl.onclick = () => window.zoomProductImage(modalImageEl);
       }
 
       window.closeModal = () => {
@@ -1586,6 +1554,31 @@
         currentModalProductName = null;
         currentModalProductPrice = null;
       };
+
+      window.zoomProductImage = (imgElement) => {
+        const zoomLightbox = document.getElementById('image-zoom-lightbox');
+        const zoomImage = document.getElementById('zoom-image');
+        if (zoomLightbox && zoomImage && imgElement.src) {
+          zoomImage.src = imgElement.src;
+          zoomLightbox.classList.remove('hidden');
+          document.body.style.overflow = 'hidden';
+        }
+      };
+
+      window.closeImageZoom = () => {
+        const zoomLightbox = document.getElementById('image-zoom-lightbox');
+        if (zoomLightbox) {
+          zoomLightbox.classList.add('hidden');
+          document.body.style.overflow = '';
+        }
+      };
+
+      // Keyboard shortcut: ESC to close zoom
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          window.closeImageZoom();
+        }
+      });
 
       window.updateModalQty = (change) => {
         const previousQty = currentModalQty;

@@ -13,6 +13,7 @@
       "title": "Redefine Your Look.",
       "description": "Discover statement clothing picks curated for everyday confidence.",
       "image": "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?q=80&w=1600",
+      "imageDimensions": "1600x500",
       "active": true
     },
     {
@@ -22,6 +23,7 @@
       "title": "Step Into The Season.",
       "description": "Explore fresh footwear drops designed for movement and style.",
       "image": "https://images.unsplash.com/photo-1464863979621-258859e62245?q=80&w=1600",
+      "imageDimensions": "1600x500",
       "active": true
     },
     {
@@ -31,6 +33,7 @@
       "title": "Glow With Essentials.",
       "description": "Discover beauty must-haves for daily routines and standout looks.",
       "image": "https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?q=80&w=1600",
+      "imageDimensions": "1600x500",
       "active": true
     }
   ],

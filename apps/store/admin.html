@@ -407,7 +407,7 @@ function bannerCard(b, i) {
         <input class="banner-desc w-full border border-gray-300 px-2 py-1 text-sm rounded" value="${esc(b.description)}" />
       </div>
       <div class="col-span-2">
-        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Image</label>
+        <label class="block text-[10px] font-bold uppercase text-gray-400 mb-1">Image <span class="text-gray-300 font-normal">(Recommended: 1600×500)</span></label>
         <div class="flex gap-2 items-end">
           <div class="flex-1">
             <input type="file" class="banner-image-file w-full border border-gray-300 px-2 py-1 text-sm rounded accept-image" accept="image/*" />
@@ -551,7 +551,7 @@ function productRow(stub, ov) {
       </div>
 
       <div class="col-span-2">
-        <label class="field-label">Image</label>
+        <label class="field-label">Image <span class="text-gray-300 font-normal text-xs">(Recommended: 500×600 for portrait view)</span></label>
         <div class="flex gap-2 mb-2">
           <div class="flex-1">
             <input type="file" class="field-input prod-image-file accept-image" accept="image/*" />
