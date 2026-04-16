@@ -7,6 +7,7 @@ import { httpLoggerMiddleware } from "./middleware/http-logger.middleware.js";
 import { createWSServer } from "./broadcast/ws-server.js";
 import { apiRouter } from "./api/routes.js";
 import { getJobRunner } from "./jobs/job-runner.js";
+import { SiteConfigRepo } from "@ava/db";
 const log = logger.child({ service: "server" });
 const app = express();
 // Middleware
@@ -23,6 +24,17 @@ app.use("/api", apiRouter);
 // Start HTTP server
 app.listen(config.port, () => {
     log.info({ port: config.port }, `HTTP server running on port ${config.port}`);
+    // Reset demo site to dormant on every startup so the widget stays hidden
+    // until the wizard activates it — regardless of what was left in the DB.
+    const DEMO_SITE_KEY = "avak_eff0c37fabe8d527";
+    SiteConfigRepo.getSiteConfigBySiteKey(DEMO_SITE_KEY)
+        .then((site) => {
+        if (!site)
+            return;
+        return SiteConfigRepo.setIntegrationStatus(site.id, "analyzing", null);
+    })
+        .then(() => log.info("Demo site reset to dormant on startup"))
+        .catch((err) => log.warn({ err }, "Demo site startup reset failed (non-fatal)"));
 });
 // Start WebSocket server
 const wss = createWSServer(config.wsPort);
