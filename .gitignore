@@ -44,8 +44,11 @@ yarn-error.log*
 # Claude Code local settings
 .claude/
 
-# Internal docs (local reference only)
-docs/
+# Internal docs (local reference only) — explicit exceptions for shipped reference docs
+# NOTE: must use `docs/*` (glob) not `docs/` (dir) so file-level negations below work.
+# Git can't re-include a file once its parent directory is excluded.
+docs/*
+!docs/PHASE_1_1_MANUAL_GATE.md
 
 # SQLite dev database
 *.db
@@ -55,3 +58,10 @@ docs/
 
 # Generated output (eval harness, fine-tune exports)
 data/
+
+# Demo-store runtime artifacts
+apps/store/.tmp-*
+apps/store/__pycache__/
+apps/store/uploads/
+apps/store/test-output.xlsx
+apps/store/test.csv

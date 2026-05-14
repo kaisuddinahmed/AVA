@@ -2,6 +2,9 @@
   "name": "ava",
   "private": true,
   "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -9,6 +12,9 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "ci": "npm run build && npm run typecheck && npm run test",
     "dev:server": "npm run dev --workspace=@ava/server",
     "dev:dashboard": "turbo run dev --filter=@ava/dashboard",
     "dev:widget": "turbo run dev --filter=@ava/widget",

@@ -7,6 +7,7 @@
     "dev": "DISABLE_SCHEDULER=true node --experimental-sqlite --env-file=../../.env dist/index.js",
     "dev:watch": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "test": "vitest run"
   },

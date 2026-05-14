@@ -1,4 +1,4 @@
-# CLAUDE.md — AVA
+# AGENTS.md — AVA
 
 ## Product Vision
 
@@ -12,39 +12,6 @@ AVA is a plug-and-play AI shopping assistant for e-commerce. Six core capabiliti
 6. **Merchant reporting** — revenue attribution, weekly insights, actionable recommendations
 
 Runtime flow: **ONBOARDING** (analyze → map → verify → activate) → **TRACK** → **EVALUATE** → **INTERVENE**.
-
----
-
-## Active Execution Plan (locked 2026-05-14)
-
-Phased plan locked with the user. Do not deviate, do not skip phases, gate-check before advancing. Full detail in agent memory (`project_ava_execution_plan.md`).
-
-**Phase 0 — Hardened Foundations** (1–2 wks)
-Fix duplicate `actionCode` on `Intervention` · fix `clearAgentState`/`clearSession` mismatch · audit `agent_query` WS path · repair `apps/widget/src/ui/widget-shell.ts` · widget build green · CI gates (`build` + `typecheck` + `test` non-negotiable) · repository-only DB access audit · add models (`SiteMap`, `SiteCatalog`, `SiteSelectorFingerprint`, `ConversationState`, `Recommendation`, `RecommendationOutcome`) · test scaffolding in widget/dashboard/shared/db.
-**Gate:** all builds + typechecks + tests green; zero direct Prisma calls outside `packages/db/`; all 6 new models migrated.
-
-**Phase 1 — Shopify-First Site Awareness** (5-6 wks, vertical-slice ordering)
-- **1.0** Test fixtures (Shopify+Woo PDP/category/cart + sitemap samples) · sitemap parser · page classifier (`home/category/pdp/cart/checkout/...` with confidence). Tests BEFORE features.
-- **1.1** Shopify vertical slice (smallest end-to-end): shop URL → detect Shopify → Storefront API (no OAuth yet) → ingest products → classify pages → persist `SiteMap`/`SiteCatalog` → wizard preview → activate.
-- **1.2** Crawler hardening (`robots.txt`, bounded BFS, JSON-LD/microdata/OG, fingerprint capture).
-- **1.3** Shopify Admin API + OAuth + webhooks.
-- **1.4** WooCommerce adapter (REST v3).
-- **1.5** Generic adapter + LLM DOM mapper fallback + drift detection.
-
-**Gate:** Shopify cold-start <5 min, WooCommerce <10 min, widget identifies PDP/cart/checkout on both, generic adapter functional on one non-platform site.
-
-**Phase 2 — Exceptional Voice** (3–4 wks)
-Streaming STT/TTS (<800ms first-token) · `ConversationState` (multi-turn, persisted) · proactive triggers · F-code sales playbooks (separate `sales_dialog` payload track, no 80-char limit) · MSWIM-aware prompting · barge-in · shipping/variant autofill via voice.
-**Gate:** voice recovers an abandoned cart on demo store, <1s first token, 5+ turn memory holds.
-
-**Phase 3 — Intelligent Dashboard / Action Engine** (2–3 wks)
-Dashboard reframed as approval/control room. WS push to dashboard · recommendation engine · approval UI in INTERVENE (auto-creates Experiment via existing SHA-256 split) · revenue attribution cards · weekly digest email · heatmap rendering.
-**Gate:** fresh Shopify install → wizard map <5min → live widget + voice + nudges → live dashboard → first weekly digest email lands.
-
-**Phase 4 — Distribution + Durability** (parallel, ongoing)
-GA4 + Mixpanel exports · Shopify App Store listing (OAuth + Billing API) · drift alerts → PagerDuty/email · test coverage to 60%+ on engine paths.
-
-**Strategic ordering (locked):** Shopify excellent → WooCommerce good → generic functional → other platforms later. Do not pretend generic "any-website" support is solved before Shopify ships.
 
 ---
 
@@ -126,8 +93,6 @@ Weights always load from `ScoringConfig` table — never hardcoded.
 
 ## Commands
 
-> **Node version is pinned at 20.x–22.x** (see `.nvmrc` and `engines` in `package.json`). Prisma 6 fails on Node 24 (`init_binaryTargets is not a function`). Use `nvm use` before running `db:generate`.
-
 ```bash
 # Dev
 npm run dev                  # All apps
@@ -136,12 +101,6 @@ npm run dev:demo             # Three-panel demo: wizard + store + dashboard (:40
 npm run dev:integration      # Integration wizard standalone (:3002)
 npm run dev:dashboard        # Dashboard (:3000)
 npm run dev:widget           # Widget
-
-# CI gates (non-negotiable before any PR)
-npm run build                # turbo run build — all workspaces
-npm run typecheck            # turbo run typecheck — all workspaces
-npm run test                 # turbo run test — all workspaces
-npm run ci                   # build + typecheck + test, all three must pass
 
 # Database
 npm run db:push              # Apply schema + generate Prisma client
@@ -240,3 +199,5 @@ Priority test targets: MSWIM signal calculators (known inputs → expected outpu
 - **Voice TTS/ASR logic only in designated files** — TTS fields in `payload-builder.ts`, ASR handling in `voice-responder.service.ts`.
 - **No multiple active experiments per site** — enforce at the service layer.
 - **Rollouts must use linked Experiments** — never bypass the experiment framework for traffic splitting.
+
+## Imported Claude Cowork project instructions
