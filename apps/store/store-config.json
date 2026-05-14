@@ -39,27 +39,138 @@
   ],
   "navCategories": {
     "men": [
-      { "id": "men-new-in",     "label": "New In",      "action": "new-in", "cat": "clothing",    "active": true },
-      { "id": "men-clothing",   "label": "Clothing",                        "cat": "clothing",    "active": true },
-      { "id": "men-shoes",      "label": "Shoes",                           "cat": "footwear",    "active": true },
-      { "id": "men-accessories","label": "Accessories",                     "cat": "accessories", "active": true },
-      { "id": "men-brands",     "label": "Brands",                          "cat": "lifestyle",   "active": true },
-      { "id": "men-activewear", "label": "Activewear",                      "cat": "clothing",    "active": true },
-      { "id": "men-grooming",   "label": "Grooming",                        "cat": "beauty",      "active": true },
-      { "id": "men-tailoring",  "label": "Tailoring",                       "cat": "clothing",    "active": true },
-      { "id": "men-sale",       "label": "Sale",        "action": "sale",   "cat": "clothing",    "active": true }
+      {
+        "id": "men-new-in",
+        "label": "New In",
+        "action": "new-in",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "men-clothing",
+        "label": "Clothing",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "men-shoes",
+        "label": "Shoes",
+        "cat": "footwear",
+        "active": true
+      },
+      {
+        "id": "men-accessories",
+        "label": "Accessories",
+        "cat": "accessories",
+        "active": true
+      },
+      {
+        "id": "men-brands",
+        "label": "Brands",
+        "cat": "lifestyle",
+        "active": true
+      },
+      {
+        "id": "men-activewear",
+        "label": "Activewear",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "men-grooming",
+        "label": "Grooming",
+        "cat": "beauty",
+        "active": true
+      },
+      {
+        "id": "men-tailoring",
+        "label": "Tailoring",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "men-sale",
+        "label": "Sale",
+        "action": "sale",
+        "cat": "clothing",
+        "active": true
+      }
     ],
     "women": [
-      { "id": "women-new-in",     "label": "New In",       "action": "new-in", "cat": "clothing",    "active": true },
-      { "id": "women-clothing",   "label": "Clothing",                          "cat": "clothing",    "active": true },
-      { "id": "women-dresses",    "label": "Dresses",                           "cat": "clothing",    "active": true },
-      { "id": "women-shoes",      "label": "Shoes",                             "cat": "footwear",    "active": true },
-      { "id": "women-beauty",     "label": "Face + Body",                       "cat": "beauty",      "active": true },
-      { "id": "women-accessories","label": "Accessories",                       "cat": "accessories", "active": true },
-      { "id": "women-brands",     "label": "Brands",                            "cat": "lifestyle",   "active": true },
-      { "id": "women-activewear", "label": "Activewear",                        "cat": "clothing",    "active": true },
-      { "id": "women-sale",       "label": "Sale",         "action": "sale",    "cat": "clothing",    "active": true }
+      {
+        "id": "women-new-in",
+        "label": "New In",
+        "action": "new-in",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "women-clothing",
+        "label": "Clothing",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "women-dresses",
+        "label": "Dresses",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "women-shoes",
+        "label": "Shoes",
+        "cat": "footwear",
+        "active": true
+      },
+      {
+        "id": "women-beauty",
+        "label": "Face + Body",
+        "cat": "beauty",
+        "active": true
+      },
+      {
+        "id": "women-accessories",
+        "label": "Accessories",
+        "cat": "accessories",
+        "active": true
+      },
+      {
+        "id": "women-brands",
+        "label": "Brands",
+        "cat": "lifestyle",
+        "active": true
+      },
+      {
+        "id": "women-activewear",
+        "label": "Activewear",
+        "cat": "clothing",
+        "active": true
+      },
+      {
+        "id": "women-sale",
+        "label": "Sale",
+        "action": "sale",
+        "cat": "clothing",
+        "active": true
+      }
     ]
   },
-  "productOverrides": {}
+  "productOverrides": {
+    "men-clothing-1": {
+      "name": "WAXED FINISH DENIM JACKET",
+      "price": 69.95,
+      "image": "/uploads/img-1776321451710-b4d3e583.png",
+      "description": "Regular fit denim jacket made from cotton with a waxed finish. Featuring a lapel collar and long sleeves. Welt pockets at the hip and an inside pocket detail. Elasticated trims. Zip-up front.",
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "XXL"
+      ],
+      "active": true,
+      "id": "men-clothing-1"
+    }
+  }
 }
