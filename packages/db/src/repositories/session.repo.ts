@@ -162,6 +162,135 @@ export async function getRecentSessions(limit = 20) {
   });
 }
 
+/**
+ * List sessions started after `since`, optionally filtered by siteUrl.
+ * Used by the analytics dashboard's incremental-poll endpoint.
+ */
+export async function listSessionsSince(
+  since: Date,
+  options?: { siteUrl?: string; limit?: number },
+) {
+  return prisma.session.findMany({
+    where: {
+      startedAt: { gte: since },
+      ...(options?.siteUrl ? { siteUrl: options.siteUrl } : {}),
+    },
+    orderBy: { startedAt: "desc" },
+    take: options?.limit ?? 50,
+  });
+}
+
+/**
+ * Count sessions for a site within a [start, end?) window.
+ * Used by the weekly digest for WoW comparisons.
+ */
+export async function countByPeriod(
+  siteUrl: string,
+  start: Date,
+  end?: Date,
+): Promise<number> {
+  return prisma.session.count({
+    where: {
+      siteUrl,
+      startedAt: end ? { gte: start, lt: end } : { gte: start },
+    },
+  });
+}
+
+/**
+ * Count sessions within a given ID set that actually ended without converting.
+ * Used by the nightly batch to validate abandonment-prediction accuracy.
+ */
+export async function countAbandonedInSet(sessionIds: string[]): Promise<number> {
+  if (sessionIds.length === 0) return 0;
+  return prisma.session.count({
+    where: {
+      id: { in: sessionIds },
+      totalConversions: 0,
+      status: "ended",
+    },
+  });
+}
+
+/**
+ * Distinct siteUrls that have had a session start since `since`.
+ * Used by the nightly batch to fan out per-site jobs (insights, CRO).
+ */
+export async function listActiveSiteUrlsSince(since: Date): Promise<string[]> {
+  const rows = await prisma.session.findMany({
+    where: { startedAt: { gte: since } },
+    select: { siteUrl: true },
+    distinct: ["siteUrl"],
+  });
+  return rows.map((r) => r.siteUrl);
+}
+
+/**
+ * Count sessions matching a flexible filter. Used by analytics overview endpoints.
+ */
+export async function countSessionsByFilter(filter: {
+  siteUrl?: string;
+  since?: Date;
+  status?: "active" | "idle" | "ended";
+}): Promise<number> {
+  return prisma.session.count({
+    where: {
+      ...(filter.siteUrl ? { siteUrl: filter.siteUrl } : {}),
+      ...(filter.since ? { startedAt: { gte: filter.since } } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+    },
+  });
+}
+
+/** Count sessions where voiceMuted is true (i.e., user opted out of voice). */
+export async function countVoiceMuted(filter: {
+  siteUrl?: string;
+  since?: Date;
+}): Promise<number> {
+  return prisma.session.count({
+    where: {
+      voiceMuted: true,
+      ...(filter.siteUrl ? { siteUrl: filter.siteUrl } : {}),
+      ...(filter.since ? { startedAt: { gte: filter.since } } : {}),
+    },
+  });
+}
+
+/** Count sessions that received at least one voice intervention. */
+export async function countVoiceActive(filter: {
+  siteUrl?: string;
+  since?: Date;
+}): Promise<number> {
+  return prisma.session.count({
+    where: {
+      totalVoiceInterventionsFired: { gt: 0 },
+      ...(filter.siteUrl ? { siteUrl: filter.siteUrl } : {}),
+      ...(filter.since ? { startedAt: { gte: filter.since } } : {}),
+    },
+  });
+}
+
+/** Count control-group sessions for a site (used by revenue attribution baseline). */
+export async function countControlGroup(siteUrl: string): Promise<number> {
+  return prisma.session.count({
+    where: { siteUrl, isControlSession: true },
+  });
+}
+
+/**
+ * Fetch (id, cartValue) tuples for a list of session IDs.
+ * Used by revenue attribution to look up current cart values for converted sessions.
+ */
+export async function getCartValuesByIds(
+  ids: string[],
+): Promise<Array<{ id: string; cartValue: number }>> {
+  if (ids.length === 0) return [];
+  return prisma.session.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, cartValue: true },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Analytics helpers
 // ---------------------------------------------------------------------------

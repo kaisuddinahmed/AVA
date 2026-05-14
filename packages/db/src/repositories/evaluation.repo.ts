@@ -105,6 +105,61 @@ export async function listEvaluations(options?: { limit?: number; since?: Date; 
 /**
  * Get all evaluated event IDs for a session (to avoid re-evaluating).
  */
+/**
+ * Average MSWIM signals for evaluations whose linked intervention reached the
+ * given outcome status within the window. Used by the drift detector to
+ * compute per-outcome signal calibration.
+ *
+ * `signalCalibration` callers should use this twice — once with "converted",
+ * once with "dismissed" — and diff the means.
+ */
+export async function getAvgSignalsByOutcome(
+  since: Date,
+  outcome: "converted" | "dismissed" | "ignored",
+): Promise<{
+  intentScore: number | null;
+  frictionScore: number | null;
+  clarityScore: number | null;
+  receptivityScore: number | null;
+  valueScore: number | null;
+  compositeScore: number | null;
+}> {
+  const agg = await prisma.evaluation.aggregate({
+    where: {
+      timestamp: { gte: since },
+      intervention: { status: outcome },
+    },
+    _avg: {
+      intentScore: true,
+      frictionScore: true,
+      clarityScore: true,
+      receptivityScore: true,
+      valueScore: true,
+      compositeScore: true,
+    },
+  });
+  return agg._avg;
+}
+
+/**
+ * Distinct session IDs that hit an abandonment score >= threshold since `since`.
+ * Used by the nightly batch to compute abandonment-prediction accuracy.
+ */
+export async function listHighAbandonmentSessionIds(
+  since: Date,
+  threshold: number,
+): Promise<string[]> {
+  const rows = await prisma.evaluation.findMany({
+    where: {
+      timestamp: { gte: since },
+      abandonmentScore: { gte: threshold },
+    },
+    select: { sessionId: true },
+    distinct: ["sessionId"],
+  });
+  return rows.map((r) => r.sessionId);
+}
+
 export async function getEvaluatedEventIds(
   sessionId: string
 ): Promise<string[]> {

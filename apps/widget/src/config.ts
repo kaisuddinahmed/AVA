@@ -109,6 +109,7 @@ export type WidgetState = "minimized" | "signal" | "expanded" | "hidden";
 
 // --- Outcome micro-signal types ---
 export type MicroOutcome =
+  | "cta_click"         // user clicked the CTA after seeing the intervention (positive conversion signal)
   | "not_helpful"       // explicit negative feedback on intervention
   | "more_like_this"    // preference signal on a product card
   | "soft_dismiss"      // swipe/gesture away = "not now"

@@ -3,10 +3,12 @@
 // sliding windows to detect scoring/model drift and generate alerts.
 // ============================================================================
 
-import { prisma } from "@ava/db";
 import {
   DriftSnapshotRepo,
   DriftAlertRepo,
+  ShadowComparisonRepo,
+  InterventionRepo,
+  EvaluationRepo,
 } from "@ava/db";
 import { config } from "../config.js";
 import type {
@@ -92,71 +94,29 @@ export async function computeWindowSnapshot(
 ): Promise<DriftSnapshotData> {
   const since = new Date(Date.now() - WINDOW_DURATIONS[windowType]);
 
-  // Shadow comparison aggregates
-  const shadowWhere: Record<string, unknown> = {
-    createdAt: { gte: since },
-  };
-  if (siteUrl) {
-    // Match by session's site — ShadowComparison doesn't have siteUrl directly,
-    // so we aggregate globally for now
-  }
+  // NOTE: ShadowComparison doesn't have siteUrl directly, so we aggregate
+  // globally even when siteUrl is provided. Documented limitation.
 
-  const [total, tierMatches, decisionMatches, avgDivergence] =
-    await Promise.all([
-      prisma.shadowComparison.count({ where: shadowWhere }),
-      prisma.shadowComparison.count({
-        where: { ...shadowWhere, tierMatch: true },
-      }),
-      prisma.shadowComparison.count({
-        where: { ...shadowWhere, decisionMatch: true },
-      }),
-      prisma.shadowComparison.aggregate({
-        where: shadowWhere,
-        _avg: { compositeDivergence: true },
-      }),
-    ]);
+  const shadow = await ShadowComparisonRepo.getDriftAggregatesSince(since);
+  const tierAgreementRate = shadow.total > 0 ? shadow.tierMatches / shadow.total : 1;
+  const decisionAgreementRate = shadow.total > 0 ? shadow.decisionMatches / shadow.total : 1;
 
-  const tierAgreementRate = total > 0 ? tierMatches / total : 1;
-  const decisionAgreementRate = total > 0 ? decisionMatches / total : 1;
-  const avgCompositeDivergenceVal =
-    avgDivergence._avg.compositeDivergence ?? 0;
-
-  // Signal calibration by outcome from evaluations
-  const evalWhere: Record<string, unknown> = {
-    timestamp: { gte: since },
-  };
-
-  const signalCalibration = await computeSignalCalibration(evalWhere);
+  // Signal calibration by outcome
+  const signalCalibration = await computeSignalCalibration(since);
 
   // Outcome rates from interventions
-  const interventionWhere: Record<string, unknown> = {
-    timestamp: { gte: since },
-    status: { in: ["converted", "dismissed", "ignored"] },
-  };
-
-  const [totalInterventions, convertedCount, dismissedCount] =
-    await Promise.all([
-      prisma.intervention.count({ where: interventionWhere }),
-      prisma.intervention.count({
-        where: { ...interventionWhere, status: "converted" },
-      }),
-      prisma.intervention.count({
-        where: { ...interventionWhere, status: "dismissed" },
-      }),
-    ]);
+  const outcomes = await InterventionRepo.getOutcomeCounts(since);
 
   return {
     siteUrl: siteUrl ?? null,
     windowType,
     tierAgreementRate,
     decisionAgreementRate,
-    avgCompositeDivergence: avgCompositeDivergenceVal,
-    sampleCount: total,
+    avgCompositeDivergence: shadow.avgCompositeDivergence,
+    sampleCount: shadow.total,
     ...signalCalibration,
-    conversionRate:
-      totalInterventions > 0 ? convertedCount / totalInterventions : null,
-    dismissalRate:
-      totalInterventions > 0 ? dismissedCount / totalInterventions : null,
+    conversionRate: outcomes.total > 0 ? outcomes.converted / outcomes.total : null,
+    dismissalRate: outcomes.total > 0 ? outcomes.dismissed / outcomes.total : null,
   };
 }
 
@@ -389,52 +349,25 @@ function detectAnomalies(
   return alerts;
 }
 
-async function computeSignalCalibration(evalWhere: Record<string, unknown>) {
-  // Get avg signals for converted interventions
-  const convertedEvals = await prisma.evaluation.aggregate({
-    where: {
-      ...evalWhere,
-      intervention: { status: "converted" },
-    },
-    _avg: {
-      intentScore: true,
-      frictionScore: true,
-      clarityScore: true,
-      receptivityScore: true,
-      valueScore: true,
-      compositeScore: true,
-    },
-  });
-
-  // Get avg signals for dismissed interventions
-  const dismissedEvals = await prisma.evaluation.aggregate({
-    where: {
-      ...evalWhere,
-      intervention: { status: "dismissed" },
-    },
-    _avg: {
-      intentScore: true,
-      frictionScore: true,
-      clarityScore: true,
-      receptivityScore: true,
-      valueScore: true,
-      compositeScore: true,
-    },
-  });
+async function computeSignalCalibration(since: Date) {
+  const [convertedAvg, dismissedAvg] = await Promise.all([
+    EvaluationRepo.getAvgSignalsByOutcome(since, "converted"),
+    EvaluationRepo.getAvgSignalsByOutcome(since, "dismissed"),
+  ]);
 
   return {
-    avgIntentConverted: convertedEvals._avg.intentScore,
-    avgIntentDismissed: dismissedEvals._avg.intentScore,
-    avgFrictionConverted: convertedEvals._avg.frictionScore,
-    avgFrictionDismissed: dismissedEvals._avg.frictionScore,
-    avgClarityConverted: convertedEvals._avg.clarityScore,
-    avgClarityDismissed: dismissedEvals._avg.clarityScore,
-    avgReceptivityConverted: convertedEvals._avg.receptivityScore,
-    avgReceptivityDismissed: dismissedEvals._avg.receptivityScore,
-    avgValueConverted: convertedEvals._avg.valueScore,
-    avgValueDismissed: dismissedEvals._avg.valueScore,
-    avgCompositeConverted: convertedEvals._avg.compositeScore,
-    avgCompositeDismissed: dismissedEvals._avg.compositeScore,
+    avgIntentConverted: convertedAvg.intentScore,
+    avgIntentDismissed: dismissedAvg.intentScore,
+    avgFrictionConverted: convertedAvg.frictionScore,
+    avgFrictionDismissed: dismissedAvg.frictionScore,
+    avgClarityConverted: convertedAvg.clarityScore,
+    avgClarityDismissed: dismissedAvg.clarityScore,
+    avgReceptivityConverted: convertedAvg.receptivityScore,
+    avgReceptivityDismissed: dismissedAvg.receptivityScore,
+    avgValueConverted: convertedAvg.valueScore,
+    avgValueDismissed: dismissedAvg.valueScore,
+    avgCompositeConverted: convertedAvg.compositeScore,
+    avgCompositeDismissed: dismissedAvg.compositeScore,
   };
 }
 

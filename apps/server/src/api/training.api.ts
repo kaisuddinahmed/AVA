@@ -25,7 +25,6 @@ import {
 import { TrainingDatapointRepo, InterventionFeedbackRepo, RetrainTriggerRepo } from "@ava/db";
 import { submitFineTuneJob, getFineTuneJobStatus } from "../training/fine-tune-submit.service.js";
 import { checkRetrainTriggers } from "../training/retrain-trigger.service.js";
-import { RetrainTriggerRepo } from "@ava/db";
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "api" });
@@ -295,7 +294,7 @@ export async function getFineTuneStatus(
 ): Promise<void> {
   try {
     const provider = "groq";
-    const status = await getFineTuneJobStatus(provider, req.params.jobId);
+    const status = await getFineTuneJobStatus(provider, String(req.params.jobId));
     res.json(status);
   } catch (error) {
     log.error("[Training API] Fine-tune status error:", error);

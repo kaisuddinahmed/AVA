@@ -9,7 +9,6 @@
 
 import Groq from "groq-sdk";
 import { InsightSnapshotRepo, EventRepo, InterventionRepo, SessionRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 import { config } from "../config.js";
 
 // ---------------------------------------------------------------------------
@@ -52,27 +51,12 @@ export async function generateInsightSnapshot(siteUrl: string): Promise<InsightD
   const prevPeriodStart = new Date(periodStart.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // ── 1. Aggregate this week ───────────────────────────────────────────────
-  const [sessions, frictionEvents, interventions] = await Promise.all([
-    prisma.session.findMany({
-      where: { siteUrl, startedAt: { gte: periodStart } },
-      select: { id: true, startedAt: true, totalConversions: true },
-    }),
-    prisma.trackEvent.findMany({
-      where: { siteUrl, timestamp: { gte: periodStart }, frictionId: { not: null } },
-      select: { frictionId: true, pageUrl: true },
-    }),
-    prisma.intervention.findMany({
-      where: {
-        session: { siteUrl },
-        timestamp: { gte: periodStart },
-        status: "converted",
-        cartValueAtFire: { not: null },
-      },
-      select: { cartValueAtFire: true, cartValueAtConversion: true, frictionId: true },
-    }),
+  const [sessionsAnalyzed, frictionEvents, interventions] = await Promise.all([
+    SessionRepo.countByPeriod(siteUrl, periodStart),
+    EventRepo.listFrictionEventsForSite(siteUrl, periodStart),
+    InterventionRepo.listConvertedWithCartValue(siteUrl, periodStart),
   ]);
 
-  const sessionsAnalyzed = sessions.length;
   const frictionsCaught = frictionEvents.length;
 
   // Revenue attributed: sum of cart lift on converted interventions
@@ -93,9 +77,7 @@ export async function generateInsightSnapshot(siteUrl: string): Promise<InsightD
     .map(([id]) => id);
 
   // WoW delta
-  const prevSessions = await prisma.session.count({
-    where: { siteUrl, startedAt: { gte: prevPeriodStart, lt: periodStart } },
-  });
+  const prevSessions = await SessionRepo.countByPeriod(siteUrl, prevPeriodStart, periodStart);
   const wowDeltaPct = prevSessions > 0
     ? ((sessionsAnalyzed - prevSessions) / prevSessions) * 100
     : null;

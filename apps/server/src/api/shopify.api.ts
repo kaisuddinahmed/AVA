@@ -21,7 +21,6 @@
 import type { Request, Response } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
 import { SiteConfigRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 import { logger } from "../logger.js";
 import { seedShopifyMappings } from "./shopify-mapper.service.js";
 
@@ -178,21 +177,12 @@ export async function callback(req: Request, res: Response) {
 
     // 2. Upsert SiteConfig for this Shopify store
     const siteUrl = `https://${shop}`;
-    // Avoid upsert — Prisma WASM engine crashes on upsert with the node:sqlite adapter.
-    const _existingSite = await prisma.siteConfig.findUnique({ where: { siteUrl } });
-    if (_existingSite) {
-      await prisma.siteConfig.update({ where: { siteUrl }, data: { shopifyShop: shop, shopifyAccessToken: accessToken, integrationStatus: "limited_active" } });
-    } else {
-      await prisma.siteConfig.create({ data: { siteUrl, platform: "shopify", trackingConfig: JSON.stringify({ shopify: true }), integrationStatus: "limited_active", shopifyShop: shop, shopifyAccessToken: accessToken } });
-    }
+    await SiteConfigRepo.installShopify({ siteUrl, shop, accessToken });
 
     // 3. Inject widget ScriptTag
     const scriptTagId = await injectScriptTag(shop, accessToken, cfg.widgetSrc);
     if (scriptTagId) {
-      await prisma.siteConfig.update({
-        where: { siteUrl },
-        data: { shopifyScriptTagId: scriptTagId },
-      });
+      await SiteConfigRepo.setShopifyScriptTagId(siteUrl, scriptTagId);
     }
 
     // 4. Register mandatory webhooks (fire-and-forget)
@@ -237,20 +227,13 @@ export async function webhookUninstall(req: Request, res: Response) {
     const shop = payload.myshopify_domain ?? payload.domain ?? "";
     const siteUrl = `https://${shop}`;
 
-    const siteConfig = await prisma.siteConfig.findUnique({ where: { siteUrl } });
+    const siteConfig = await SiteConfigRepo.getSiteConfigByUrl(siteUrl);
     if (siteConfig?.shopifyScriptTagId && siteConfig.shopifyAccessToken) {
       await removeScriptTag(shop, String(siteConfig.shopifyAccessToken), Number(siteConfig.shopifyScriptTagId));
     }
 
     // Clear Shopify credentials but retain site history
-    await prisma.siteConfig.update({
-      where: { siteUrl },
-      data: {
-        shopifyAccessToken: null,
-        shopifyScriptTagId: null,
-        integrationStatus: "pending",
-      },
-    }).catch(() => {});
+    await SiteConfigRepo.clearShopifyCredentials(siteUrl).catch(() => {});
 
     log.info(`[Shopify] Uninstalled for ${shop}`);
   } catch (err) {
@@ -308,10 +291,7 @@ export async function webhookShopRedact(req: Request, res: Response) {
     const shop = payload.myshopify_domain ?? payload.domain ?? "";
     const siteUrl = `https://${shop}`;
     // Mark as deleted — full data purge would run via nightly cleanup job
-    await prisma.siteConfig.updateMany({
-      where: { siteUrl },
-      data: { integrationStatus: "deleted" as string },
-    }).catch(() => {});
+    await SiteConfigRepo.markIntegrationDeletedBySiteUrl(siteUrl).catch(() => {});
     log.info(`[Shopify GDPR] shop/redact for ${shop} — marked for deletion`);
   } catch (err) {
     log.error("[Shopify GDPR] shop/redact error:", err);

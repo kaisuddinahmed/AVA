@@ -33,3 +33,11 @@ export * as VisitorAddressRepo from "./repositories/visitor-address.repo.js";
 export * as InterventionFeedbackRepo from "./repositories/intervention-feedback.repo.js";
 export * as ModelVersionRepo from "./repositories/model-version.repo.js";
 export * as RetrainTriggerRepo from "./repositories/retrain-trigger.repo.js";
+
+// Phase 0.9 — Site Awareness, Conversation State, Recommendations
+export * as SiteMapRepo from "./repositories/site-map.repo.js";
+export * as SiteCatalogRepo from "./repositories/site-catalog.repo.js";
+export * as SiteSelectorFingerprintRepo from "./repositories/site-selector-fingerprint.repo.js";
+export * as ConversationStateRepo from "./repositories/conversation-state.repo.js";
+export * as RecommendationRepo from "./repositories/recommendation.repo.js";
+export * as RecommendationOutcomeRepo from "./repositories/recommendation-outcome.repo.js";

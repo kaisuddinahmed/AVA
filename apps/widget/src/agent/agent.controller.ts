@@ -124,6 +124,11 @@ export class AgentController {
     this.opts.ws.off('message', this.wsHandler);
   }
 
+  /** Last set of products returned by the agent (used by voice disambiguation in Phase 2). */
+  getLastProducts(): ProductResult[] {
+    return this.lastProducts;
+  }
+
   // ─── Private ─────────────────────────────────────────────────────────────
 
   private submit(query: string, _source: 'voice' | 'text'): void {

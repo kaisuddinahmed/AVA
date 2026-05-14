@@ -8,6 +8,7 @@ export type CreateAnalyzerRunInput = {
   siteConfigId: string;
   status?: string;
   phase?: string;
+  source?: string;
   behaviorCoverage?: number;
   frictionCoverage?: number;
   avgConfidence?: number;

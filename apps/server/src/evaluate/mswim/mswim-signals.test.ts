@@ -188,6 +188,7 @@ describe("computeReceptivity", () => {
       isMobile: false,
       widgetOpenedVoluntarily: false,
       idleSeconds: 0,
+      hasRecentCheckoutAbandon: false,
     });
     expect(result).toBe(77);
   });
@@ -201,6 +202,7 @@ describe("computeReceptivity", () => {
       isMobile: false,
       widgetOpenedVoluntarily: false,
       idleSeconds: 0,
+      hasRecentCheckoutAbandon: false,
     });
     expect(result).toBe(50);
   });
@@ -214,6 +216,7 @@ describe("computeReceptivity", () => {
       isMobile: false,
       widgetOpenedVoluntarily: false,
       idleSeconds: 0,
+      hasRecentCheckoutAbandon: false,
     });
     // base=80 -25=55, blend: 55*0.9+50*0.1 = 49.5+5 = 54.5 → Math.round = 55
     expect(result).toBeGreaterThanOrEqual(54);
@@ -229,6 +232,7 @@ describe("computeReceptivity", () => {
       isMobile: false,
       widgetOpenedVoluntarily: true,
       idleSeconds: 0,
+      hasRecentCheckoutAbandon: false,
     });
     expect(result).toBe(86);
   });
@@ -241,6 +245,7 @@ describe("computeReceptivity", () => {
       isMobile: false,
       widgetOpenedVoluntarily: true,
       idleSeconds: 120,
+      hasRecentCheckoutAbandon: false,
     });
     expect(result).toBe(100);
   });
@@ -253,6 +258,7 @@ describe("computeReceptivity", () => {
       isMobile: true,
       widgetOpenedVoluntarily: false,
       idleSeconds: 0,
+      hasRecentCheckoutAbandon: false,
     });
     expect(result).toBeGreaterThanOrEqual(0);
   });

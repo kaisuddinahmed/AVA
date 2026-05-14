@@ -92,6 +92,20 @@ export const WsVoiceQuerySchema = z.object({
 });
 
 // ============================================================================
+// WEBSOCKET: AGENT QUERY (from widget — Story 12 shopping agent)
+// ============================================================================
+
+/** Agent query message: text/voice transcript routed to the shopping-agent service */
+export const WsAgentQuerySchema = z.object({
+  type: z.literal("agent_query"),
+  sessionId: z.string().min(1),
+  query: z.string().min(1).max(2000),
+  pageContext: z.record(z.unknown()).optional(),
+  siteConfig: z.record(z.unknown()).optional(),
+  addToCartSelector: z.string().optional(),
+});
+
+// ============================================================================
 // WEBSOCKET: INTERVENTION OUTCOME (from widget)
 // ============================================================================
 
@@ -191,6 +205,15 @@ export const IntegrationActivateSchema = z.object({
   mode: z.enum(["auto", "active", "limited_active"]).optional().default("auto"),
   criticalJourneysPassed: z.boolean().optional().default(false),
   notes: z.string().max(2000).optional(),
+});
+
+/** Phase 1.1.5 — wizard paste-URL Shopify slice */
+export const ShopifyQuickOnboardSchema = z.object({
+  shopUrl: z.string().min(1).max(500),
+  /** Public Shopify Storefront API token (NOT OAuth — Phase 1.3 adds OAuth). */
+  storefrontToken: z.string().min(1).max(200),
+  /** Optional: override max products ingested in this pass. */
+  maxProducts: z.number().int().min(1).max(5000).optional(),
 });
 
 export const IntegrationVerifySchema = z.object({

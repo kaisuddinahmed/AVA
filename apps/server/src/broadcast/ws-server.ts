@@ -2,8 +2,6 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { handleTrackMessage } from "../track/track.handlers.js";
 import { registerClient, unregisterClient } from "./channel-manager.js";
 import { WsDashboardMessageSchema, validatePayload } from "../validation/schemas.js";
-
-import { handleAgentWsMessage } from '../api/agent.api.js';
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "broadcast" });
@@ -71,8 +69,3 @@ function handleDashboardMessage(ws: WebSocket, data: string) {
     // ignore malformed JSON
   }
 }
-
-
-// TODO: add to your WS message handler:
-// import { handleAgentWsMessage } from '../api/agent.api.js';
-// case 'agent_query': await handleAgentWsMessage(ws, msg); break;

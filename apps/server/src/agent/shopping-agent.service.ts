@@ -64,7 +64,7 @@ function pushHistory(ctx: SessionContext, role: 'user' | 'assistant', content: s
   if (ctx.history.length > MAX_TURNS * 2) ctx.history.splice(0, 2); // evict oldest pair
 }
 
-export function clearSession(sessionId: string): void {
+export function clearAgentState(sessionId: string): void {
   sessions.delete(sessionId);
 }
 
@@ -162,26 +162,18 @@ async function logAgentAction(
   latencyMs: number,
 ): Promise<void> {
   try {
-    const { prisma } = await import('@ava/db');
-    await (prisma as unknown as {
-      intervention: {
-        create: (args: { data: Record<string, unknown> }) => Promise<unknown>
-      }
-    }).intervention.create({
-      data: {
-        sessionId,
-        siteUrl,
-        actionCode,
-        intentRaw: intent.raw,
-        intentAction: intent.action,
-        intentCategory: intent.category ?? null,
-        intentAttributes: JSON.stringify(intent.attributes),
-        productsShown: JSON.stringify(productsShown),
-        turnIndex,
-        latencyMs,
-        firedAt: new Date(),
-      },
+    await InterventionRepo.createAgentActionLog({
+      sessionId,
+      actionCode,
+      intentRaw: intent.raw,
+      intentAction: intent.action,
+      intentCategory: intent.category ?? null,
+      intentAttributes: JSON.stringify(intent.attributes),
+      productsShown: JSON.stringify(productsShown),
+      turnIndex,
+      latencyMs,
     });
+    void siteUrl; // captured for future AgentActionLog model
   } catch {
     // Non-fatal — training capture should never break the conversation
   }

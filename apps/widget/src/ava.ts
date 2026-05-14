@@ -19,10 +19,7 @@ import {
   renderLeadSkeleton,
   renderEmptyState,
 } from "./ui/components/panel.js";
-import {
-  renderToggleButton,
-  updateToggleButton,
-} from "./ui/components/toggle-button.js";
+import { updateToggleButton } from "./ui/components/toggle-button.js";
 
 /**
  * Derive a short contextual label for the toggle button's signal-mode strip.
@@ -105,7 +102,9 @@ export class AVAWidget {
   private _faceBadge: HTMLDivElement | null = null;
   private _faceCapsule: HTMLDivElement | null = null;
   private _isTalking = false;
-  private _lastInputWasVoice = false; // true = mic, false = keyboard → gates TTS on replies
+  private _lastInputWasVoice = false; // true = mic, false = keyboard → gates TTS on replies (Phase 2)
+  /** @internal Whether the last user input came from voice (used to gate TTS replies in Phase 2). */
+  isLastInputVoice(): boolean { return this._lastInputWasVoice; }
   private _missedVoiceCount = 0;
   private _lastVoiceScript: string | null = null;
 

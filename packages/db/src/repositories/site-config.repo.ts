@@ -22,6 +22,18 @@ export async function listSiteConfigs() {
   });
 }
 
+/**
+ * Return the siteUrl of every site that has opted in to the network flywheel.
+ * Used by the cross-merchant aggregation job (Story 10).
+ */
+export async function listOptedInSiteUrls(): Promise<string[]> {
+  const rows = await prisma.siteConfig.findMany({
+    where: { networkOptIn: true },
+    select: { siteUrl: true },
+  });
+  return rows.map((r) => r.siteUrl);
+}
+
 /** Create or update site config (upsert by siteUrl). */
 export async function upsertSiteConfig(data: {
   siteUrl: string;
@@ -60,6 +72,105 @@ export async function updateSiteConfig(
 /** Delete a site config. */
 export async function deleteSiteConfig(id: string) {
   return prisma.siteConfig.delete({ where: { id } });
+}
+
+/**
+ * Set the session-exit webhook URL and/or secret for a site.
+ * Either field may be omitted to leave the existing value unchanged.
+ */
+export async function setWebhookConfig(
+  id: string,
+  data: { webhookUrl?: string; webhookSecret?: string },
+) {
+  return prisma.siteConfig.update({
+    where: { id },
+    data: {
+      ...(data.webhookUrl !== undefined ? { webhookUrl: data.webhookUrl } : {}),
+      ...(data.webhookSecret !== undefined ? { webhookSecret: data.webhookSecret } : {}),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shopify integration (Story 11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Install or update a Shopify site config. Uses the two-call find-then-create
+ * pattern instead of upsert because the Prisma WASM engine crashes on upsert
+ * with the node:sqlite adapter.
+ */
+export async function installShopify(data: {
+  siteUrl: string;
+  shop: string;
+  accessToken: string;
+  integrationStatus?: string;
+}) {
+  const integrationStatus = data.integrationStatus ?? "limited_active";
+  const existing = await prisma.siteConfig.findUnique({ where: { siteUrl: data.siteUrl } });
+  if (existing) {
+    return prisma.siteConfig.update({
+      where: { siteUrl: data.siteUrl },
+      data: {
+        shopifyShop: data.shop,
+        shopifyAccessToken: data.accessToken,
+        integrationStatus,
+      },
+    });
+  }
+  return prisma.siteConfig.create({
+    data: {
+      siteUrl: data.siteUrl,
+      platform: "shopify",
+      trackingConfig: JSON.stringify({ shopify: true }),
+      integrationStatus,
+      shopifyShop: data.shop,
+      shopifyAccessToken: data.accessToken,
+    },
+  });
+}
+
+/** Record the ScriptTag resource id returned by Shopify after widget injection. */
+export async function setShopifyScriptTagId(siteUrl: string, scriptTagId: number) {
+  return prisma.siteConfig.update({
+    where: { siteUrl },
+    data: { shopifyScriptTagId: scriptTagId },
+  });
+}
+
+/**
+ * Called from the Shopify app-uninstall webhook. Clears Shopify credentials
+ * but retains the SiteConfig row (so history/analytics survive a reinstall).
+ */
+export async function clearShopifyCredentials(siteUrl: string) {
+  return prisma.siteConfig.update({
+    where: { siteUrl },
+    data: {
+      shopifyAccessToken: null,
+      shopifyScriptTagId: null,
+      integrationStatus: "pending",
+    },
+  });
+}
+
+/**
+ * GDPR shop/redact — mark the site as deleted. Full data purge runs from the
+ * nightly cleanup job. Uses updateMany to silently no-op if the siteUrl doesn't
+ * exist (Shopify retries this webhook).
+ */
+export async function markIntegrationDeletedBySiteUrl(siteUrl: string) {
+  return prisma.siteConfig.updateMany({
+    where: { siteUrl },
+    data: { integrationStatus: "deleted" },
+  });
+}
+
+/** Toggle a site's opt-in to the cross-merchant network flywheel (Story 10). */
+export async function setNetworkOptIn(id: string, optIn: boolean) {
+  return prisma.siteConfig.update({
+    where: { id },
+    data: { networkOptIn: optIn },
+  });
 }
 
 /** Update site integration status and optionally the active analyzer run. */

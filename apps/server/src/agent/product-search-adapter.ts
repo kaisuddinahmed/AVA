@@ -217,13 +217,13 @@ const DEMO_STORE_HOSTNAMES = ['localhost:3001', '127.0.0.1:3001'];
 export async function searchProducts(cfg: SiteAdapterConfig, intent: ParsedIntent): Promise<SearchResult> {
   if (cfg.shopifyStorefrontToken) {
     try { return { products: await shopifySearch(cfg, intent), adapterUsed: 'shopify' }; }
-    catch (e) { log.warn('[AVA agent] Shopify adapter error, falling back:', e); }
+    catch (e) { log.warn({ err: e }, '[AVA agent] Shopify adapter error, falling back'); }
   }
   if (cfg.searchUrl) {
     try {
       const products = await genericSearch(cfg, intent);
       if (products.length) return { products, adapterUsed: 'generic' };
-    } catch (e) { log.warn('[AVA agent] Generic adapter error, falling back:', e); }
+    } catch (e) { log.warn({ err: e }, '[AVA agent] Generic adapter error, falling back'); }
   }
   // Demo store: use in-memory catalog instead of fallback navigation
   try {

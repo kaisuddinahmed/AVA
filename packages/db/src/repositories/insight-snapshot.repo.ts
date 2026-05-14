@@ -43,3 +43,23 @@ export async function listInsightSnapshots(siteUrl: string, limit = 10) {
     take: limit,
   });
 }
+
+/**
+ * Return the most recent snapshot for a site that was created on or after
+ * `since` (typically today). Used by the CRO job to decide whether to upsert
+ * the day's snapshot or append to an existing one.
+ */
+export async function findLatestSince(siteUrl: string, since: Date) {
+  return prisma.insightSnapshot.findFirst({
+    where: { siteUrl, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Attach (or replace) the croFindings JSON on an existing snapshot. */
+export async function setCROFindings(id: string, croFindingsJson: string) {
+  return prisma.insightSnapshot.update({
+    where: { id },
+    data: { croFindings: croFindingsJson },
+  });
+}

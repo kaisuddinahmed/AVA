@@ -10,7 +10,6 @@
 // 0.90+ and let the live analyzer refine them over time.
 // ============================================================================
 
-import { prisma } from "@ava/db";
 import {
   BehaviorMappingRepo,
   FrictionMappingRepo,
@@ -326,9 +325,9 @@ export async function seedShopifyMappings(
     status: "completed",
     phase: "mapped",
     source: "shopify_oauth",
-    behaviorCoverage: null,
-    frictionCoverage: null,
-    confidence: null,
+    behaviorCoverage: undefined,
+    frictionCoverage: undefined,
+    avgConfidence: undefined,
   });
 
   // Build and insert behavior mappings
@@ -375,14 +374,11 @@ export async function seedShopifyMappings(
   await AnalyzerRunRepo.updateAnalyzerRun(analyzerRun.id, {
     behaviorCoverage: behaviorCoveragePercent / 100,
     frictionCoverage: frictionMappings.length / 325,
-    confidence: 0.92,
+    avgConfidence: 0.92,
   });
 
   // Promote site to active if coverage thresholds met
-  await (prisma as any).siteConfig.update({
-    where: { id: siteConfig.id },
-    data: { integrationStatus: "active" },
-  });
+  await SiteConfigRepo.setIntegrationStatus(siteConfig.id, "active", analyzerRun.id);
 
   log.info(
     {

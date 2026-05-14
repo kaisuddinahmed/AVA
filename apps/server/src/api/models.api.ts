@@ -68,7 +68,7 @@ export async function create(req: Request, res: Response): Promise<void> {
 // ---------------------------------------------------------------------------
 export async function promote(req: Request, res: Response): Promise<void> {
   try {
-    const model = await ModelVersionRepo.promoteModel(req.params.id);
+    const model = await ModelVersionRepo.promoteModel(String(req.params.id));
     res.json({ model });
   } catch (error) {
     log.error("[Models API] Promote error:", error);
@@ -81,7 +81,7 @@ export async function promote(req: Request, res: Response): Promise<void> {
 // ---------------------------------------------------------------------------
 export async function retire(req: Request, res: Response): Promise<void> {
   try {
-    const model = await ModelVersionRepo.retireModel(req.params.id);
+    const model = await ModelVersionRepo.retireModel(String(req.params.id));
     res.json({ model });
   } catch (error) {
     log.error("[Models API] Retire error:", error);

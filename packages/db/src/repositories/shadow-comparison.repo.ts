@@ -120,6 +120,32 @@ export async function getStats() {
   };
 }
 
+/**
+ * Windowed shadow-comparison aggregates used by the drift detector.
+ * Returns raw counts + avg divergence so the caller can compute rates.
+ */
+export async function getDriftAggregatesSince(since: Date): Promise<{
+  total: number;
+  tierMatches: number;
+  decisionMatches: number;
+  avgCompositeDivergence: number;
+}> {
+  const where = { createdAt: { gte: since } };
+  const [total, tierMatches, decisionMatches, avgDivergence] =
+    await Promise.all([
+      prisma.shadowComparison.count({ where }),
+      prisma.shadowComparison.count({ where: { ...where, tierMatch: true } }),
+      prisma.shadowComparison.count({ where: { ...where, decisionMatch: true } }),
+      prisma.shadowComparison.aggregate({ where, _avg: { compositeDivergence: true } }),
+    ]);
+  return {
+    total,
+    tierMatches,
+    decisionMatches,
+    avgCompositeDivergence: avgDivergence._avg.compositeDivergence ?? 0,
+  };
+}
+
 export async function getTopDivergences(limit: number = 20) {
   return prisma.shadowComparison.findMany({
     where: { decisionMatch: false },

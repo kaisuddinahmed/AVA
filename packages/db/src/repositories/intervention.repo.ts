@@ -167,3 +167,77 @@ export async function listInterventions(options?: { limit?: number; since?: Date
     take: options?.limit ?? 100,
   });
 }
+
+/**
+ * Fire-and-forget training-log write for the conversational shopping agent.
+ * Caller wraps in try/catch — failures here must NEVER interrupt the
+ * conversation flow. Note: callers historically passed fields that don't
+ * match the Intervention schema (siteUrl, firedAt) — those are dropped here.
+ * TODO(Phase 2): align this with the real Intervention contract or move
+ * to a dedicated AgentActionLog model.
+ */
+export async function createAgentActionLog(data: {
+  sessionId: string;
+  actionCode: string;
+  intentRaw?: string;
+  intentAction?: string;
+  intentCategory?: string | null;
+  intentAttributes?: string;
+  productsShown?: string;
+  turnIndex?: number;
+  latencyMs?: number;
+}): Promise<unknown> {
+  return (prisma as unknown as {
+    intervention: {
+      create: (args: { data: Record<string, unknown> }) => Promise<unknown>;
+    };
+  }).intervention.create({ data });
+}
+
+/**
+ * Outcome counts for interventions in a terminal state since `since`.
+ * Used by the drift detector to compute conversion/dismissal rates.
+ */
+export async function getOutcomeCounts(since: Date): Promise<{
+  total: number;
+  converted: number;
+  dismissed: number;
+}> {
+  const baseWhere = {
+    timestamp: { gte: since },
+    status: { in: ["converted", "dismissed", "ignored"] },
+  };
+  const [total, converted, dismissed] = await Promise.all([
+    prisma.intervention.count({ where: baseWhere }),
+    prisma.intervention.count({ where: { ...baseWhere, status: "converted" } }),
+    prisma.intervention.count({ where: { ...baseWhere, status: "dismissed" } }),
+  ]);
+  return { total, converted, dismissed };
+}
+
+/**
+ * Converted interventions with cart values populated, scoped to a site + window.
+ * Used by the weekly insight digest to compute attributed revenue.
+ */
+export async function listConvertedWithCartValue(
+  siteUrl: string,
+  since: Date,
+): Promise<Array<{
+  cartValueAtFire: number | null;
+  cartValueAtConversion: number | null;
+  frictionId: string;
+}>> {
+  return prisma.intervention.findMany({
+    where: {
+      session: { siteUrl },
+      timestamp: { gte: since },
+      status: "converted",
+      cartValueAtFire: { not: null },
+    },
+    select: {
+      cartValueAtFire: true,
+      cartValueAtConversion: true,
+      frictionId: true,
+    },
+  });
+}

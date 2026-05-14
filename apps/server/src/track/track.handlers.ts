@@ -2,9 +2,11 @@ import type { WebSocket } from "ws";
 import { processTrackEvent } from "./track.service.js";
 import { recordInterventionOutcome } from "../intervene/intervene.service.js";
 import { handleVoiceQuery } from "../voice/voice-responder.service.js";
+import { handleAgentWsMessage } from "../api/agent.api.js";
 import {
   WsWidgetMessageSchema,
   WsVoiceQuerySchema,
+  WsAgentQuerySchema,
   InterventionOutcomeSchema,
   InterventionFeedbackSchema,
   validatePayload,
@@ -26,6 +28,22 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
     const result = validatePayload(WsWidgetMessageSchema, raw);
 
     if (!result.success) {
+      // Maybe it's an agent query (Story 12 shopping agent)
+      const agentQueryResult = validatePayload(WsAgentQuerySchema, raw);
+      if (agentQueryResult.success) {
+        handleAgentWsMessage(ws, agentQueryResult.data as Record<string, unknown>)
+          .catch((error) => {
+            log.error("[Track] Agent query error:", error);
+            ws.send(
+              JSON.stringify({
+                type: "agent_error",
+                error: "Failed to process agent query",
+              }),
+            );
+          });
+        return;
+      }
+
       // Maybe it's a voice query (Phase 2 ASR)
       const voiceQueryResult = validatePayload(WsVoiceQuerySchema, raw);
       if (voiceQueryResult.success) {

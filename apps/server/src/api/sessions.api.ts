@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { SessionRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 import { emitSessionExitWebhook } from "../webhooks/webhook.service.js";
 import { logger } from "../logger.js";
 
@@ -14,14 +13,7 @@ export async function listSessions(req: Request, res: Response) {
     // If a "since" timestamp is provided, only return sessions started after it
     if (sinceParam) {
       const sinceDate = new Date(sinceParam);
-      const sessions = await prisma.session.findMany({
-        where: {
-          startedAt: { gte: sinceDate },
-          ...(siteUrl ? { siteUrl } : {}),
-        },
-        orderBy: { startedAt: "desc" },
-        take: 50,
-      });
+      const sessions = await SessionRepo.listSessionsSince(sinceDate, { siteUrl });
       res.json({ sessions });
       return;
     }
@@ -31,7 +23,7 @@ export async function listSessions(req: Request, res: Response) {
       : await SessionRepo.getRecentSessions(20);
     res.json({ sessions });
   } catch (error) {
-    log.error("[API] List sessions error:", error);
+    log.error({ err: error }, "[API] List sessions error");
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -45,7 +37,7 @@ export async function getSession(req: Request, res: Response) {
     }
     res.json({ session });
   } catch (error) {
-    log.error("[API] Get session error:", error);
+    log.error({ err: error }, "[API] Get session error");
     res.status(500).json({ error: "Internal server error" });
   }
 }
@@ -58,7 +50,7 @@ export async function endSession(req: Request, res: Response) {
     emitSessionExitWebhook(sessionId).catch(() => {});
     res.json({ ok: true });
   } catch (error) {
-    log.error("[API] End session error:", error);
+    log.error({ err: error }, "[API] End session error");
     res.status(500).json({ error: "Internal server error" });
   }
 }

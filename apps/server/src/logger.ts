@@ -79,16 +79,20 @@ function write(level: LogLevel, ctx: LogContext, msg: string): void {
 }
 
 export interface Logger {
-  debug(ctx: LogContext | string, msg?: string): void;
-  info(ctx: LogContext | string, msg?: string): void;
-  warn(ctx: LogContext | string, msg?: string): void;
-  error(ctx: LogContext | string, msg?: string): void;
+  debug(ctx: LogContext | string, msg?: unknown): void;
+  info(ctx: LogContext | string, msg?: unknown): void;
+  warn(ctx: LogContext | string, msg?: unknown): void;
+  error(ctx: LogContext | string, msg?: unknown): void;
   child(bindings: LogContext): Logger;
 }
 
-function normalizeArgs(ctxOrMsg: LogContext | string, msg?: string): [LogContext, string] {
-  if (typeof ctxOrMsg === "string") return [{}, ctxOrMsg];
-  return [ctxOrMsg, msg ?? ""];
+function normalizeArgs(ctxOrMsg: LogContext | string, msg?: unknown): [LogContext, string] {
+  if (typeof ctxOrMsg === "string") {
+    if (msg === undefined) return [{}, ctxOrMsg];
+    if (typeof msg === "string") return [{}, `${ctxOrMsg} ${msg}`];
+    return [{ err: msg }, ctxOrMsg];
+  }
+  return [ctxOrMsg, typeof msg === "string" ? msg : ""];
 }
 
 function createLogger(bindings: LogContext = {}): Logger {

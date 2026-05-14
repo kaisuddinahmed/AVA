@@ -8,7 +8,6 @@
 
 import { createHmac } from "crypto";
 import { WebhookDeliveryRepo, SiteConfigRepo, SessionRepo, EventRepo, EvaluationRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 
 // ---------------------------------------------------------------------------
 // Payload shape

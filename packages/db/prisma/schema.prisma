@@ -9,9 +9,9 @@ generator client {
 }
 
 datasource db {
-  // DATABASE_PROVIDER=sqlite  (local dev)
-  // DATABASE_PROVIDER=postgresql  (production)
-  provider = env("DATABASE_PROVIDER")
+  // Prisma does not support env() for datasource.provider.
+  // This schema is the local/dev SQLite schema used by the Phase 0 gate.
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -173,11 +173,7 @@ model Intervention {
   cartValueAtFire        Float?  // null on pre-migration records
   cartValueAtConversion  Float?  // captured when outcome = converted
 
-  @@index([sessionId, timestamp])
-  @@index([status])
-  @@index([type, status])
   // Story 12 — agent action fields
-  actionCode       String?
   intentRaw        String?
   intentAction     String?
   intentCategory   String?
@@ -185,6 +181,10 @@ model Intervention {
   productsShown    String?  // JSON: string[] of product IDs
   turnIndex        Int?
   latencyMs        Int?
+
+  @@index([sessionId, timestamp])
+  @@index([status])
+  @@index([type, status])
 }
 
 // ---------------------------------------------------------------------------
@@ -816,4 +816,178 @@ model RetrainTrigger {
 
   @@index([status])
   @@index([triggeredAt])
+}
+
+// ============================================================================
+// PHASE 0.9 — Site Awareness, Conversation State, Recommendations (locked 2026-05-14)
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// SiteMap — output of the crawler service (Phase 1).
+// One row per (siteUrl, pageType). Records the URL pattern, sampled URLs,
+// and key selectors discovered for that page type. Used by the widget and
+// by adapters to recognize what page the visitor is on.
+// ---------------------------------------------------------------------------
+model SiteMap {
+  id            String   @id @default(uuid())
+  siteUrl       String
+  pageType      String   // home | category | search_results | pdp | cart | checkout | account | other
+  urlPattern    String   // e.g. "/products/:handle" — Shopify; "/?p=:id" — Woo
+  sampleUrls    String   // JSON: string[] of crawled URLs that matched
+  keySelectors  String   // JSON: { addToCart?: string, priceEl?: string, ... }
+  pageCount     Int      @default(0) // how many URLs matched on the last crawl
+  lastCrawledAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([siteUrl, pageType])
+  @@index([siteUrl])
+  @@index([pageType])
+}
+
+// ---------------------------------------------------------------------------
+// SiteCatalog — product/variant catalog ingested from a site (Phase 1).
+// Source: Shopify Storefront/Admin API, WooCommerce REST, or generic crawl
+// (JSON-LD/microdata/OG). One row per product. Variants stored as JSON.
+// Refreshed nightly; webhook-updated for Shopify when subscriptions are live.
+// ---------------------------------------------------------------------------
+model SiteCatalog {
+  id              String   @id @default(uuid())
+  siteUrl         String
+  externalId      String   // platform product ID (Shopify gid, Woo post ID, JSON-LD @id)
+  handle          String?  // URL slug
+  title           String
+  description     String?
+  vendor          String?
+  productType     String?
+  tags            String?  // JSON: string[]
+  imageUrl        String?
+  url             String?  // canonical PDP URL
+  priceMin        Float?
+  priceMax        Float?
+  currency        String   @default("USD")
+  variants        String   // JSON: Variant[] { id, title, sku, price, inventory, options }
+  availability    String   @default("in_stock") // in_stock | out_of_stock | partial
+  source          String   // shopify_admin | shopify_storefront | woocommerce_rest | json_ld | manual
+  lastIngestedAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([siteUrl, externalId])
+  @@index([siteUrl])
+  @@index([siteUrl, availability])
+  @@index([handle])
+}
+
+// ---------------------------------------------------------------------------
+// SiteSelectorFingerprint — DOM fingerprint baseline per page type (Phase 1).
+// Captured on widget load, compared to baseline on subsequent loads. When
+// drift exceeds threshold, raises a `SelectorDrift` alert and triggers the
+// LLM DOM mapper to re-derive selectors.
+// ---------------------------------------------------------------------------
+model SiteSelectorFingerprint {
+  id              String   @id @default(uuid())
+  siteUrl         String
+  pageType        String   // matches SiteMap.pageType
+  fingerprintHash String   // SHA-256 of normalized DOM skeleton
+  fingerprintData String   // JSON: { tagCounts, classFrequencies, knownSelectors, ... }
+  selectors       String   // JSON: { addToCart, price, productTitle, cartCount, ... }
+  driftCount      Int      @default(0)
+  lastDriftAt     DateTime?
+  lastCheckedAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([siteUrl, pageType])
+  @@index([siteUrl])
+  @@index([lastDriftAt])
+}
+
+// ---------------------------------------------------------------------------
+// ConversationState — multi-turn shopping-agent state per session (Phase 2).
+// Persisted between requests so voice/text conversation context survives a
+// page reload. Cleared when the session ends.
+//
+// NOTE: stored fields may contain user utterances. Treat as session-bounded;
+// purge on session.status=ended. Never log raw transcript fields.
+// ---------------------------------------------------------------------------
+model ConversationState {
+  id               String   @id @default(uuid())
+  sessionId        String   @unique
+  siteUrl          String
+  turnCount        Int      @default(0)
+  turns            String   @default("[]") // JSON: { role, content, timestamp }[]
+  productContext   String?  // JSON: last set of products surfaced
+  comparisonSet    String?  // JSON: products user is comparing
+  objections       String?  // JSON: string[] of objections raised
+  constraints      String?  // JSON: { size?, budget?, shipping?, ... }
+  lastIntent       String?  // last parsed intent action
+  lastActivityAt   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([siteUrl])
+  @@index([lastActivityAt])
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation — emitted by the recommendation engine (Phase 3).
+// Each row is "AVA suggests action X for friction Y on site Z, expecting lift
+// L%". Merchants review in the INTERVENE tab and approve/reject. Approval
+// auto-creates a linked Experiment using the existing SHA-256 split.
+// ---------------------------------------------------------------------------
+model Recommendation {
+  id                  String   @id @default(uuid())
+  siteUrl             String
+  frictionId          String   // F-code being addressed
+  interventionType    String   // passive | nudge | active | escalate
+  actionCode          String   // proposed actionCode for the intervention
+  payloadTemplate     String   // JSON: template payload for the widget
+  rationale           String   // human-readable why
+  expectedLiftPct     Float    // estimated conversion delta vs control
+  confidence          Float    // 0..1
+  sampleSizeBasis     Int      // sessions analyzed to produce this rec
+  status              String   @default("pending") // pending | approved | rejected | active | archived
+  approvedExperimentId String? @unique // FK to Experiment once approved
+  approvedAt          DateTime?
+  rejectedAt          DateTime?
+  rejectedReason      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  outcomes RecommendationOutcome[]
+
+  @@index([siteUrl, status])
+  @@index([siteUrl, frictionId])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// RecommendationOutcome — A/B result snapshot for an approved Recommendation.
+// One row per measurement window (typically once the linked experiment hits
+// minSampleSize or is concluded). Feeds the weekly digest and revenue
+// attribution cards on the dashboard.
+// ---------------------------------------------------------------------------
+model RecommendationOutcome {
+  id                  String   @id @default(uuid())
+  recommendationId    String
+  recommendation      Recommendation @relation(fields: [recommendationId], references: [id])
+  experimentId        String   // links to Experiment.id
+  windowStart         DateTime
+  windowEnd           DateTime
+  variantSessions     Int      // sessions exposed to the recommendation
+  controlSessions     Int      // sessions in the control arm
+  variantConversions  Int
+  controlConversions  Int
+  conversionDeltaPct  Float    // (variantCR - controlCR) / controlCR * 100
+  attributedRevenue   Float    @default(0)
+  pValue              Float?
+  decision            String?  // ship | rollback | extend | inconclusive
+  decidedAt           DateTime?
+  createdAt           DateTime @default(now())
+
+  @@index([recommendationId])
+  @@index([experimentId])
+  @@index([decision])
+  @@index([createdAt])
 }

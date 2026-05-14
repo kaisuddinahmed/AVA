@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { EvaluationRepo, InterventionRepo, EventRepo, SessionRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 import { SEVERITY_SCORES } from "@ava/shared";
 import { logger } from "../logger.js";
 
@@ -98,24 +97,7 @@ export async function getOverview(req: Request, res: Response): Promise<void> {
   try {
     // Optional "since" filter — only count data created after this timestamp
     const sinceDate = parseSince(req);
-    const sinceFilter = sinceDate ? { gte: sinceDate } : undefined;
     const siteUrl = parseSiteUrl(req);
-
-    const sessionWhere = {
-      ...(sinceFilter ? { startedAt: sinceFilter } : {}),
-      ...(siteUrl ? { siteUrl } : {}),
-    };
-
-    const activeSessionWhere = {
-      status: "active" as const,
-      ...(sinceFilter ? { startedAt: sinceFilter } : {}),
-      ...(siteUrl ? { siteUrl } : {}),
-    };
-
-    const eventWhere = {
-      ...(sinceFilter ? { timestamp: sinceFilter } : {}),
-      ...(siteUrl ? { siteUrl } : {}),
-    };
 
     const evaluationsPromise = siteUrl
       ? EvaluationRepo.getEvaluationsBySite(siteUrl, 1000).then((rows) =>
@@ -127,9 +109,9 @@ export async function getOverview(req: Request, res: Response): Promise<void> {
       await Promise.all([
         InterventionRepo.listInterventions({ limit: 1000, since: sinceDate, siteUrl }),
         evaluationsPromise,
-        prisma.session.count({ where: sessionWhere }),
-        prisma.session.count({ where: activeSessionWhere }),
-        prisma.trackEvent.count({ where: eventWhere }),
+        SessionRepo.countSessionsByFilter({ siteUrl, since: sinceDate }),
+        SessionRepo.countSessionsByFilter({ siteUrl, since: sinceDate, status: "active" }),
+        EventRepo.countEventsByFilter({ siteUrl, since: sinceDate }),
       ]);
 
     // Intervention efficiency
@@ -351,18 +333,12 @@ export async function getRetention(req: Request, res: Response): Promise<void> {
 export async function getVoiceAnalytics(req: Request, res: Response): Promise<void> {
   try {
     const sinceDate = parseSince(req);
-    const sinceFilter = sinceDate ? { gte: sinceDate } : undefined;
     const siteUrl = parseSiteUrl(req);
-
-    // Session-level where clause (for voiceMuted / totalVoiceInterventionsFired counts)
-    const sessionWhere: Record<string, unknown> = {};
-    if (sinceFilter) sessionWhere.startedAt = sinceFilter;
-    if (siteUrl) sessionWhere.siteUrl = siteUrl;
 
     const [allInterventions, mutedSessions, voiceActiveSessions] = await Promise.all([
       InterventionRepo.listInterventions({ limit: 5000, since: sinceDate, siteUrl }),
-      prisma.session.count({ where: { ...sessionWhere, voiceMuted: true } }),
-      prisma.session.count({ where: { ...sessionWhere, totalVoiceInterventionsFired: { gt: 0 } } }),
+      SessionRepo.countVoiceMuted({ siteUrl, since: sinceDate }),
+      SessionRepo.countVoiceActive({ siteUrl, since: sinceDate }),
     ]);
 
     // Partition interventions into three buckets:
@@ -579,13 +555,8 @@ export async function getRevenueAttribution(req: Request, res: Response): Promis
     // Fetch current cart values for sessions that converted
     const sessionIds = [...new Set(converted.map((iv) => iv.sessionId))];
     const sessionValues: Record<string, number> = {};
-    if (sessionIds.length > 0) {
-      const sessions = await prisma.session.findMany({
-        where: { id: { in: sessionIds } },
-        select: { id: true, cartValue: true },
-      });
-      for (const s of sessions) sessionValues[s.id] = s.cartValue;
-    }
+    const sessions = await SessionRepo.getCartValuesByIds(sessionIds);
+    for (const s of sessions) sessionValues[s.id] = s.cartValue;
 
     const byFrictionMap: Record<string, { conversions: number; totalLift: number }> = {};
     let totalAttributedRevenue = 0;
@@ -612,7 +583,7 @@ export async function getRevenueAttribution(req: Request, res: Response): Promis
 
     // Control group session count — used for conversionLiftVsControl display
     const controlGroupSessions = siteUrl
-      ? await prisma.session.count({ where: { siteUrl, isControlSession: true } })
+      ? await SessionRepo.countControlGroup(siteUrl)
       : 0;
 
     res.json({
