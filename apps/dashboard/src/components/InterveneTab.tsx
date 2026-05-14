@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, type CSSProperties } from 'react';
 import { useApi, apiFetch } from '../hooks/use-api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -360,6 +360,124 @@ function ScheduledJobsPanel({ jobsNext, jobRuns, loading, triggerJob }: { jobsNe
   );
 }
 
+function actionBtn(color: string): CSSProperties {
+  return {
+    fontSize: 9,
+    padding: '3px 9px',
+    background: `${color}1a`,
+    border: `1px solid ${color}55`,
+    borderRadius: 3,
+    cursor: 'pointer',
+    color,
+    fontFamily: 'var(--font-mono)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  };
+}
+
+function ExperimentsPanel({
+  experiments, loading, expAction,
+}: {
+  experiments: Experiments | null;
+  loading: string | null;
+  expAction: (id: string, action: string) => void;
+}) {
+  const list = (experiments?.experiments ?? []) as Array<Experiment & Record<string, unknown>>;
+  if (list.length === 0) return <EmptySlate icon="🧪" message="No experiments yet" />;
+  return (
+    <div className="scroll-list" style={{ maxHeight: 360 }}>
+      {list.map(exp => {
+        const trafficPct = (exp as { trafficPercent?: number }).trafficPercent ?? exp.trafficSplit;
+        const metric = (exp as { primaryMetric?: string }).primaryMetric;
+        const isRunning = exp.status === 'running';
+        const statusBg = isRunning ? 'rgba(53,211,161,0.18)' : 'rgba(255,255,255,0.06)';
+        const statusFg = isRunning ? 'var(--accent)' : 'var(--muted)';
+        return (
+          <div key={exp.id} style={{ padding: '9px 0', borderBottom: '1px solid rgba(26,61,74,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{exp.name}</span>
+              {exp.winner && <span style={{ fontSize: 9, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>winner: {exp.winner}</span>}
+              <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 3, background: statusBg, color: statusFg, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{exp.status}</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+              {trafficPct != null && <>Traffic: {trafficPct}%</>}
+              {metric && <> · Metric: {metric}</>}
+              {exp.variantA && exp.variantB && <> · {exp.variantA} vs {exp.variantB}</>}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {exp.status === 'draft' && (
+                <button onClick={() => expAction(exp.id, 'start')} disabled={!!loading} style={actionBtn('var(--accent)')}>Start</button>
+              )}
+              {exp.status === 'running' && (
+                <>
+                  <button onClick={() => expAction(exp.id, 'pause')} disabled={!!loading} style={actionBtn('var(--warn)')}>Pause</button>
+                  <button onClick={() => expAction(exp.id, 'end')} disabled={!!loading} style={actionBtn('var(--muted)')}>End</button>
+                </>
+              )}
+              {exp.status === 'paused' && (
+                <button onClick={() => expAction(exp.id, 'start')} disabled={!!loading} style={actionBtn('var(--accent)')}>Resume</button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RolloutsPanel({
+  rollouts, loading, rolloutAction,
+}: {
+  rollouts: Rollouts | null;
+  loading: string | null;
+  rolloutAction: (id: string, action: string) => void;
+}) {
+  const list = (rollouts?.rollouts ?? []) as Array<Rollout & Record<string, unknown>>;
+  if (list.length === 0) return <EmptySlate icon="🚦" message="No rollouts yet" />;
+  return (
+    <div className="scroll-list" style={{ maxHeight: 360 }}>
+      {list.map(r => {
+        const color = rolloutStatusColor(r.status);
+        const stage = (r as { currentStage?: number }).currentStage;
+        const changeType = (r as { changeType?: string }).changeType;
+        const health = (r as { lastHealthStatus?: string }).lastHealthStatus;
+        return (
+          <div key={r.id} style={{ padding: '9px 0', borderBottom: '1px solid rgba(26,61,74,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', flex: 1 }}>{r.name}</span>
+              {r.percentage != null && <span style={{ fontSize: 9, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{r.percentage}%</span>}
+              <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 3, background: `${color}22`, color, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{r.status}</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+              {stage != null && <>Stage {stage + 1}</>}
+              {changeType && <> · {changeType}</>}
+              {health && <> · health: {health}</>}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {r.status === 'pending' && (
+                <button onClick={() => rolloutAction(r.id, 'start')} disabled={!!loading} style={actionBtn('var(--accent)')}>Start</button>
+              )}
+              {r.status === 'rolling' && (
+                <>
+                  <button onClick={() => rolloutAction(r.id, 'promote')} disabled={!!loading} style={actionBtn('var(--accent)')}>Promote</button>
+                  <button onClick={() => rolloutAction(r.id, 'pause')} disabled={!!loading} style={actionBtn('var(--warn)')}>Pause</button>
+                  <button onClick={() => rolloutAction(r.id, 'rollback')} disabled={!!loading} style={actionBtn('var(--tier-escalate)')}>Rollback</button>
+                </>
+              )}
+              {r.status === 'paused' && (
+                <>
+                  <button onClick={() => rolloutAction(r.id, 'start')} disabled={!!loading} style={actionBtn('var(--accent)')}>Resume</button>
+                  <button onClick={() => rolloutAction(r.id, 'rollback')} disabled={!!loading} style={actionBtn('var(--tier-escalate)')}>Rollback</button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function NetworkPanel({ networkStatus }: { networkStatus: NetworkStatus | null }) {
   if (!networkStatus) return <EmptySlate icon="🌐" message="Network data loading…" />;
   return (
@@ -382,6 +500,8 @@ const INTERVENE_TABS = [
   { id: 'analytics',    label: 'Intervention Analytics' },
   { id: 'voice',        label: 'Voice' },
   { id: 'webhooks',     label: 'Webhook Deliveries' },
+  { id: 'experiments',  label: 'A/B Experiments' },
+  { id: 'rollouts',     label: 'Gradual Rollouts' },
   { id: 'training',     label: 'Training Data' },
   { id: 'drift',        label: 'Drift Detection' },
   { id: 'jobs',         label: 'Scheduled Jobs' },
@@ -539,6 +659,8 @@ export function InterveneTab({
             )}
             {analyticsTab === 'voice'    && <VoicePanel voiceData={voiceData ?? null} />}
             {analyticsTab === 'webhooks' && <WebhookPanel webhookStats={webhookStats} />}
+            {analyticsTab === 'experiments' && <ExperimentsPanel experiments={experiments ?? null} loading={loading} expAction={expAction} />}
+            {analyticsTab === 'rollouts' && <RolloutsPanel rollouts={rollouts ?? null} loading={loading} rolloutAction={rolloutAction} />}
             {analyticsTab === 'training' && <TrainingDataPanel trainingStats={trainingStats ?? null} qualityStats={qualityStats ?? null} />}
             {analyticsTab === 'drift'    && <DriftPanel driftStatus={driftStatus ?? null} driftAlerts={driftAlerts ?? null} loading={loading} runDriftCheck={runDriftCheck} ackAlert={ackAlert} />}
             {analyticsTab === 'jobs'     && <ScheduledJobsPanel jobsNext={jobsNext ?? null} jobRuns={jobRuns ?? null} loading={loading} triggerJob={triggerJob} />}

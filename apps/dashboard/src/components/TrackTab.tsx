@@ -399,11 +399,6 @@ function describeEvent(e: TrackEvent): string {
       return `Rage-clicked ${count} times on ${(sigStr(sig, 'target_tag') || 'element').toLowerCase()}`;
     }
 
-    case 'search_query': {
-      const q = sigStr(sig, 'query');
-      return q ? `Searched for "${q}"` : 'Search performed';
-    }
-
     case 'hover_intent':
       return product ? `Hover intent on ${product}` : 'Hover intent detected';
 

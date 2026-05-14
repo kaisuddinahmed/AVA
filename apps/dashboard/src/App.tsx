@@ -32,7 +32,7 @@ import { TrackTab } from "./components/TrackTab";
 import { EvaluateTab } from "./components/EvaluateTab";
 import { InterveneTab } from "./components/InterveneTab";
 import { InactiveOverlay } from "./components/InactiveOverlay";
-import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse, NetworkStatus } from "./types";
+import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse, NetworkStatus, TabId } from "./types";
 
 export function App() {
   const { activated, activatedAt } = useActivation();
@@ -203,7 +203,7 @@ export function App() {
         <>
           <TabBar
             active={state.activeTab}
-            onSelect={(tab) => dispatch({ type: "SET_TAB", tab })}
+            onSelect={(tab) => dispatch({ type: "SET_TAB", tab: tab as TabId })}
             counts={{
               track:     state.eventCount,
               evaluate:  state.evalCount,
@@ -212,7 +212,7 @@ export function App() {
           />
           {state.activeTab === "track" && (
             <TabErrorBoundary tab="track"><TrackTab
-              events={state.events}
+              events={state.events as any}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
               trafficData={trafficData?.breakdown ?? null}
@@ -221,34 +221,34 @@ export function App() {
               flowData={flowData?.flows ?? null}
               pageStatsData={pageStatsData?.pages ?? null}
               clickPoints={clickData?.points ?? null}
-              insightsSnapshot={insightsData?.snapshot ?? null}
+              insightsSnapshot={insightsData?.snapshot as any ?? null}
               croFindings={croData?.findings ?? null}
-              frictionAnalytics={frictionAnalytics ?? null}
-              revenueAttribution={revenueAttribution ?? null}
+              frictionAnalytics={frictionAnalytics as any ?? null}
+              revenueAttribution={revenueAttribution as any ?? null}
             /></TabErrorBoundary>
           )}
 
           {state.activeTab === "evaluate" && (
             <TabErrorBoundary tab="evaluate"><EvaluateTab
-              evaluations={state.evaluations}
+              evaluations={state.evaluations as any}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
               shadowStats={shadowStats ?? null}
               shadowDivergences={shadowDivergences?.data ?? null}
-              frictionAnalytics={frictionAnalytics ?? null}
-              revenueAttribution={revenueAttribution ?? null}
+              frictionAnalytics={frictionAnalytics as any ?? null}
+              revenueAttribution={revenueAttribution as any ?? null}
             /></TabErrorBoundary>
           )}
 
           {state.activeTab === "intervene" && (
             <TabErrorBoundary tab="intervene"><InterveneTab
-              interventions={state.interventions}
+              interventions={state.interventions as any}
               selectedSession={state.selectedSessionId}
               overview={overview ?? null}
               sessions={sessions}
               analyticsParams={analyticsParams}
-              webhookStats={webhookStats ?? null}
-              networkStatus={networkStatus ?? null}
+              webhookStats={webhookStats as any ?? null}
+              networkStatus={networkStatus as any ?? null}
             /></TabErrorBoundary>
           )}
         </>

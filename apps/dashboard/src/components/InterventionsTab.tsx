@@ -580,7 +580,7 @@ export function InterventionsTab({ interventions, selectedSession, overview, ses
             </div>
           </div>
         ) : (
-          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No fine-tuned model active — using base model ({config.groq?.model ?? "llama-3.3-70b-versatile"})</p></div>
+          <div className="empty-state" style={{ padding: 16 }}><p className="muted">No fine-tuned model active — using base model (llama-3.3-70b-versatile)</p></div>
         )}
       </SystemSection>
 

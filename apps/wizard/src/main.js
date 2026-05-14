@@ -1,5 +1,6 @@
 import "./styles.css";
 import { createIntegrationWizard } from "./components/integration-wizard.js";
+import { createShopifyQuickWizard } from "./components/shopify-quick.js";
 import { initAppBridge, isShopifyEmbedded, showToast } from "./app-bridge.js";
 
 // Initialise Shopify App Bridge if running inside Shopify Admin.
@@ -30,23 +31,32 @@ if (!isShopifyEmbedded) {
 const wizardRoot = document.getElementById("wizard-root");
 if (!wizardRoot) throw new Error("Missing #wizard-root element");
 
-createIntegrationWizard(wizardRoot, {
-  apiBaseUrl: "http://localhost:8080",
+// Phase 1.1.5 — route to the Shopify quick-onboard flow when `?platform=shopify`
+// is in the URL. Otherwise fall through to the legacy multi-step wizard.
+const params = new URLSearchParams(window.location.search);
+const quickMode = params.get("platform") === "shopify";
 
-  // Called after activation succeeds. Notifies parent (demo frame or Shopify Admin)
-  // to unlock the dashboard and reload the store.
-  onActivated: (activation) => {
-    // Show App Bridge toast in Shopify Admin context
-    showToast("AVA activated — your store is now being tracked.");
+const onActivatedShared = (activation) => {
+  showToast("AVA activated — your store is now being tracked.");
+  if (window.parent !== window) {
+    window.parent.postMessage(
+      { type: "ava:wizard:activated", payload: activation },
+      "*",
+    );
+  }
+};
 
-    if (window.parent !== window) {
-      window.parent.postMessage(
-        { type: "ava:wizard:activated", payload: activation },
-        "*",
-      );
-    }
-  },
-});
+if (quickMode) {
+  createShopifyQuickWizard(wizardRoot, {
+    apiBaseUrl: "http://localhost:8080",
+    onActivated: onActivatedShared,
+  });
+} else {
+  createIntegrationWizard(wizardRoot, {
+    apiBaseUrl: "http://localhost:8080",
+    onActivated: onActivatedShared,
+  });
+}
 
 // On wizard load, reset the demo store to dormant so every demo session starts clean.
 // Skip in Shopify Admin (not a demo environment).
