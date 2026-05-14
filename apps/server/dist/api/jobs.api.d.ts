@@ -6,7 +6,7 @@ export declare function listJobRuns(req: Request, res: Response): Promise<void>;
 /**
  * GET /api/jobs/runs/:id — Get specific run details
  */
-export declare function getJobRun(req: Request, res: Response): Promise<any>;
+export declare function getJobRun(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 /**
  * POST /api/jobs/trigger — Trigger a job manually
  */

@@ -27,5 +27,31 @@ export declare function handleDecision(sessionId: string, decision: DecisionOutp
  * semantically they were "delivered" — remap server-side to keep training
  * labels accurate without touching the widget code.
  */
-export declare function recordInterventionOutcome(interventionId: string, status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted", conversionAction?: string): Promise<any>;
+export declare function recordInterventionOutcome(interventionId: string, status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted", conversionAction?: string): Promise<{
+    id: string;
+    status: string;
+    sessionId: string;
+    timestamp: Date;
+    frictionId: string;
+    evaluationId: string;
+    type: string;
+    actionCode: string;
+    payload: string;
+    deliveredAt: Date | null;
+    dismissedAt: Date | null;
+    convertedAt: Date | null;
+    ignoredAt: Date | null;
+    conversionAction: string | null;
+    mswimScoreAtFire: number;
+    tierAtFire: string;
+    cartValueAtFire: number | null;
+    cartValueAtConversion: number | null;
+    intentRaw: string | null;
+    intentAction: string | null;
+    intentCategory: string | null;
+    intentAttributes: string | null;
+    productsShown: string | null;
+    turnIndex: number | null;
+    latencyMs: number | null;
+}>;
 //# sourceMappingURL=intervene.service.d.ts.map

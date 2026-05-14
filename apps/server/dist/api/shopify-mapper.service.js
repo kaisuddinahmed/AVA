@@ -9,7 +9,6 @@
 // DOM patterns. We seed these as "shopify_standard" mappings with confidence
 // 0.90+ and let the live analyzer refine them over time.
 // ============================================================================
-import { prisma } from "@ava/db";
 import { BehaviorMappingRepo, FrictionMappingRepo, AnalyzerRunRepo, SiteConfigRepo, } from "@ava/db";
 import { logger } from "../logger.js";
 const log = logger.child({ service: "shopify-mapper" });
@@ -245,9 +244,9 @@ export async function seedShopifyMappings(shop, accessToken) {
         status: "completed",
         phase: "mapped",
         source: "shopify_oauth",
-        behaviorCoverage: null,
-        frictionCoverage: null,
-        confidence: null,
+        behaviorCoverage: undefined,
+        frictionCoverage: undefined,
+        avgConfidence: undefined,
     });
     // Build and insert behavior mappings
     const behaviorMappings = buildShopifySelectorMappings();
@@ -288,13 +287,10 @@ export async function seedShopifyMappings(shop, accessToken) {
     await AnalyzerRunRepo.updateAnalyzerRun(analyzerRun.id, {
         behaviorCoverage: behaviorCoveragePercent / 100,
         frictionCoverage: frictionMappings.length / 325,
-        confidence: 0.92,
+        avgConfidence: 0.92,
     });
     // Promote site to active if coverage thresholds met
-    await prisma.siteConfig.update({
-        where: { id: siteConfig.id },
-        data: { integrationStatus: "active" },
-    });
+    await SiteConfigRepo.setIntegrationStatus(siteConfig.id, "active", analyzerRun.id);
     log.info({
         shop,
         behaviorMappings: behaviorMappings.length,

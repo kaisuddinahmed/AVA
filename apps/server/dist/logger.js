@@ -64,9 +64,14 @@ function write(level, ctx, msg) {
     }
 }
 function normalizeArgs(ctxOrMsg, msg) {
-    if (typeof ctxOrMsg === "string")
-        return [{}, ctxOrMsg];
-    return [ctxOrMsg, msg ?? ""];
+    if (typeof ctxOrMsg === "string") {
+        if (msg === undefined)
+            return [{}, ctxOrMsg];
+        if (typeof msg === "string")
+            return [{}, `${ctxOrMsg} ${msg}`];
+        return [{ err: msg }, ctxOrMsg];
+    }
+    return [ctxOrMsg, typeof msg === "string" ? msg : ""];
 }
 function createLogger(bindings = {}) {
     return {

@@ -2,8 +2,7 @@
 // Nightly Batch Job — orchestrates daily maintenance + analysis tasks.
 // Each subtask is independent and catches its own errors.
 // ============================================================================
-import { DriftSnapshotRepo, JobRunRepo } from "@ava/db";
-import { prisma } from "@ava/db";
+import { DriftSnapshotRepo, EvaluationRepo, JobRunRepo, SessionRepo } from "@ava/db";
 import { generateInsightSnapshot } from "../insights/insights.service.js";
 import { runCROAnalysis } from "../insights/cro-analysis.service.js";
 import { runNetworkFlywheel } from "./network-flywheel.job.js";
@@ -125,26 +124,12 @@ async function runEvalHarnessCheck() {
     const report = evaluate(datapoints, ["converted", "dismissed", "ignored"], { sampling: "stratified", since: yesterday.toISOString() });
     // Abandonment prediction accuracy: % of sessions with abandonmentScore ≥80
     // in last 24h that ended without a conversion (true positives for abandonment).
-    const highAbandonmentEvals = await prisma.evaluation.findMany({
-        where: {
-            timestamp: { gte: yesterday },
-            abandonmentScore: { gte: 80 },
-        },
-        select: { sessionId: true },
-        distinct: ["sessionId"],
-    });
+    const highAbandonmentSessionIds = await EvaluationRepo.listHighAbandonmentSessionIds(yesterday, 80);
     let abandonmentPredictionAccuracy = null;
-    if (highAbandonmentEvals.length > 0) {
-        const sessionIds = highAbandonmentEvals.map((e) => e.sessionId);
-        const actuallyAbandoned = await prisma.session.count({
-            where: {
-                id: { in: sessionIds },
-                totalConversions: 0,
-                status: "ended",
-            },
-        });
+    if (highAbandonmentSessionIds.length > 0) {
+        const actuallyAbandoned = await SessionRepo.countAbandonedInSet(highAbandonmentSessionIds);
         abandonmentPredictionAccuracy =
-            Math.round((actuallyAbandoned / highAbandonmentEvals.length) * 100) / 100;
+            Math.round((actuallyAbandoned / highAbandonmentSessionIds.length) * 100) / 100;
     }
     return {
         totalEvaluated: report.overall.totalEvaluated,
@@ -154,7 +139,7 @@ async function runEvalHarnessCheck() {
         regressionDetected: report.regressionFlags.detected,
         regressionIssues: report.regressionFlags.issues,
         // Story 7: abandonment-score ≥80 prediction accuracy
-        highAbandonmentScoreSessions: highAbandonmentEvals.length,
+        highAbandonmentScoreSessions: highAbandonmentSessionIds.length,
         abandonmentPredictionAccuracy,
     };
 }
@@ -202,19 +187,15 @@ async function generateDailySummary() {
  */
 async function generateMerchantInsights() {
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const activeSites = await prisma.session.findMany({
-        where: { startedAt: { gte: since7d } },
-        select: { siteUrl: true },
-        distinct: ["siteUrl"],
-    });
+    const activeSites = await SessionRepo.listActiveSiteUrlsSince(since7d);
     let generated = 0;
-    for (const { siteUrl } of activeSites) {
+    for (const siteUrl of activeSites) {
         try {
             await generateInsightSnapshot(siteUrl);
             generated++;
         }
         catch (err) {
-            log.error(`[NightlyBatch] Insight generation failed for ${siteUrl}:`, err);
+            log.error({ err, siteUrl }, "[NightlyBatch] Insight generation failed");
         }
     }
     return { sitesProcessed: activeSites.length, snapshotsGenerated: generated };
@@ -224,21 +205,17 @@ async function generateMerchantInsights() {
  */
 async function runCROAnalysisBatch() {
     const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const activeSites = await prisma.session.findMany({
-        where: { startedAt: { gte: since30d } },
-        select: { siteUrl: true },
-        distinct: ["siteUrl"],
-    });
+    const activeSites = await SessionRepo.listActiveSiteUrlsSince(since30d);
     let analyzed = 0;
     let totalFindings = 0;
-    for (const { siteUrl } of activeSites) {
+    for (const siteUrl of activeSites) {
         try {
             const findings = await runCROAnalysis(siteUrl);
             totalFindings += findings.length;
             analyzed++;
         }
         catch (err) {
-            log.error(`[NightlyBatch] CRO analysis failed for ${siteUrl}:`, err);
+            log.error({ err, siteUrl }, "[NightlyBatch] CRO analysis failed");
         }
     }
     return { sitesAnalyzed: analyzed, totalFindingsGenerated: totalFindings };

@@ -197,7 +197,7 @@ export async function searchProducts(cfg, intent) {
             return { products: await shopifySearch(cfg, intent), adapterUsed: 'shopify' };
         }
         catch (e) {
-            log.warn('[AVA agent] Shopify adapter error, falling back:', e);
+            log.warn({ err: e }, '[AVA agent] Shopify adapter error, falling back');
         }
     }
     if (cfg.searchUrl) {
@@ -207,7 +207,7 @@ export async function searchProducts(cfg, intent) {
                 return { products, adapterUsed: 'generic' };
         }
         catch (e) {
-            log.warn('[AVA agent] Generic adapter error, falling back:', e);
+            log.warn({ err: e }, '[AVA agent] Generic adapter error, falling back');
         }
     }
     // Demo store: use in-memory catalog instead of fallback navigation

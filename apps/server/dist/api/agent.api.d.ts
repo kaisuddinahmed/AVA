@@ -14,6 +14,6 @@
  */
 import type { SiteAdapterConfig } from '../agent/agent.types.js';
 import type WebSocket from 'ws';
-export declare const agentRouter: any;
+export declare const agentRouter: import("express-serve-static-core").Router;
 export declare function handleAgentWsMessage(ws: WebSocket, msg: Record<string, unknown>, _siteConfig?: SiteAdapterConfig): Promise<void>;
 //# sourceMappingURL=agent.api.d.ts.map

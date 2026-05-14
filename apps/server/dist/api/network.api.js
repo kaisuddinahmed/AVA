@@ -1,4 +1,4 @@
-import { SiteConfigRepo, NetworkPatternRepo } from "@ava/db";
+import { SessionRepo, SiteConfigRepo, NetworkPatternRepo } from "@ava/db";
 // ---------------------------------------------------------------------------
 // GET /api/network/status?siteUrl=
 // Returns network opt-in status, contribution size, and total network patterns.
@@ -13,12 +13,9 @@ export async function getNetworkStatus(req, res) {
     if (!site) {
         return res.json({ totalPatterns, site: null });
     }
-    // Estimate contribution: count distinct frictions from this site's sessions in the last 30 days
+    // Estimate contribution: sessions from this site in the last 30 days
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const { prisma } = await import("@ava/db");
-    const sessionCount = await prisma.session.count({
-        where: { siteUrl, startedAt: { gte: thirtyDaysAgo } },
-    });
+    const sessionCount = await SessionRepo.countByPeriod(siteUrl, thirtyDaysAgo);
     return res.json({
         totalPatterns,
         site: {
@@ -40,11 +37,7 @@ export async function updateNetworkOptIn(req, res) {
     const site = await SiteConfigRepo.getSiteConfigByUrl(siteUrl).catch(() => null);
     if (!site)
         return res.status(404).json({ error: "site not found" });
-    const { prisma } = await import("@ava/db");
-    await prisma.siteConfig.update({
-        where: { id: site.id },
-        data: { networkOptIn: optIn },
-    });
+    await SiteConfigRepo.setNetworkOptIn(site.id, optIn);
     return res.json({ ok: true, networkOptIn: optIn });
 }
 //# sourceMappingURL=network.api.js.map

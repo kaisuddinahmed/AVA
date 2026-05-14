@@ -2,7 +2,6 @@
 // Webhooks API — delivery stats + configuration endpoints
 // ============================================================================
 import { WebhookDeliveryRepo, SiteConfigRepo } from "@ava/db";
-import { prisma } from "@ava/db";
 import { logger } from "../logger.js";
 const log = logger.child({ service: "api" });
 function parseSiteUrl(req) {
@@ -47,7 +46,7 @@ export async function getWebhookStats(req, res) {
         });
     }
     catch (err) {
-        log.error("[WebhooksAPI] getWebhookStats error:", err);
+        log.error({ err }, "[WebhooksAPI] getWebhookStats error");
         res.status(500).json({ error: "Failed to fetch webhook stats" });
     }
 }
@@ -68,17 +67,11 @@ export async function updateWebhookConfig(req, res) {
             res.status(404).json({ error: "Site not found" });
             return;
         }
-        await prisma.siteConfig.update({
-            where: { id: siteConfig.id },
-            data: {
-                ...(webhookUrl !== undefined ? { webhookUrl } : {}),
-                ...(webhookSecret !== undefined ? { webhookSecret } : {}),
-            },
-        });
+        await SiteConfigRepo.setWebhookConfig(siteConfig.id, { webhookUrl, webhookSecret });
         res.json({ success: true, siteUrl, webhookUrl: webhookUrl ?? siteConfig.webhookUrl });
     }
     catch (err) {
-        log.error("[WebhooksAPI] updateWebhookConfig error:", err);
+        log.error({ err }, "[WebhooksAPI] updateWebhookConfig error");
         res.status(500).json({ error: "Failed to update webhook config" });
     }
 }

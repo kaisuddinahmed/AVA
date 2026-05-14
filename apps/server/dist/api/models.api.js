@@ -64,7 +64,7 @@ export async function create(req, res) {
 // ---------------------------------------------------------------------------
 export async function promote(req, res) {
     try {
-        const model = await ModelVersionRepo.promoteModel(req.params.id);
+        const model = await ModelVersionRepo.promoteModel(String(req.params.id));
         res.json({ model });
     }
     catch (error) {
@@ -77,7 +77,7 @@ export async function promote(req, res) {
 // ---------------------------------------------------------------------------
 export async function retire(req, res) {
     try {
-        const model = await ModelVersionRepo.retireModel(req.params.id);
+        const model = await ModelVersionRepo.retireModel(String(req.params.id));
         res.json({ model });
     }
     catch (error) {

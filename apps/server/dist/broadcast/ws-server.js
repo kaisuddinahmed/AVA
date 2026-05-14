@@ -57,7 +57,4 @@ function handleDashboardMessage(ws, data) {
         // ignore malformed JSON
     }
 }
-// TODO: add to your WS message handler:
-// import { handleAgentWsMessage } from '../api/agent.api.js';
-// case 'agent_query': await handleAgentWsMessage(ws, msg); break;
 //# sourceMappingURL=ws-server.js.map

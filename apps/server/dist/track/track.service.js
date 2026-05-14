@@ -3,7 +3,7 @@ import { EventBuffer } from "./event-buffer.js";
 import { normalizeEvent, extractUtmFields } from "./event-normalizer.js";
 import { getOrCreateSession, updateSessionCart } from "./session-manager.js";
 import { evaluateEventBatch } from "../evaluate/evaluate.service.js";
-import { handleDecision } from "../intervene/intervene.service.js";
+import { handleDecision, recordInterventionOutcome } from "../intervene/intervene.service.js";
 import { makeDecision } from "../evaluate/decision-engine.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 import { logger } from "../logger.js";

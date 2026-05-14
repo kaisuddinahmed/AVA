@@ -13,7 +13,7 @@
  *   case 'agent_query': await handleAgentWsMessage(ws, msg, siteConfig); break;
  */
 import { Router } from 'express';
-import { processQuery, clearSession } from '../agent/shopping-agent.service.js';
+import { processQuery, clearAgentState } from '../agent/shopping-agent.service.js';
 import { logger } from "../logger.js";
 const log = logger.child({ service: "api" });
 export const agentRouter = Router();
@@ -28,13 +28,13 @@ agentRouter.post('/query', async (req, res) => {
         return res.json(response);
     }
     catch (err) {
-        log.error('[AVA agent] REST error:', err);
+        log.error({ err }, '[AVA agent] REST error');
         return res.status(500).json({ error: 'Agent unavailable' });
     }
 });
 // ─── Session cleanup (DELETE /api/agent/session/:sessionId) ──────────────────
 agentRouter.delete('/session/:sessionId', (req, res) => {
-    clearSession(req.params.sessionId);
+    clearAgentState(String(req.params.sessionId));
     return res.json({ ok: true });
 });
 // ─── WebSocket message handler ────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export async function handleAgentWsMessage(ws, msg, _siteConfig) {
         ws.send(JSON.stringify({ type: 'agent_response', ...response }));
     }
     catch (err) {
-        log.error('[AVA agent] WS error:', err);
+        log.error({ err }, '[AVA agent] WS error');
         ws.send(JSON.stringify({
             type: 'agent_response',
             sessionId,

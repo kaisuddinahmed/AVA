@@ -13,7 +13,7 @@
  *     to Groq on every call with page context grounding
  */
 import type { AgentResponse, PageContext, SiteAdapterConfig } from './agent.types.js';
-export declare function clearSession(sessionId: string): void;
+export declare function clearAgentState(sessionId: string): void;
 export interface ProcessQueryOptions {
     sessionId: string;
     query: string;

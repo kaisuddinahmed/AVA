@@ -10,7 +10,7 @@ export declare function create(req: Request, res: Response): Promise<void>;
 /**
  * GET /api/rollouts/:id — Get rollout details + health status
  */
-export declare function get(req: Request, res: Response): Promise<any>;
+export declare function get(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 /**
  * POST /api/rollouts/:id/start — Start rollout
  */

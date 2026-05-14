@@ -55,9 +55,23 @@ export declare function runDriftCheck(siteUrl?: string | null): Promise<DriftChe
  */
 export declare function getDriftStatus(siteUrl?: string | null): Promise<{
     isHealthy: boolean;
-    activeAlertCount: any;
-    criticalAlertCount: any;
-    alerts: any;
+    activeAlertCount: number;
+    criticalAlertCount: number;
+    alerts: {
+        id: string;
+        siteUrl: string | null;
+        createdAt: Date;
+        windowType: string;
+        alertType: string;
+        severity: string;
+        metric: string;
+        expected: number;
+        actual: number;
+        message: string;
+        acknowledged: boolean;
+        acknowledgedAt: Date | null;
+        resolvedAt: Date | null;
+    }[];
     latestSnapshots: Record<string, unknown>;
 }>;
 //# sourceMappingURL=drift-detector.d.ts.map

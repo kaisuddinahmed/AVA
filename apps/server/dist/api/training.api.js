@@ -239,7 +239,7 @@ export async function submitFineTune(req, res) {
 export async function getFineTuneStatus(req, res) {
     try {
         const provider = "groq";
-        const status = await getFineTuneJobStatus(provider, req.params.jobId);
+        const status = await getFineTuneJobStatus(provider, String(req.params.jobId));
         res.json(status);
     }
     catch (error) {

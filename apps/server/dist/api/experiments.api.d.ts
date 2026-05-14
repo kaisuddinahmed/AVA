@@ -10,7 +10,7 @@ export declare function create(req: Request, res: Response): Promise<void>;
 /**
  * GET /api/experiments/:id — Get experiment details
  */
-export declare function get(req: Request, res: Response): Promise<any>;
+export declare function get(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 /**
  * POST /api/experiments/:id/start — Start experiment
  */

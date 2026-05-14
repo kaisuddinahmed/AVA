@@ -5,8 +5,7 @@
 // concentrations by page. Results stored in InsightSnapshot.croFindings.
 // ============================================================================
 import Groq from "groq-sdk";
-import { InsightSnapshotRepo } from "@ava/db";
-import { prisma } from "@ava/db";
+import { InsightSnapshotRepo, EventRepo } from "@ava/db";
 import { config } from "../config.js";
 import { getSeverity } from "@ava/shared";
 // ---------------------------------------------------------------------------
@@ -19,10 +18,7 @@ import { getSeverity } from "@ava/shared";
 export async function runCROAnalysis(siteUrl) {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
     // ── 1. Aggregate friction events per (frictionId, pageUrl) ──────────────
-    const frictionEvents = await prisma.trackEvent.findMany({
-        where: { siteUrl, timestamp: { gte: since }, frictionId: { not: null } },
-        select: { frictionId: true, pageUrl: true, sessionId: true },
-    });
+    const frictionEvents = await EventRepo.listFrictionEventsForSite(siteUrl, since);
     const groups = new Map();
     for (const e of frictionEvents) {
         if (!e.frictionId)
@@ -55,16 +51,10 @@ export async function runCROAnalysis(siteUrl) {
     // ── 3. Attach to latest snapshot (or upsert today's) ────────────────────
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const existing = await prisma.insightSnapshot.findFirst({
-        where: { siteUrl, createdAt: { gte: todayStart } },
-        orderBy: { createdAt: "desc" },
-    });
+    const existing = await InsightSnapshotRepo.findLatestSince(siteUrl, todayStart);
     const croJson = JSON.stringify(findings);
     if (existing) {
-        await prisma.insightSnapshot.update({
-            where: { id: String(existing.id) },
-            data: { croFindings: croJson },
-        });
+        await InsightSnapshotRepo.setCROFindings(String(existing.id), croJson);
     }
     else {
         const periodEnd = new Date();

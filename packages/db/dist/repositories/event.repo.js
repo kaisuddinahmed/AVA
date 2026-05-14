@@ -47,6 +47,26 @@ export async function getEventsByFriction(frictionId) {
         take: 50,
     });
 }
+/**
+ * List friction events for a site since `since`, returning only the fields
+ * needed for CRO/per-page aggregation (frictionId, pageUrl, sessionId).
+ * Used by the CRO analysis and insights services to group by (frictionId, page).
+ */
+export async function listFrictionEventsForSite(siteUrl, since) {
+    return prisma.trackEvent.findMany({
+        where: { siteUrl, timestamp: { gte: since }, frictionId: { not: null } },
+        select: { frictionId: true, pageUrl: true, sessionId: true },
+    });
+}
+/** Count events matching siteUrl/since filters. Used by analytics overview. */
+export async function countEventsByFilter(filter) {
+    return prisma.trackEvent.count({
+        where: {
+            ...(filter.siteUrl ? { siteUrl: filter.siteUrl } : {}),
+            ...(filter.since ? { timestamp: { gte: filter.since } } : {}),
+        },
+    });
+}
 export async function getUnevaluatedEvents(sessionId, evaluatedEventIds) {
     return prisma.trackEvent.findMany({
         where: {

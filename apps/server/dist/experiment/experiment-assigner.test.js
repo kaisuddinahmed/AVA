@@ -4,8 +4,8 @@
 import { describe, it, expect } from "vitest";
 import { assignVariant } from "./experiment-assigner.js";
 const variants = [
-    { id: "control", weight: 0.5 },
-    { id: "treatment", weight: 0.5 },
+    { id: "control", name: "Control", weight: 0.5 },
+    { id: "treatment", name: "Treatment", weight: 0.5 },
 ];
 describe("assignVariant — determinism", () => {
     it("returns same result on repeated calls for same session+experiment", () => {
@@ -77,8 +77,8 @@ describe("assignVariant — variant assignment", () => {
     });
     it("respects weighted distribution approximately at scale", () => {
         const weightedVariants = [
-            { id: "A", weight: 0.8 },
-            { id: "B", weight: 0.2 },
+            { id: "A", name: "Arm A", weight: 0.8 },
+            { id: "B", name: "Arm B", weight: 0.2 },
         ];
         const N = 1000;
         const counts = { A: 0, B: 0 };
@@ -96,7 +96,7 @@ describe("assignVariant — variant assignment", () => {
 });
 describe("assignVariant — single variant edge case", () => {
     it("always assigns the only variant when enrolled", () => {
-        const single = [{ id: "only", weight: 1.0 }];
+        const single = [{ id: "only", name: "Only", weight: 1.0 }];
         for (let i = 0; i < 20; i++) {
             const r = assignVariant(`sess-${i}`, "exp-single", single, 100);
             expect(r.enrolled).toBe(true);

@@ -8,40 +8,20 @@
 //
 // Zero site URLs or session IDs ever stored in NetworkPattern.
 // ============================================================================
-import { prisma, Prisma } from "@ava/db";
-import { NetworkPatternRepo } from "@ava/db";
+import { NetworkPatternRepo, SiteConfigRepo } from "@ava/db";
 /**
  * Run the weekly network flywheel aggregation.
  */
 export async function runNetworkFlywheel() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     // 1. Get all opted-in sites
-    const optedInSites = await prisma.siteConfig.findMany({
-        where: { networkOptIn: true },
-        select: { siteUrl: true },
-    });
-    const siteUrls = optedInSites.map((s) => s.siteUrl);
+    const siteUrls = await SiteConfigRepo.listOptedInSiteUrls();
     if (siteUrls.length === 0) {
         return { patternsUpdated: 0, patternsSkipped: 0, merchantsContributing: 0, totalSessionsAnalyzed: 0 };
     }
     // 2. Aggregate friction detections + intervention outcomes per frictionId
     //    across opted-in merchants. We avoid storing site-level breakdowns.
-    const frictionGroups = await prisma.$queryRaw `
-    SELECT
-      e.frictionsFound AS frictionId,
-      COUNT(DISTINCT s.siteUrl) AS siteCount,
-      COUNT(DISTINCT s.id) AS totalSessions,
-      AVG(e.compositeScore) AS avgSeverity,
-      SUM(CASE WHEN i.status = 'converted' THEN 1 ELSE 0 END) AS conversions,
-      COUNT(i.id) AS totalInterventions
-    FROM Evaluation e
-    JOIN Session s ON e.sessionId = s.id
-    LEFT JOIN Intervention i ON i.evaluationId = e.id
-    WHERE s.siteUrl IN (${Prisma.join(siteUrls)})
-      AND e.createdAt >= ${thirtyDaysAgo}
-      AND e.frictionsFound != '[]'
-    GROUP BY e.frictionsFound
-  `.catch(() => []);
+    const frictionGroups = await NetworkPatternRepo.getFrictionAggregatesAcrossSites(siteUrls, thirtyDaysAgo);
     // 3. The raw query gives frictionsFound as JSON strings like '["F068"]'
     //    Explode them and aggregate per individual frictionId.
     const perFriction = new Map();
