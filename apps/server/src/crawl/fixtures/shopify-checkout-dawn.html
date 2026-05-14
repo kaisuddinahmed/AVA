@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" class="banner-style-image">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Checkout - Example Store</title>
+  <link rel="canonical" href="https://example-store.myshopify.com/checkouts/c/Z2NwLXVzLWNlbnRyYWwx">
+  <script>
+    window.Shopify = window.Shopify || {};
+    window.Shopify.Checkout = {
+      step: "contact_information",
+      token: "Z2NwLXVzLWNlbnRyYWwx",
+      currency: "USD"
+    };
+  </script>
+</head>
+<body class="checkout step-contact-information" data-page-step="contact_information">
+  <header class="banner" role="banner">
+    <h1 class="logo">Example Store</h1>
+    <ol class="breadcrumb" role="navigation">
+      <li class="breadcrumb__item breadcrumb__item--current" aria-current="step">Information</li>
+      <li class="breadcrumb__item">Shipping</li>
+      <li class="breadcrumb__item">Payment</li>
+    </ol>
+  </header>
+  <main class="main" role="main">
+    <div class="step" data-step="contact_information">
+      <form id="checkout_form" method="post" data-checkout-form>
+        <section class="section" data-section="contact_information">
+          <h2>Contact information</h2>
+          <div class="field">
+            <input type="email" name="checkout[email]" id="checkout_email" required>
+            <label for="checkout_email">Email</label>
+          </div>
+        </section>
+        <section class="section" data-section="shipping_address">
+          <h2>Shipping address</h2>
+          <div class="field">
+            <input type="text" name="checkout[shipping_address][first_name]" autocomplete="given-name">
+          </div>
+          <div class="field">
+            <input type="text" name="checkout[shipping_address][address1]" autocomplete="address-line1">
+          </div>
+        </section>
+        <button type="submit" class="step__footer__continue-btn">Continue to shipping</button>
+      </form>
+    </div>
+    <aside class="sidebar" data-order-summary>
+      <h2>Order summary</h2>
+      <table class="product-table">
+        <tbody>
+          <tr><td>Raw Linen Tee</td><td>$48.00</td></tr>
+          <tr><td>Heavy Fleece Crew</td><td>$95.00</td></tr>
+        </tbody>
+      </table>
+      <p class="total"><strong>Total: $143.00</strong></p>
+    </aside>
+  </main>
+</body>
+</html>

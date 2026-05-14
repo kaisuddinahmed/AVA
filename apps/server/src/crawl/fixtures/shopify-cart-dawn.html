@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <link rel="canonical" href="https://example-store.myshopify.com/cart">
+  <meta name="generator" content="Shopify">
+  <meta name="robots" content="noindex">
+  <title>Your cart - Example Store</title>
+  <script>
+    window.Shopify = window.Shopify || {};
+    window.Shopify.theme = { name: "Dawn", role: "main" };
+  </script>
+</head>
+<body class="template-cart gradient">
+  <main id="MainContent">
+    <section class="cart-section" data-section-type="cart-items">
+      <h1 class="title">Your cart</h1>
+      <form action="/cart" method="post" novalidate class="cart__contents" id="cart">
+        <table class="cart-items" role="table">
+          <thead>
+            <tr><th>Product</th><th>Quantity</th><th>Total</th></tr>
+          </thead>
+          <tbody>
+            <tr class="cart-item" data-cart-line data-line-key="abc123:def">
+              <td class="cart-item__details">
+                <a href="/products/raw-linen-tee">Raw Linen Tee</a>
+                <dl>
+                  <dt>Size</dt><dd>M</dd>
+                </dl>
+                <span class="cart-item__price">$48.00</span>
+              </td>
+              <td class="cart-item__quantity">
+                <quantity-input>
+                  <input type="number" name="updates[]" value="1" min="0">
+                </quantity-input>
+              </td>
+              <td class="cart-item__totals"><span class="price">$48.00</span></td>
+            </tr>
+            <tr class="cart-item" data-cart-line data-line-key="abc124:def">
+              <td class="cart-item__details">
+                <a href="/products/heavy-fleece-crew">Heavy Fleece Crew</a>
+                <span class="cart-item__price">$95.00</span>
+              </td>
+              <td class="cart-item__quantity">
+                <input type="number" name="updates[]" value="1" min="0">
+              </td>
+              <td class="cart-item__totals"><span class="price">$95.00</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="cart__footer">
+          <p class="totals">
+            <span>Subtotal</span>
+            <span class="totals__subtotal-value">$143.00</span>
+          </p>
+          <button type="submit" name="checkout" class="cart__submit button button--primary">
+            Check out
+          </button>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
