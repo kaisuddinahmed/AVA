@@ -36,7 +36,6 @@
     "eval:csv": "tsx scripts/eval-harness.ts --csv data/eval-latest.csv"
   },
   "devDependencies": {
-    "@rollup/rollup-darwin-arm64": "^4.57.1",
     "concurrently": "^9.2.1",
     "prisma": "^6.3.0",
     "shell-quote": "^1.8.3",
