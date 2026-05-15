@@ -1,18 +1,4 @@
-// ============================================================================
-// Page Classifier — turns raw HTML + URL into a typed page kind with
-// a confidence score. Used by the crawler/wizard during onboarding and by
-// the widget at runtime to recognize what page the visitor is on.
-//
-// Design: three independent signal layers vote with weighted confidences.
-// We then take the strongest type and combine evidence to produce a final
-// 0..1 confidence (cap 0.95 — leave headroom for false positives).
-//
-//   1. URL pattern      — strong for known platforms (/products/:handle, /cart).
-//   2. DOM fingerprint  — body class, key forms, meta tags. Platform-agnostic.
-//   3. JSON-LD @type    — strongest single signal when present.
-//
-// Pure function, zero deps. Input HTML may be partial/truncated.
-// ============================================================================
+import { extractJsonLd, jsonLdTypes } from "./structured-data.extractor.js";
 // JSON-LD wins ties — it's the most-specific signal a site can publish.
 const W_JSON_LD = 0.55;
 const W_BODY_CLASS = 0.5;
@@ -158,54 +144,33 @@ function voteByDom(html) {
 // ---------------------------------------------------------------------------
 function voteByJsonLd(html) {
     const votes = [];
-    const scriptRe = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-    let m;
-    while ((m = scriptRe.exec(html)) !== null) {
-        const raw = m[1].trim();
-        if (!raw)
+    // Delegate JSON-LD parsing to the structured-data extractor — it handles
+    // @graph wrappers, top-level arrays, and @type-as-array uniformly so the
+    // classifier doesn't reimplement schema.org plumbing.
+    const types = jsonLdTypes(extractJsonLd(html));
+    const seen = new Set();
+    for (const t of types) {
+        if (seen.has(t))
             continue;
-        let parsed;
-        try {
-            parsed = JSON.parse(raw);
-        }
-        catch {
-            continue;
-        }
-        for (const node of Array.isArray(parsed) ? parsed : [parsed]) {
-            const t = extractType(node);
-            if (!t)
-                continue;
-            switch (t) {
-                case "Product":
-                    votes.push({ type: "pdp", weight: W_JSON_LD, reason: "json-ld:Product" });
-                    break;
-                case "ItemList":
-                case "CollectionPage":
-                    votes.push({ type: "category", weight: W_JSON_LD, reason: `json-ld:${t}` });
-                    break;
-                case "SearchResultsPage":
-                    votes.push({ type: "search_results", weight: W_JSON_LD, reason: "json-ld:SearchResultsPage" });
-                    break;
-                case "WebSite":
-                    // Often present on home pages alongside other markers — weak vote.
-                    votes.push({ type: "home", weight: W_OG_TYPE, reason: "json-ld:WebSite" });
-                    break;
-            }
+        seen.add(t);
+        switch (t) {
+            case "Product":
+                votes.push({ type: "pdp", weight: W_JSON_LD, reason: "json-ld:Product" });
+                break;
+            case "ItemList":
+            case "CollectionPage":
+                votes.push({ type: "category", weight: W_JSON_LD, reason: `json-ld:${t}` });
+                break;
+            case "SearchResultsPage":
+                votes.push({ type: "search_results", weight: W_JSON_LD, reason: "json-ld:SearchResultsPage" });
+                break;
+            case "WebSite":
+                // Often present on home pages alongside other markers — weak vote.
+                votes.push({ type: "home", weight: W_OG_TYPE, reason: "json-ld:WebSite" });
+                break;
         }
     }
     return votes;
-}
-function extractType(node) {
-    if (!node || typeof node !== "object")
-        return null;
-    const t = node["@type"];
-    if (typeof t === "string")
-        return t;
-    if (Array.isArray(t)) {
-        const first = t.find((x) => typeof x === "string");
-        return typeof first === "string" ? first : null;
-    }
-    return null;
 }
 // ---------------------------------------------------------------------------
 // Combine votes
