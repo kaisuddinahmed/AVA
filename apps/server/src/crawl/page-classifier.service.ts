@@ -1,3 +1,5 @@
+import { extractJsonLd, jsonLdTypes } from "./structured-data.extractor.js";
+
 // ============================================================================
 // Page Classifier — turns raw HTML + URL into a typed page kind with
 // a confidence score. Used by the crawler/wizard during onboarding and by
@@ -200,46 +202,32 @@ function voteByDom(html: string): SignalVote[] {
 
 function voteByJsonLd(html: string): SignalVote[] {
   const votes: SignalVote[] = [];
-  const scriptRe = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = scriptRe.exec(html)) !== null) {
-    const raw = m[1].trim();
-    if (!raw) continue;
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { continue; }
-    for (const node of Array.isArray(parsed) ? parsed : [parsed]) {
-      const t = extractType(node);
-      if (!t) continue;
-      switch (t) {
-        case "Product":
-          votes.push({ type: "pdp", weight: W_JSON_LD, reason: "json-ld:Product" });
-          break;
-        case "ItemList":
-        case "CollectionPage":
-          votes.push({ type: "category", weight: W_JSON_LD, reason: `json-ld:${t}` });
-          break;
-        case "SearchResultsPage":
-          votes.push({ type: "search_results", weight: W_JSON_LD, reason: "json-ld:SearchResultsPage" });
-          break;
-        case "WebSite":
-          // Often present on home pages alongside other markers — weak vote.
-          votes.push({ type: "home", weight: W_OG_TYPE, reason: "json-ld:WebSite" });
-          break;
-      }
+  // Delegate JSON-LD parsing to the structured-data extractor — it handles
+  // @graph wrappers, top-level arrays, and @type-as-array uniformly so the
+  // classifier doesn't reimplement schema.org plumbing.
+  const types = jsonLdTypes(extractJsonLd(html));
+  const seen = new Set<string>();
+  for (const t of types) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    switch (t) {
+      case "Product":
+        votes.push({ type: "pdp", weight: W_JSON_LD, reason: "json-ld:Product" });
+        break;
+      case "ItemList":
+      case "CollectionPage":
+        votes.push({ type: "category", weight: W_JSON_LD, reason: `json-ld:${t}` });
+        break;
+      case "SearchResultsPage":
+        votes.push({ type: "search_results", weight: W_JSON_LD, reason: "json-ld:SearchResultsPage" });
+        break;
+      case "WebSite":
+        // Often present on home pages alongside other markers — weak vote.
+        votes.push({ type: "home", weight: W_OG_TYPE, reason: "json-ld:WebSite" });
+        break;
     }
   }
   return votes;
-}
-
-function extractType(node: unknown): string | null {
-  if (!node || typeof node !== "object") return null;
-  const t = (node as Record<string, unknown>)["@type"];
-  if (typeof t === "string") return t;
-  if (Array.isArray(t)) {
-    const first = t.find((x) => typeof x === "string");
-    return typeof first === "string" ? first : null;
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------

@@ -108,6 +108,38 @@ describe("classifyPage — URL-only inputs", () => {
   });
 });
 
+// ── JSON-LD @graph (closes task #39) ────────────────────────────────────────
+
+describe("classifyPage — JSON-LD @graph traversal", () => {
+  it("finds Product inside a @graph wrapper", () => {
+    const html = `<html><head>
+      <script type="application/ld+json">
+        {"@context":"https://schema.org","@graph":[
+          {"@type":"Organization","name":"Brand"},
+          {"@type":"Product","name":"X","offers":{"price":"9"}}
+        ]}
+      </script>
+    </head><body class="template-product"></body></html>`;
+    const r = classifyPage(html, "https://x.test/products/x");
+    expect(r.pageType).toBe("pdp");
+    expect(r.signals).toContain("json-ld:Product");
+  });
+
+  it("finds ItemList inside a @graph wrapper", () => {
+    const html = `<html><head>
+      <script type="application/ld+json">
+        {"@context":"https://schema.org","@graph":[
+          {"@type":"BreadcrumbList","itemListElement":[]},
+          {"@type":"ItemList","numberOfItems":24}
+        ]}
+      </script>
+    </head><body></body></html>`;
+    const r = classifyPage(html, "https://x.test/collections/tops");
+    expect(r.pageType).toBe("category");
+    expect(r.signals).toContain("json-ld:ItemList");
+  });
+});
+
 // ── JSON-LD edge cases ──────────────────────────────────────────────────────
 
 describe("classifyPage — JSON-LD edges", () => {
