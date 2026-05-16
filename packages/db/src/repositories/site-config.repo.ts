@@ -99,11 +99,17 @@ export async function setWebhookConfig(
  * Install or update a Shopify site config. Uses the two-call find-then-create
  * pattern instead of upsert because the Prisma WASM engine crashes on upsert
  * with the node:sqlite adapter.
+ *
+ * `storefrontToken` (Phase 1.3.2) is the delegated public Storefront token
+ * minted via the Admin API after OAuth. Optional — Phase 1.1 paste-URL
+ * callers persist a Storefront token directly in `accessToken` and leave
+ * this null.
  */
 export async function installShopify(data: {
   siteUrl: string;
   shop: string;
   accessToken: string;
+  storefrontToken?: string | null;
   integrationStatus?: string;
 }) {
   const integrationStatus = data.integrationStatus ?? "limited_active";
@@ -114,6 +120,9 @@ export async function installShopify(data: {
       data: {
         shopifyShop: data.shop,
         shopifyAccessToken: data.accessToken,
+        ...(data.storefrontToken !== undefined
+          ? { shopifyStorefrontToken: data.storefrontToken }
+          : {}),
         integrationStatus,
       },
     });
@@ -126,6 +135,7 @@ export async function installShopify(data: {
       integrationStatus,
       shopifyShop: data.shop,
       shopifyAccessToken: data.accessToken,
+      shopifyStorefrontToken: data.storefrontToken ?? null,
     },
   });
 }
@@ -139,6 +149,21 @@ export async function setShopifyScriptTagId(siteUrl: string, scriptTagId: number
 }
 
 /**
+ * Persist webhook subscription GIDs from Phase 1.3.5 registration. Stored as
+ * JSON so uninstall (which deletes the SiteConfig row's tokens) has the IDs
+ * needed to clean up subscriptions in Shopify.
+ */
+export async function setShopifyWebhookIds(
+  siteUrl: string,
+  ids: Array<{ topic: string; id: string }>,
+) {
+  return prisma.siteConfig.update({
+    where: { siteUrl },
+    data: { shopifyWebhookIds: JSON.stringify(ids) },
+  });
+}
+
+/**
  * Called from the Shopify app-uninstall webhook. Clears Shopify credentials
  * but retains the SiteConfig row (so history/analytics survive a reinstall).
  */
@@ -148,6 +173,7 @@ export async function clearShopifyCredentials(siteUrl: string) {
     data: {
       shopifyAccessToken: null,
       shopifyScriptTagId: null,
+      shopifyWebhookIds: null,
       integrationStatus: "pending",
     },
   });

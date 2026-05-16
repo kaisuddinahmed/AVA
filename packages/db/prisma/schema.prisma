@@ -251,7 +251,9 @@ model SiteConfig {
   // Shopify integration (Story 11)
   shopifyShop         String?                  // mystore.myshopify.com
   shopifyAccessToken  String?                  // Shopify Admin API token (encrypted)
+  shopifyStorefrontToken String?               // Delegated Storefront token minted via Admin (Phase 1.3.2)
   shopifyScriptTagId  Int?                     // ScriptTag resource ID for uninstall cleanup
+  shopifyWebhookIds   String?                  // JSON: [{topic, id}] subscription GIDs (Phase 1.3.5)
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }
