@@ -564,6 +564,44 @@ describe("toWooCatalogInput — WooProduct → SiteCatalog", () => {
   });
 });
 
+// ── Codex P1 (Phase 1.5.7) — generic ingest persists "unknown" verbatim ────
+
+import {
+  toGenericCatalogInput,
+} from "./catalog-ingest.service.js";
+
+describe("toGenericCatalogInput — honest availability persistence", () => {
+  it("PRESERVES 'unknown' instead of coercing to 'in_stock' (Codex P1)", () => {
+    const input = toGenericCatalogInput("https://x.test", {
+      externalId: "generic:x.test/products/y",
+      handle: "y",
+      title: "Y",
+      description: null,
+      imageUrl: null,
+      priceMin: null,
+      priceMax: null,
+      currency: "USD",
+      availability: "unknown",
+      url: "https://x.test/products/y",
+      sourceSignal: "opengraph",
+    });
+    // The fix: don't lie. "unknown" stays "unknown" — downstream filters on
+    // `availability: "in_stock"` correctly exclude it.
+    expect(input.availability).toBe("unknown");
+  });
+
+  it("preserves explicit availability values without modification", () => {
+    const base = {
+      externalId: "generic:x", handle: "h", title: "T",
+      description: null, imageUrl: null, priceMin: null, priceMax: null,
+      currency: "USD", url: "https://x", sourceSignal: "jsonld" as const,
+    };
+    expect(toGenericCatalogInput("https://x", { ...base, availability: "in_stock" }).availability).toBe("in_stock");
+    expect(toGenericCatalogInput("https://x", { ...base, availability: "out_of_stock" }).availability).toBe("out_of_stock");
+    expect(toGenericCatalogInput("https://x", { ...base, availability: "partial" }).availability).toBe("partial");
+  });
+});
+
 describe("ingestWooCommerceCatalog", () => {
   beforeEach(() => {
     upsertMock.mockReset();
@@ -650,5 +688,226 @@ describe("ingestWooCommerceCatalog", () => {
     );
     expect(result.ingested).toBe(2);
     expect(fetchMock).toHaveBeenCalledTimes(1); // stops before fetching page 2
+  });
+});
+
+// ── Generic ingest (Phase 1.5.1) ────────────────────────────────────────────
+
+import { ingestGenericCatalog, type GenericIngestPage } from "./catalog-ingest.service.js";
+
+function pdpJsonLdPage(url: string, name: string, price: string): GenericIngestPage {
+  return {
+    url,
+    html: `<html><body><script type="application/ld+json">${JSON.stringify({
+      "@type": "Product",
+      name,
+      offers: { "@type": "Offer", price, priceCurrency: "USD", availability: "InStock" },
+    })}</script></body></html>`,
+    pageType: "pdp",
+  };
+}
+
+describe("ingestGenericCatalog — deterministic structured-data only", () => {
+  beforeEach(() => {
+    upsertMock.mockReset();
+    upsertMock.mockResolvedValue({});
+  });
+
+  it("walks pages, filters to PDPs, extracts, and upserts", async () => {
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/a", "A", "10.00"),
+      pdpJsonLdPage("https://x.test/products/b", "B", "20.00"),
+      // Non-PDP page — must be skipped without an upsert attempt.
+      { url: "https://x.test/", html: "<html><body>Home</body></html>", pageType: "home" },
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+
+    expect(result.ingested).toBe(2);
+    expect(result.pdpCount).toBe(2);
+    expect(result.extractedCount).toBe(2);
+    expect(result.coverage).toBeCloseTo(1.0);
+    expect(result.bySource.jsonld).toBe(2);
+    expect(upsertMock).toHaveBeenCalledTimes(2);
+    // All rows source-tagged with the signal layer for telemetry.
+    upsertMock.mock.calls.forEach((c) => {
+      expect(c[0]!.source).toBe("generic_structured_data:jsonld");
+    });
+  });
+
+  it("skips PDPs without structured data (refuses to invent rows)", async () => {
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/has-data", "Real", "5.00"),
+      { url: "https://x.test/products/no-data", html: "<html><body>Plain</body></html>", pageType: "pdp" },
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+
+    expect(result.pdpCount).toBe(2);
+    expect(result.extractedCount).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.ingested).toBe(1);
+    expect(result.coverage).toBeCloseTo(0.5);
+  });
+
+  it("auto-classifies when pageType is not pre-set", async () => {
+    // No explicit pageType — relies on classifier finding /products/* → pdp.
+    const pages: GenericIngestPage[] = [
+      {
+        url: "https://x.test/products/auto",
+        html: pdpJsonLdPage("https://x.test/products/auto", "Auto", "9.00").html,
+      },
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+    expect(result.pdpCount).toBe(1);
+    expect(result.extractedCount).toBe(1);
+  });
+
+  it("respects maxProducts cap", async () => {
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/a", "A", "1"),
+      pdpJsonLdPage("https://x.test/products/b", "B", "2"),
+      pdpJsonLdPage("https://x.test/products/c", "C", "3"),
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages, { maxProducts: 2 });
+    expect(result.ingested).toBe(2);
+  });
+
+  it("per-product upsert failure isolates (errored++, batch continues)", async () => {
+    upsertMock
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("DB blip"))
+      .mockResolvedValueOnce({});
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/a", "A", "1"),
+      pdpJsonLdPage("https://x.test/products/b", "B", "2"),
+      pdpJsonLdPage("https://x.test/products/c", "C", "3"),
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+    expect(result.ingested).toBe(2);
+    expect(result.errored).toBe(1);
+    expect(result.pdpCount).toBe(3);
+  });
+
+  it("returns coverage=0 when there are no PDP pages", async () => {
+    const pages: GenericIngestPage[] = [
+      { url: "https://x.test/", html: "<html><body>Home</body></html>", pageType: "home" },
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+    expect(result.coverage).toBe(0);
+    expect(result.pdpCount).toBe(0);
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("tracks the signal-source breakdown (jsonld vs microdata vs opengraph)", async () => {
+    const ogHtml = `<html><head>
+      <meta property="og:type" content="product">
+      <meta property="og:title" content="OG-only">
+      <meta property="product:price:amount" content="9.99">
+      <meta property="product:price:currency" content="USD">
+    </head></html>`;
+    const microHtml = `<html><body>
+      <div itemscope itemtype="http://schema.org/Product">
+        <meta itemprop="name" content="Micro Only">
+        <div itemprop="offers" itemscope itemtype="http://schema.org/Offer">
+          <meta itemprop="price" content="3.00">
+          <meta itemprop="priceCurrency" content="USD">
+        </div>
+      </div>
+    </body></html>`;
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/j", "JsonLd", "1"),
+      { url: "https://x.test/products/m", html: microHtml, pageType: "pdp" },
+      { url: "https://x.test/products/o", html: ogHtml, pageType: "pdp" },
+    ];
+    const result = await ingestGenericCatalog("https://x.test", pages);
+    expect(result.bySource).toEqual({ jsonld: 1, microdata: 1, opengraph: 1, llm: 0 });
+  });
+});
+
+// ── Phase 1.5.2 — LLM fallback wiring through ingestGenericCatalog ──────────
+
+import {
+  resetLlmMapperTelemetry,
+  type LlmClient,
+} from "./llm-product-mapper.service.js";
+
+function llmClientReturning(payload: unknown): LlmClient {
+  return {
+    chat: {
+      completions: {
+        create: vi.fn(async () => ({
+          choices: [{ message: { content: JSON.stringify(payload) } }],
+          usage: { prompt_tokens: 100, completion_tokens: 30 },
+        })),
+      },
+    },
+  };
+}
+
+describe("ingestGenericCatalog — LLM fallback integration", () => {
+  beforeEach(() => {
+    upsertMock.mockReset().mockResolvedValue({});
+    resetLlmMapperTelemetry();
+    process.env.LLM_DOM_MAPPER_ENABLED = "true";
+  });
+
+  it("falls back to the LLM mapper only when structured data is missing AND fallback is enabled", async () => {
+    const llmClient = llmClientReturning({
+      title: "Plain Tee",
+      description: null,
+      imageUrl: null,
+      priceMin: 19,
+      priceMax: 19,
+      currency: "USD",
+      availability: "in_stock",
+    });
+    const plainHtml = "<html><body><main>" + "x".repeat(100) + "</main></body></html>";
+
+    const pages: GenericIngestPage[] = [
+      pdpJsonLdPage("https://x.test/products/j", "JsonLd", "10"),  // structured → no LLM
+      { url: "https://x.test/products/plain", html: plainHtml, pageType: "pdp" }, // → LLM
+    ];
+
+    const result = await ingestGenericCatalog("https://x.test", pages, {
+      llmFallback: true,
+      llmClient,
+    });
+
+    expect(result.extractedCount).toBe(2);
+    expect(result.bySource).toEqual({ jsonld: 1, microdata: 0, opengraph: 0, llm: 1 });
+    // LLM was called exactly once — the JSON-LD page must not hit the client.
+    expect((llmClient.chat.completions.create as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+
+  it("when llmFallback=false, PDPs without structured data stay skipped (no LLM call)", async () => {
+    const llmClient = llmClientReturning({
+      title: "Should Not Be Used",
+      description: null, imageUrl: null, priceMin: 1, priceMax: 1, currency: "USD",
+      availability: "in_stock",
+    });
+    const plainHtml = "<html><body><main>" + "x".repeat(100) + "</main></body></html>";
+
+    const result = await ingestGenericCatalog("https://x.test", [
+      { url: "https://x.test/products/plain", html: plainHtml, pageType: "pdp" },
+    ], { llmFallback: false, llmClient });
+
+    expect(result.extractedCount).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(llmClient.chat.completions.create).not.toHaveBeenCalled();
+  });
+
+  it("LLM-extracted rows are upserted with source='generic_structured_data:llm'", async () => {
+    const llmClient = llmClientReturning({
+      title: "LLM Found Me",
+      description: null, imageUrl: null, priceMin: 5, priceMax: 5, currency: "USD",
+      availability: "in_stock",
+    });
+    const plainHtml = "<html><body><main>" + "x".repeat(100) + "</main></body></html>";
+
+    await ingestGenericCatalog("https://x.test", [
+      { url: "https://x.test/products/llm", html: plainHtml, pageType: "pdp" },
+    ], { llmFallback: true, llmClient });
+
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+    expect(upsertMock.mock.calls[0]![0]!.source).toBe("generic_structured_data:llm");
   });
 });

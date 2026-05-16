@@ -24,6 +24,9 @@ import {
   type WooProduct,
   type WooCredentials,
 } from "./woocommerce.client.js";
+import { extractGenericProduct, type GenericProduct } from "./generic-product.extractor.js";
+import { classifyPage } from "./page-classifier.service.js";
+import { extractProductWithLLM, type LlmClient } from "./llm-product-mapper.service.js";
 
 const log = logger.child({ service: "crawl" });
 
@@ -456,4 +459,147 @@ export async function ingestWooCommerceCatalog(
   }
 
   return { ingested, skipped, errored, pagesWalked, endCursor: page === null ? null : String(page) };
+}
+
+// ---------------------------------------------------------------------------
+// Generic ingest (Phase 1.5.1) — deterministic structured-data only
+// ---------------------------------------------------------------------------
+//
+// Strict scope: orchestrator that takes crawled pages, filters to PDPs, and
+// extracts a Product record from JSON-LD / microdata / OpenGraph. NO LLM
+// (that's 1.5.2). Pages without structured data are SKIPPED, not invented.
+
+export interface GenericIngestPage {
+  url: string;
+  html: string;
+  /** Optional pre-classified pageType — saves a re-classify call. */
+  pageType?: string;
+}
+
+export interface GenericIngestResult extends IngestResult {
+  /** PDP pages we attempted extraction on. */
+  pdpCount: number;
+  /** PDPs that yielded a product (from structured data OR LLM fallback). */
+  extractedCount: number;
+  /** extractedCount / pdpCount — coverage for the wizard preview. */
+  coverage: number;
+  /** Breakdown of which signal layer produced each extracted row. */
+  bySource: { jsonld: number; microdata: number; opengraph: number; llm: number };
+}
+
+export interface GenericIngestOptions {
+  maxProducts?: number;
+  /**
+   * Phase 1.5.2 — enable LLM DOM mapper fallback for PDPs without structured
+   * data. Defaults to false; honour the global feature flag unless this is
+   * explicitly set. Pass an `llmClient` to inject a mock in tests.
+   */
+  llmFallback?: boolean;
+  llmClient?: LlmClient;
+}
+
+export function toGenericCatalogInput(siteUrl: string, p: GenericProduct): UpsertInput {
+  return {
+    siteUrl,
+    externalId: p.externalId,
+    handle: p.handle,
+    title: p.title,
+    description: p.description,
+    vendor: null,
+    productType: null,
+    tags: JSON.stringify([]),
+    imageUrl: p.imageUrl,
+    url: p.url,
+    priceMin: p.priceMin,
+    priceMax: p.priceMax,
+    currency: p.currency || "USD",
+    variants: JSON.stringify([]),
+    // Codex P1 (Phase 1.5.7): persist "unknown" verbatim — coercing to
+    // "in_stock" creates false-positive availability claims for products
+    // where the extractor genuinely couldn't tell. Downstream code that
+    // filters `availability: "in_stock"` correctly excludes these rows.
+    availability: p.availability,
+    source: `generic_structured_data:${p.sourceSignal}`,
+  };
+}
+
+/**
+ * Ingest a list of crawled pages, treating any classified as PDP as a
+ * product source. Pages where structured-data extraction returns null are
+ * counted in `pdpCount` but not in `extractedCount` — coverage tells the
+ * wizard how much of the site can be served deterministically. Phase 1.5.2
+ * will add an LLM fallback to lift coverage on layouts without structured
+ * data.
+ */
+export async function ingestGenericCatalog(
+  siteUrl: string,
+  pages: GenericIngestPage[],
+  opts: GenericIngestOptions = {},
+): Promise<GenericIngestResult> {
+  const maxProducts = opts.maxProducts ?? 5000;
+  const llmFallback = opts.llmFallback ?? false;
+  let ingested = 0;
+  let skipped = 0;
+  let errored = 0;
+  let pdpCount = 0;
+  let extractedCount = 0;
+  const bySource = { jsonld: 0, microdata: 0, opengraph: 0, llm: 0 };
+
+  for (const page of pages) {
+    if (ingested >= maxProducts) {
+      log.warn({ siteUrl, maxProducts }, "[Catalog/Generic] hit maxProducts cap, stopping");
+      break;
+    }
+
+    const pageType = page.pageType
+      ?? classifyPage(page.html, page.url).pageType;
+    if (pageType !== "pdp") continue;
+
+    pdpCount++;
+
+    // First try the deterministic structured-data extractor (1.5.1).
+    let product: GenericProduct | null = extractGenericProduct(page.url, page.html);
+
+    // Then, only if structured data was absent AND the LLM fallback is
+    // enabled, ask the LLM. The mapper itself enforces feature-flag,
+    // per-site cost cap, schema validation, and fallback-to-null.
+    if (!product && llmFallback) {
+      product = await extractProductWithLLM(page.url, page.html, siteUrl, {
+        llmClient: opts.llmClient,
+      });
+    }
+
+    if (!product) {
+      skipped++;
+      continue;
+    }
+    extractedCount++;
+    bySource[product.sourceSignal]++;
+
+    try {
+      await SiteCatalogRepo.upsertProduct(toGenericCatalogInput(siteUrl, product));
+      ingested++;
+    } catch (err) {
+      errored++;
+      log.warn({ err, siteUrl, url: page.url }, "[Catalog/Generic] upsert failed");
+    }
+  }
+
+  const coverage = pdpCount === 0 ? 0 : extractedCount / pdpCount;
+  log.info(
+    { siteUrl, pdpCount, extractedCount, coverage: Number(coverage.toFixed(3)), bySource },
+    "[Catalog/Generic] ingest complete",
+  );
+
+  return {
+    ingested,
+    skipped,
+    errored,
+    pagesWalked: pages.length,
+    endCursor: null,
+    pdpCount,
+    extractedCount,
+    coverage,
+    bySource,
+  };
 }
