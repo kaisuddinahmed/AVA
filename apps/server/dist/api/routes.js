@@ -6,6 +6,7 @@ import * as scoringConfigApi from "./scoring-config.api.js";
 import * as analyticsApi from "./analytics.api.js";
 import * as onboardingApi from "./onboarding.api.js";
 import * as onboardingShopifyApi from "./onboarding-shopify.api.js";
+import * as onboardingWooApi from "./onboarding-woo.api.js";
 import * as integrationApi from "./integration.api.js";
 import * as trainingApi from "./training.api.js";
 import * as shadowApi from "./shadow.api.js";
@@ -57,6 +58,8 @@ apiRouter.get("/onboarding/:runId/status", onboardingApi.getOnboardingStatus);
 apiRouter.get("/onboarding/:runId/results", onboardingApi.getOnboardingResults);
 // Phase 1.1.5 — wizard paste-URL Shopify slice
 apiRouter.post("/onboarding/shopify-quick", onboardingShopifyApi.shopifyQuickOnboard);
+// Phase 1.4.3 — wizard paste-URL WooCommerce slice
+apiRouter.post("/onboarding/woocommerce-quick", onboardingWooApi.wooCommerceQuickOnboard);
 // Integration
 apiRouter.get("/site/status", integrationApi.getSiteStatus); // widget activation gate
 apiRouter.post("/site/reset", integrationApi.resetSiteStatus); // demo: reset to dormant

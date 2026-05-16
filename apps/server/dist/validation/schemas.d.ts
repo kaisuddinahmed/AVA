@@ -20,20 +20,20 @@ export declare const PageContextSchema: z.ZodObject<{
     }>;
     device: z.ZodEnum<["mobile", "tablet", "desktop"]>;
 }, "strip", z.ZodTypeAny, {
+    page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+    page_url: string;
     time_on_page_ms: number;
     scroll_depth_pct: number;
-    page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-    page_url: string;
     viewport: {
         width: number;
         height: number;
     };
     device: "mobile" | "tablet" | "desktop";
 }, {
+    page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+    page_url: string;
     time_on_page_ms: number;
     scroll_depth_pct: number;
-    page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-    page_url: string;
     viewport: {
         width: number;
         height: number;
@@ -74,20 +74,20 @@ export declare const WsTrackMessageSchema: z.ZodObject<{
             }>;
             device: z.ZodEnum<["mobile", "tablet", "desktop"]>;
         }, "strip", z.ZodTypeAny, {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         }, {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
@@ -97,69 +97,69 @@ export declare const WsTrackMessageSchema: z.ZodObject<{
         timestamp: z.ZodOptional<z.ZodNumber>;
         metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     }, "strip", z.ZodTypeAny, {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     }, {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
     type: "track";
     deviceType: "mobile" | "tablet" | "desktop";
-    referrerType: "organic" | "paid" | "social" | "direct" | "email" | "referral";
+    referrerType: "direct" | "organic" | "paid" | "social" | "email" | "referral";
     isLoggedIn: boolean;
     isRepeatVisitor: boolean;
     event: {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     };
     siteUrl?: string | undefined;
     visitorKey?: string | undefined;
@@ -168,29 +168,29 @@ export declare const WsTrackMessageSchema: z.ZodObject<{
 }, {
     type: "track";
     event: {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     };
     siteUrl?: string | undefined;
     visitorKey?: string | undefined;
     deviceType?: "mobile" | "tablet" | "desktop" | undefined;
-    referrerType?: "organic" | "paid" | "social" | "direct" | "email" | "referral" | undefined;
+    referrerType?: "direct" | "organic" | "paid" | "social" | "email" | "referral" | undefined;
     isLoggedIn?: boolean | undefined;
     isRepeatVisitor?: boolean | undefined;
     sessionKey?: string | undefined;
@@ -238,20 +238,20 @@ export declare const WsWidgetMessageSchema: z.ZodDiscriminatedUnion<"type", [z.Z
             }>;
             device: z.ZodEnum<["mobile", "tablet", "desktop"]>;
         }, "strip", z.ZodTypeAny, {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         }, {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
@@ -261,69 +261,69 @@ export declare const WsWidgetMessageSchema: z.ZodDiscriminatedUnion<"type", [z.Z
         timestamp: z.ZodOptional<z.ZodNumber>;
         metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     }, "strip", z.ZodTypeAny, {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     }, {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
     type: "track";
     deviceType: "mobile" | "tablet" | "desktop";
-    referrerType: "organic" | "paid" | "social" | "direct" | "email" | "referral";
+    referrerType: "direct" | "organic" | "paid" | "social" | "email" | "referral";
     isLoggedIn: boolean;
     isRepeatVisitor: boolean;
     event: {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     };
     siteUrl?: string | undefined;
     visitorKey?: string | undefined;
@@ -332,29 +332,29 @@ export declare const WsWidgetMessageSchema: z.ZodDiscriminatedUnion<"type", [z.Z
 }, {
     type: "track";
     event: {
-        category?: "search" | "checkout" | "cart" | "account" | "system" | "product" | "navigation" | "technical" | "engagement" | undefined;
+        category?: "search" | "cart" | "checkout" | "product" | "navigation" | "account" | "system" | "technical" | "engagement" | undefined;
         timestamp?: number | undefined;
         friction_id?: string | null | undefined;
+        event_id?: string | undefined;
+        event_type?: string | undefined;
+        raw_signals?: Record<string, unknown> | undefined;
         page_context?: {
+            page_type: "category" | "landing" | "pdp" | "cart" | "checkout" | "search_results" | "account" | "other";
+            page_url: string;
             time_on_page_ms: number;
             scroll_depth_pct: number;
-            page_type: "checkout" | "category" | "search_results" | "pdp" | "cart" | "account" | "other" | "landing";
-            page_url: string;
             viewport: {
                 width: number;
                 height: number;
             };
             device: "mobile" | "tablet" | "desktop";
         } | undefined;
-        raw_signals?: Record<string, unknown> | undefined;
-        event_type?: string | undefined;
         metadata?: Record<string, unknown> | undefined;
-        event_id?: string | undefined;
     };
     siteUrl?: string | undefined;
     visitorKey?: string | undefined;
     deviceType?: "mobile" | "tablet" | "desktop" | undefined;
-    referrerType?: "organic" | "paid" | "social" | "direct" | "email" | "referral" | undefined;
+    referrerType?: "direct" | "organic" | "paid" | "social" | "email" | "referral" | undefined;
     isLoggedIn?: boolean | undefined;
     isRepeatVisitor?: boolean | undefined;
     sessionKey?: string | undefined;
@@ -411,15 +411,15 @@ export declare const WsAgentQuerySchema: z.ZodObject<{
     siteConfig: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     addToCartSelector: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    type: "agent_query";
     sessionId: string;
+    type: "agent_query";
     query: string;
     pageContext?: Record<string, unknown> | undefined;
     siteConfig?: Record<string, unknown> | undefined;
     addToCartSelector?: string | undefined;
 }, {
-    type: "agent_query";
     sessionId: string;
+    type: "agent_query";
     query: string;
     pageContext?: Record<string, unknown> | undefined;
     siteConfig?: Record<string, unknown> | undefined;
@@ -433,15 +433,15 @@ export declare const InterventionOutcomeSchema: z.ZodObject<{
     timestamp: z.ZodNumber;
     conversion_action: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted";
     type: "intervention_outcome";
+    status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted";
     timestamp: number;
     session_id: string;
     intervention_id: string;
     conversion_action?: string | undefined;
 }, {
-    status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted";
     type: "intervention_outcome";
+    status: "delivered" | "dismissed" | "converted" | "ignored" | "voice_muted";
     timestamp: number;
     session_id: string;
     intervention_id: string;
@@ -456,14 +456,14 @@ export declare const InterventionFeedbackSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "intervention_feedback";
     timestamp: number;
-    session_id: string;
     feedback: "helpful" | "not_helpful";
+    session_id: string;
     intervention_id: string;
 }, {
     type: "intervention_feedback";
     timestamp: number;
-    session_id: string;
     feedback: "helpful" | "not_helpful";
+    session_id: string;
     intervention_id: string;
 }>;
 export declare const WsDashboardMessageSchema: z.ZodObject<{
@@ -473,13 +473,13 @@ export declare const WsDashboardMessageSchema: z.ZodObject<{
     timestamp: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     type: string;
-    payload?: Record<string, unknown> | undefined;
     timestamp?: number | undefined;
+    payload?: Record<string, unknown> | undefined;
     session_id?: string | undefined;
 }, {
     type: string;
-    payload?: Record<string, unknown> | undefined;
     timestamp?: number | undefined;
+    payload?: Record<string, unknown> | undefined;
     session_id?: string | undefined;
 }>;
 export declare const SessionsQuerySchema: z.ZodObject<{
@@ -557,8 +557,8 @@ export declare const ScoringConfigUpdateSchema: z.ZodObject<{
     tActive: z.ZodOptional<z.ZodDefault<z.ZodOptional<z.ZodNumber>>>;
     gatesJson: z.ZodOptional<z.ZodNullable<z.ZodOptional<z.ZodString>>>;
 }, "strip", z.ZodTypeAny, {
-    name?: string | undefined;
     siteUrl?: string | null | undefined;
+    name?: string | undefined;
     isActive?: boolean | undefined;
     wIntent?: number | undefined;
     wFriction?: number | undefined;
@@ -571,8 +571,8 @@ export declare const ScoringConfigUpdateSchema: z.ZodObject<{
     tActive?: number | undefined;
     gatesJson?: string | null | undefined;
 }, {
-    name?: string | undefined;
     siteUrl?: string | null | undefined;
+    name?: string | undefined;
     isActive?: boolean | undefined;
     wIntent?: number | undefined;
     wFriction?: number | undefined;
@@ -593,32 +593,32 @@ export declare const OnboardingStartSchema: z.ZodEffects<z.ZodObject<{
     platform: z.ZodDefault<z.ZodOptional<z.ZodEnum<["shopify", "woocommerce", "magento", "custom"]>>>;
     trackingConfig: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
+    platform: "shopify" | "woocommerce" | "magento" | "custom";
     forceReanalyze: boolean;
-    platform: "shopify" | "woocommerce" | "custom" | "magento";
     siteUrl?: string | undefined;
     siteId?: string | undefined;
     html?: string | undefined;
     trackingConfig?: Record<string, unknown> | undefined;
 }, {
     siteUrl?: string | undefined;
+    platform?: "shopify" | "woocommerce" | "magento" | "custom" | undefined;
     siteId?: string | undefined;
     html?: string | undefined;
     forceReanalyze?: boolean | undefined;
-    platform?: "shopify" | "woocommerce" | "custom" | "magento" | undefined;
     trackingConfig?: Record<string, unknown> | undefined;
 }>, {
+    platform: "shopify" | "woocommerce" | "magento" | "custom";
     forceReanalyze: boolean;
-    platform: "shopify" | "woocommerce" | "custom" | "magento";
     siteUrl?: string | undefined;
     siteId?: string | undefined;
     html?: string | undefined;
     trackingConfig?: Record<string, unknown> | undefined;
 }, {
     siteUrl?: string | undefined;
+    platform?: "shopify" | "woocommerce" | "magento" | "custom" | undefined;
     siteId?: string | undefined;
     html?: string | undefined;
     forceReanalyze?: boolean | undefined;
-    platform?: "shopify" | "woocommerce" | "custom" | "magento" | undefined;
     trackingConfig?: Record<string, unknown> | undefined;
 }>;
 export declare const OnboardingResultsQuerySchema: z.ZodObject<{
@@ -633,12 +633,12 @@ export declare const IntegrationActivateSchema: z.ZodObject<{
     criticalJourneysPassed: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     notes: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    mode: "auto" | "active" | "limited_active";
     criticalJourneysPassed: boolean;
+    mode: "active" | "limited_active" | "auto";
     notes?: string | undefined;
 }, {
-    mode?: "auto" | "active" | "limited_active" | undefined;
     criticalJourneysPassed?: boolean | undefined;
+    mode?: "active" | "limited_active" | "auto" | undefined;
     notes?: string | undefined;
 }>;
 /** Phase 1.1.5 — wizard paste-URL Shopify slice */
@@ -656,6 +656,37 @@ export declare const ShopifyQuickOnboardSchema: z.ZodObject<{
     shopUrl: string;
     storefrontToken: string;
     maxProducts?: number | undefined;
+}>;
+/**
+ * Phase 1.4.3 — wizard paste-URL WooCommerce slice. Credentials optional:
+ *   - Omit both → public Store API path (limited fields, no inventory).
+ *   - Provide both → authenticated REST v3 path (richer data + inventory).
+ */
+export declare const WooCommerceQuickOnboardSchema: z.ZodEffects<z.ZodObject<{
+    shopUrl: z.ZodString;
+    consumerKey: z.ZodOptional<z.ZodString>;
+    consumerSecret: z.ZodOptional<z.ZodString>;
+    maxProducts: z.ZodOptional<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}>, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
 }>;
 export declare const IntegrationVerifySchema: z.ZodObject<{
     runId: z.ZodOptional<z.ZodString>;
@@ -677,31 +708,31 @@ export declare const ExperimentCreateSchema: z.ZodObject<{
         evalEngine: z.ZodOptional<z.ZodEnum<["llm", "fast", "auto"]>>;
         modelId: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        name: string;
         id: string;
+        name: string;
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "llm" | "fast" | "auto" | undefined;
+        evalEngine?: "auto" | "llm" | "fast" | undefined;
     }, {
-        name: string;
         id: string;
+        name: string;
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "llm" | "fast" | "auto" | undefined;
+        evalEngine?: "auto" | "llm" | "fast" | undefined;
     }>, "many">;
     primaryMetric: z.ZodDefault<z.ZodOptional<z.ZodEnum<["conversion_rate", "dismissal_rate", "composite_score"]>>>;
     minSampleSize: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     name: string;
     variants: {
-        name: string;
         id: string;
+        name: string;
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "llm" | "fast" | "auto" | undefined;
+        evalEngine?: "auto" | "llm" | "fast" | undefined;
     }[];
     trafficPercent: number;
     primaryMetric: "conversion_rate" | "composite_score" | "dismissal_rate";
@@ -711,12 +742,12 @@ export declare const ExperimentCreateSchema: z.ZodObject<{
 }, {
     name: string;
     variants: {
-        name: string;
         id: string;
+        name: string;
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "llm" | "fast" | "auto" | undefined;
+        evalEngine?: "auto" | "llm" | "fast" | undefined;
     }[];
     siteUrl?: string | null | undefined;
     description?: string | undefined;
@@ -806,7 +837,7 @@ export declare const RolloutCreateSchema: z.ZodObject<{
     };
     siteUrl?: string | null | undefined;
     newConfigId?: string | undefined;
-    newEvalEngine?: "llm" | "fast" | "auto" | undefined;
+    newEvalEngine?: "auto" | "llm" | "fast" | undefined;
     configPayload?: string | undefined;
 }, {
     name: string;
@@ -829,15 +860,15 @@ export declare const RolloutCreateSchema: z.ZodObject<{
     };
     siteUrl?: string | null | undefined;
     newConfigId?: string | undefined;
-    newEvalEngine?: "llm" | "fast" | "auto" | undefined;
+    newEvalEngine?: "auto" | "llm" | "fast" | undefined;
     configPayload?: string | undefined;
 }>;
 export declare const JobTriggerSchema: z.ZodObject<{
     job: z.ZodEnum<["nightly_batch", "drift_check", "rollout_health"]>;
 }, "strip", z.ZodTypeAny, {
-    job: "nightly_batch" | "drift_check" | "rollout_health";
+    job: "rollout_health" | "nightly_batch" | "drift_check";
 }, {
-    job: "nightly_batch" | "drift_check" | "rollout_health";
+    job: "rollout_health" | "nightly_batch" | "drift_check";
 }>;
 /**
  * Validate data against a Zod schema.

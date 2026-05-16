@@ -19,11 +19,13 @@ import { requestIdMiddleware } from "./middleware/request-id.middleware.js";
 import { httpLoggerMiddleware } from "./middleware/http-logger.middleware.js";
 import { apiRouter } from "./api/routes.js";
 import { shopifyWebhooksRouter } from "./api/shopify-webhooks.router.js";
+import { woocommerceWebhooksRouter } from "./api/woocommerce-webhooks.router.js";
 export function createApp() {
     const app = express();
     app.use(cors());
-    // Shopify webhook router MUST mount before express.json() — see file header.
+    // Webhook routers MUST mount before express.json() — see file header.
     app.use("/api/shopify/webhooks", shopifyWebhooksRouter);
+    app.use("/api/woocommerce/webhooks", woocommerceWebhooksRouter);
     app.use(express.json());
     app.use(requestIdMiddleware);
     app.use(httpLoggerMiddleware);
