@@ -55,3 +55,57 @@ export async function listRecentDrift(options?: { limit?: number }) {
     take: options?.limit ?? 50,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Phase 1.5.5 — Baseline lifecycle (split from comparison)
+// ---------------------------------------------------------------------------
+
+/**
+ * Promote the current fingerprintHash + selectors to the baseline columns.
+ * Called once per (siteUrl, pageType) after a successful ingest, so the
+ * comparison service has a trusted reference.
+ *
+ * Re-running this OVERWRITES the baseline — caller decides when that's safe
+ * (e.g., merchant explicitly reconfirms layout after a redesign).
+ */
+export async function markAsBaseline(siteUrl: string, pageType: string) {
+  const existing = await prisma.siteSelectorFingerprint.findUnique({
+    where: { siteUrl_pageType: { siteUrl, pageType } },
+  });
+  if (!existing) return null;
+  return prisma.siteSelectorFingerprint.update({
+    where: { siteUrl_pageType: { siteUrl, pageType } },
+    data: {
+      baselineHash: existing.fingerprintHash,
+      baselineSelectors: existing.selectors,
+      baselineCapturedAt: new Date(),
+    },
+  });
+}
+
+/** Returns true when (siteUrl, pageType) already has a baseline captured. */
+export async function hasBaseline(siteUrl: string, pageType: string): Promise<boolean> {
+  const row = await prisma.siteSelectorFingerprint.findUnique({
+    where: { siteUrl_pageType: { siteUrl, pageType } },
+    select: { baselineHash: true },
+  });
+  return Boolean(row?.baselineHash);
+}
+
+/** Every fingerprint row for a site — used by the comparison service. */
+export async function listForSite(siteUrl: string) {
+  return prisma.siteSelectorFingerprint.findMany({
+    where: { siteUrl },
+    orderBy: { pageType: "asc" },
+  });
+}
+
+/** Every site that has at least one baseline captured — drives the nightly check. */
+export async function listSitesWithBaselines(): Promise<string[]> {
+  const rows = await prisma.siteSelectorFingerprint.findMany({
+    where: { baselineHash: { not: null } },
+    select: { siteUrl: true },
+    distinct: ["siteUrl"],
+  });
+  return rows.map((r) => r.siteUrl);
+}

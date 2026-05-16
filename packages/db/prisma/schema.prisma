@@ -874,7 +874,9 @@ model SiteCatalog {
   priceMax        Float?
   currency        String   @default("USD")
   variants        String   // JSON: Variant[] { id, title, sku, price, inventory, options }
-  availability    String   @default("in_stock") // in_stock | out_of_stock | partial
+  availability    String   @default("in_stock") // in_stock | out_of_stock | partial | unknown
+  // Phase 1.5.7: "unknown" added so generic / LLM extraction can persist
+  // honest "we couldn't tell" rather than coercing to in_stock (Codex P1).
   source          String   // shopify_admin | shopify_storefront | woocommerce_rest | json_ld | manual
   lastIngestedAt  DateTime @default(now())
   createdAt       DateTime @default(now())
@@ -896,9 +898,16 @@ model SiteSelectorFingerprint {
   id              String   @id @default(uuid())
   siteUrl         String
   pageType        String   // matches SiteMap.pageType
-  fingerprintHash String   // SHA-256 of normalized DOM skeleton
+  fingerprintHash String   // SHA-256 of normalized DOM skeleton — latest observation
   fingerprintData String   // JSON: { tagCounts, classFrequencies, knownSelectors, ... }
   selectors       String   // JSON: { addToCart, price, productTitle, cartCount, ... }
+  // Phase 1.5.5 — split-lifecycle drift detection.
+  // Baseline columns are SET ONCE after a successful ingest. The comparison
+  // service compares `fingerprintHash` against `baselineHash` and emits a
+  // DriftAlert when similarity drops below threshold.
+  baselineHash       String?
+  baselineSelectors  String?   // JSON snapshot of `selectors` at baseline time
+  baselineCapturedAt DateTime?
   driftCount      Int      @default(0)
   lastDriftAt     DateTime?
   lastCheckedAt   DateTime @default(now())
