@@ -21,8 +21,8 @@ export type UpsertProductInput = {
   priceMax?: number | null;
   currency?: string;
   variants: string;           // JSON: Variant[]
-  availability?: string;      // in_stock | out_of_stock | partial
-  source: string;             // shopify_admin | shopify_storefront | woocommerce_rest | json_ld | manual
+  availability?: string;      // in_stock | out_of_stock | partial | unknown
+  source: string;             // shopify_admin | shopify_storefront | woocommerce_rest | generic_structured_data:* | woocommerce_webhook | shopify_webhook
 };
 
 /** Insert or update a product by (siteUrl, externalId). */
