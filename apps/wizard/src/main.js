@@ -1,6 +1,7 @@
 import "./styles.css";
 import { createIntegrationWizard } from "./components/integration-wizard.js";
 import { createShopifyQuickWizard } from "./components/shopify-quick.js";
+import { createWooQuickWizard } from "./components/woo-quick.js";
 import { initAppBridge, isShopifyEmbedded, showToast } from "./app-bridge.js";
 
 // Initialise Shopify App Bridge if running inside Shopify Admin.
@@ -31,10 +32,11 @@ if (!isShopifyEmbedded) {
 const wizardRoot = document.getElementById("wizard-root");
 if (!wizardRoot) throw new Error("Missing #wizard-root element");
 
-// Phase 1.1.5 — route to the Shopify quick-onboard flow when `?platform=shopify`
-// is in the URL. Otherwise fall through to the legacy multi-step wizard.
+// Phase 1.1.5 / 1.4.4 — route to a platform-specific quick-onboard flow when
+// `?platform=...` is in the URL. Falls through to the legacy multi-step
+// wizard otherwise.
 const params = new URLSearchParams(window.location.search);
-const quickMode = params.get("platform") === "shopify";
+const platform = params.get("platform");
 
 const onActivatedShared = (activation) => {
   showToast("AVA activated — your store is now being tracked.");
@@ -46,16 +48,14 @@ const onActivatedShared = (activation) => {
   }
 };
 
-if (quickMode) {
-  createShopifyQuickWizard(wizardRoot, {
-    apiBaseUrl: "http://localhost:8080",
-    onActivated: onActivatedShared,
-  });
+const opts = { apiBaseUrl: "http://localhost:8080", onActivated: onActivatedShared };
+
+if (platform === "shopify") {
+  createShopifyQuickWizard(wizardRoot, opts);
+} else if (platform === "woocommerce") {
+  createWooQuickWizard(wizardRoot, opts);
 } else {
-  createIntegrationWizard(wizardRoot, {
-    apiBaseUrl: "http://localhost:8080",
-    onActivated: onActivatedShared,
-  });
+  createIntegrationWizard(wizardRoot, opts);
 }
 
 // On wizard load, reset the demo store to dormant so every demo session starts clean.

@@ -537,6 +537,24 @@ button[disabled] {
   font: 500 14px/1.4 "IBM Plex Mono", monospace;
 }
 .sq-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sq-field--toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.sq-field--toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.sq-field--toggle > span {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
 .sq-btn {
   border: none;
   border-radius: 8px;
