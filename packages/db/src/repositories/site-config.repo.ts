@@ -178,6 +178,33 @@ export async function installWooCommerce(data: {
   });
 }
 
+/**
+ * Persist a SiteConfig for a non-platform (custom) site — used by the
+ * Phase 1.5.3 unified onboarding endpoint when neither Shopify nor
+ * WooCommerce detection fires. Idempotent: find-or-update by siteUrl.
+ */
+export async function installGenericSite(data: {
+  siteUrl: string;
+  integrationStatus?: string;
+}) {
+  const integrationStatus = data.integrationStatus ?? "mapped";
+  const existing = await prisma.siteConfig.findUnique({ where: { siteUrl: data.siteUrl } });
+  if (existing) {
+    return prisma.siteConfig.update({
+      where: { siteUrl: data.siteUrl },
+      data: { platform: "custom", integrationStatus },
+    });
+  }
+  return prisma.siteConfig.create({
+    data: {
+      siteUrl: data.siteUrl,
+      platform: "custom",
+      trackingConfig: JSON.stringify({ generic: true }),
+      integrationStatus,
+    },
+  });
+}
+
 /** Record the ScriptTag resource id returned by Shopify after widget injection. */
 export async function setShopifyScriptTagId(siteUrl: string, scriptTagId: number) {
   return prisma.siteConfig.update({

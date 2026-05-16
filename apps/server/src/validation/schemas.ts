@@ -232,6 +232,27 @@ export const WooCommerceQuickOnboardSchema = z.object({
   { message: "consumerKey and consumerSecret must both be provided or both omitted" },
 );
 
+/**
+ * Phase 1.5.3 — unified onboarding entrypoint. Accepts the union of fields
+ * for all platforms; server detects the platform first and validates the
+ * platform-specific subset itself. Wizard no longer needs to know which
+ * platform's endpoint to call.
+ */
+export const QuickOnboardSchema = z.object({
+  shopUrl: z.string().min(1).max(500),
+  // Shopify path
+  storefrontToken: z.string().min(1).max(200).optional(),
+  // Woo REST v3 path (both or neither)
+  consumerKey: z.string().min(1).max(200).optional(),
+  consumerSecret: z.string().min(1).max(200).optional(),
+  // Common
+  maxProducts: z.number().int().min(1).max(5000).optional(),
+}).refine(
+  (v) => (v.consumerKey == null && v.consumerSecret == null) ||
+         (v.consumerKey != null && v.consumerSecret != null),
+  { message: "consumerKey and consumerSecret must both be provided or both omitted" },
+);
+
 export const IntegrationVerifySchema = z.object({
   runId: z.string().optional(),
 });
