@@ -254,6 +254,11 @@ model SiteConfig {
   shopifyStorefrontToken String?               // Delegated Storefront token minted via Admin (Phase 1.3.2)
   shopifyScriptTagId  Int?                     // ScriptTag resource ID for uninstall cleanup
   shopifyWebhookIds   String?                  // JSON: [{topic, id}] subscription GIDs (Phase 1.3.5)
+  // WooCommerce integration (Phase 1.4)
+  wooConsumerKey      String?                  // REST v3 consumer key (ck_…) — null when using public Store API
+  wooConsumerSecret   String?                  // REST v3 consumer secret (cs_…) — null when using public Store API
+  wooWebhookIds       String?                  // JSON: [{topic, id}] Woo webhook IDs registered via REST (Phase 1.4.5)
+  wooWebhookSecret    String?                  // Shared secret for verifying x-wc-webhook-signature (Phase 1.4.5)
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 }

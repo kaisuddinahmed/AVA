@@ -140,6 +140,44 @@ export async function installShopify(data: {
   });
 }
 
+/**
+ * Persist a WooCommerce-platform site config. Mirrors `installShopify` —
+ * find-or-update for idempotent re-runs. Credentials are optional: when null,
+ * the public Store API is used for catalog access.
+ *
+ * Phase 1.4 — wizard paste-URL Woo onboarding.
+ */
+export async function installWooCommerce(data: {
+  siteUrl: string;
+  consumerKey?: string | null;
+  consumerSecret?: string | null;
+  integrationStatus?: string;
+}) {
+  const integrationStatus = data.integrationStatus ?? "mapped";
+  const existing = await prisma.siteConfig.findUnique({ where: { siteUrl: data.siteUrl } });
+  if (existing) {
+    return prisma.siteConfig.update({
+      where: { siteUrl: data.siteUrl },
+      data: {
+        platform: "woocommerce",
+        wooConsumerKey: data.consumerKey ?? null,
+        wooConsumerSecret: data.consumerSecret ?? null,
+        integrationStatus,
+      },
+    });
+  }
+  return prisma.siteConfig.create({
+    data: {
+      siteUrl: data.siteUrl,
+      platform: "woocommerce",
+      trackingConfig: JSON.stringify({ woocommerce: true }),
+      integrationStatus,
+      wooConsumerKey: data.consumerKey ?? null,
+      wooConsumerSecret: data.consumerSecret ?? null,
+    },
+  });
+}
+
 /** Record the ScriptTag resource id returned by Shopify after widget injection. */
 export async function setShopifyScriptTagId(siteUrl: string, scriptTagId: number) {
   return prisma.siteConfig.update({
@@ -160,6 +198,29 @@ export async function setShopifyWebhookIds(
   return prisma.siteConfig.update({
     where: { siteUrl },
     data: { shopifyWebhookIds: JSON.stringify(ids) },
+  });
+}
+
+/**
+ * Persist the shared HMAC secret used by Woo to sign webhook deliveries
+ * (`x-wc-webhook-signature`). Set during webhook registration (Phase 1.4.5+)
+ * or pasted manually by the merchant.
+ */
+export async function setWooWebhookSecret(siteUrl: string, secret: string) {
+  return prisma.siteConfig.update({
+    where: { siteUrl },
+    data: { wooWebhookSecret: secret },
+  });
+}
+
+/** Persist webhook IDs returned by Woo REST when we create subscriptions. */
+export async function setWooWebhookIds(
+  siteUrl: string,
+  ids: Array<{ topic: string; id: number }>,
+) {
+  return prisma.siteConfig.update({
+    where: { siteUrl },
+    data: { wooWebhookIds: JSON.stringify(ids) },
   });
 }
 

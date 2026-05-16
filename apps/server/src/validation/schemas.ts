@@ -216,6 +216,22 @@ export const ShopifyQuickOnboardSchema = z.object({
   maxProducts: z.number().int().min(1).max(5000).optional(),
 });
 
+/**
+ * Phase 1.4.3 — wizard paste-URL WooCommerce slice. Credentials optional:
+ *   - Omit both → public Store API path (limited fields, no inventory).
+ *   - Provide both → authenticated REST v3 path (richer data + inventory).
+ */
+export const WooCommerceQuickOnboardSchema = z.object({
+  shopUrl: z.string().min(1).max(500),
+  consumerKey: z.string().min(1).max(200).optional(),
+  consumerSecret: z.string().min(1).max(200).optional(),
+  maxProducts: z.number().int().min(1).max(5000).optional(),
+}).refine(
+  (v) => (v.consumerKey == null && v.consumerSecret == null) ||
+         (v.consumerKey != null && v.consumerSecret != null),
+  { message: "consumerKey and consumerSecret must both be provided or both omitted" },
+);
+
 export const IntegrationVerifySchema = z.object({
   runId: z.string().optional(),
 });
