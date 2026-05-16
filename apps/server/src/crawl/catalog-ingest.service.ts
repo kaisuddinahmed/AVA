@@ -18,6 +18,12 @@ import {
   ShopifyAdminError,
   type AdminProduct,
 } from "./shopify-admin.client.js";
+import {
+  listProducts as wooListProducts,
+  WooCommerceError,
+  type WooProduct,
+  type WooCredentials,
+} from "./woocommerce.client.js";
 
 const log = logger.child({ service: "crawl" });
 
@@ -330,4 +336,124 @@ export async function ingestShopifyCatalogViaAdmin(
   }
 
   return { ingested, skipped, errored, pagesWalked, endCursor: cursor };
+}
+
+// ---------------------------------------------------------------------------
+// WooCommerce ingest (Phase 1.4.2)
+// ---------------------------------------------------------------------------
+//
+// Same upsert contract, different transport. Two `source` tags so we can
+// tell ingest paths apart in analytics:
+//   - "woocommerce_store" : public Store API (no auth)
+//   - "woocommerce_rest"  : authenticated REST v3 (consumer key/secret)
+//
+// Pagination is page-number based; the underlying client converts it to a
+// `nextPage: number | null` cursor.
+
+function deriveWooAvailability(p: WooProduct): "in_stock" | "out_of_stock" | "partial" {
+  // Store API doesn't expose per-variant inventory; REST v3 returns only
+  // variation IDs at the products endpoint. So we map availableForSale at
+  // the product level for now. Per-variant inventory is a Phase 1.5
+  // enhancement (requires N+1 variation fetch).
+  return p.availableForSale ? "in_stock" : "out_of_stock";
+}
+
+function sourceFor(credentials: WooCredentials): "woocommerce_store" | "woocommerce_rest" {
+  return credentials.kind === "store_api" ? "woocommerce_store" : "woocommerce_rest";
+}
+
+export function toWooCatalogInput(
+  siteUrl: string,
+  p: WooProduct,
+  source: "woocommerce_store" | "woocommerce_rest",
+): UpsertInput {
+  return {
+    siteUrl,
+    externalId: `wc:${p.id}`,
+    handle: p.handle,
+    title: p.title,
+    description: p.description,
+    vendor: p.vendor,
+    productType: p.productType,
+    tags: JSON.stringify(p.tags),
+    imageUrl: p.imageUrl,
+    url: p.onlineStoreUrl,
+    priceMin: p.priceMin,
+    priceMax: p.priceMax,
+    currency: p.currency || "USD",
+    variants: JSON.stringify(p.variants),
+    availability: deriveWooAvailability(p),
+    source,
+  };
+}
+
+function isWooIngestable(p: WooProduct): boolean {
+  return Boolean(p.id && p.handle && p.title);
+}
+
+/**
+ * Ingest a WooCommerce site's full catalog into SiteCatalog. Walks the
+ * page-number cursor, persisting each page before fetching the next.
+ *
+ * Errors bubble up as `WooCommerceError` so the wizard can surface kind-tagged
+ * messages ("unauthorized" → prompt for new consumer key).
+ */
+export async function ingestWooCommerceCatalog(
+  siteUrl: string,
+  shopUrl: string,
+  credentials: WooCredentials,
+  opts: IngestOptions = {},
+): Promise<IngestResult> {
+  const maxProducts = opts.maxProducts ?? 5000;
+  const source = sourceFor(credentials);
+  let page: number | null = 1;
+  let ingested = 0;
+  let skipped = 0;
+  let errored = 0;
+  let pagesWalked = 0;
+
+  while (page !== null) {
+    let result: Awaited<ReturnType<typeof wooListProducts>>;
+    try {
+      result = await wooListProducts(shopUrl, credentials, page, {
+        pageSize: opts.pageSize,
+        fetchImpl: opts.fetchImpl,
+      });
+    } catch (err) {
+      if (err instanceof WooCommerceError) throw err;
+      throw new WooCommerceError("network", `Woo catalog ingest failed: ${(err as Error).message}`);
+    }
+
+    pagesWalked++;
+
+    const remaining = maxProducts - ingested - skipped;
+    const pageProducts = result.products.slice(0, Math.max(0, remaining));
+
+    for (const p of pageProducts) {
+      if (!isWooIngestable(p)) {
+        skipped++;
+        continue;
+      }
+      try {
+        await SiteCatalogRepo.upsertProduct(toWooCatalogInput(siteUrl, p, source));
+        ingested++;
+      } catch (err) {
+        errored++;
+        log.warn({ err, siteUrl, externalId: p.id }, "[Catalog/Woo] upsert failed");
+      }
+    }
+
+    log.info(
+      { siteUrl, page: pagesWalked, source, cumulativeIngested: ingested, totalCount: result.totalCount },
+      "[Catalog/Woo] page ingested",
+    );
+
+    if (ingested + skipped >= maxProducts) {
+      log.warn({ siteUrl, maxProducts }, "[Catalog/Woo] hit maxProducts cap, stopping");
+      break;
+    }
+    page = result.nextPage;
+  }
+
+  return { ingested, skipped, errored, pagesWalked, endCursor: page === null ? null : String(page) };
 }

@@ -471,3 +471,184 @@ describe("ingestShopifyCatalogViaAdmin", () => {
     expect(headers["X-Shopify-Storefront-Access-Token"]).toBeUndefined();
   });
 });
+
+// ── WooCommerce ingest (Phase 1.4.2) ────────────────────────────────────────
+
+import {
+  ingestWooCommerceCatalog,
+  toWooCatalogInput,
+} from "./catalog-ingest.service.js";
+import { WooCommerceError, type WooCredentials } from "./woocommerce.client.js";
+
+const STORE_CREDS: WooCredentials = { kind: "store_api" };
+const REST_CREDS: WooCredentials = { kind: "rest_v3", consumerKey: "ck_x", consumerSecret: "cs_x" };
+
+function wooStoreBody(opts: { items: Array<{ id: number; slug: string; name?: string; in_stock?: boolean }>; totalPages?: number }) {
+  return opts.items.map((it) => ({
+    id: it.id,
+    name: it.name ?? `Item ${it.id}`,
+    slug: it.slug,
+    permalink: `https://shop.example/product/${it.slug}`,
+    description: "",
+    type: "simple",
+    prices: {
+      currency_code: "USD",
+      price: "4800",
+      regular_price: "4800",
+      price_range: { min_amount: "4800", max_amount: "4800" },
+      currency_minor_unit: 2,
+    },
+    images: [{ src: "https://cdn.example/x.jpg" }],
+    tags: [],
+    is_in_stock: it.in_stock ?? true,
+    is_purchasable: true,
+    variations: [],
+  }));
+}
+
+function wooResponse(payload: unknown, totalPages?: number, total?: number): Response {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (totalPages !== undefined) headers["x-wp-totalpages"] = String(totalPages);
+  if (total !== undefined) headers["x-wp-total"] = String(total);
+  return new Response(JSON.stringify(payload), { status: 200, headers });
+}
+
+describe("toWooCatalogInput — WooProduct → SiteCatalog", () => {
+  it("tags Store API source so analytics distinguishes path", () => {
+    const product = {
+      id: "101",
+      handle: "tee",
+      title: "Tee",
+      description: null,
+      productType: "simple",
+      vendor: null,
+      tags: [],
+      availableForSale: true,
+      onlineStoreUrl: "https://shop.example/product/tee",
+      imageUrl: null,
+      priceMin: 48,
+      priceMax: 48,
+      currency: "USD",
+      variants: [],
+    };
+    expect(toWooCatalogInput("https://x.test", product, "woocommerce_store").source)
+      .toBe("woocommerce_store");
+    expect(toWooCatalogInput("https://x.test", product, "woocommerce_rest").source)
+      .toBe("woocommerce_rest");
+  });
+
+  it("prefixes externalId with 'wc:' to avoid collision with Shopify GIDs", () => {
+    const input = toWooCatalogInput(
+      "https://x.test",
+      {
+        id: "101", handle: "tee", title: "Tee", description: null, productType: null,
+        vendor: null, tags: [], availableForSale: true, onlineStoreUrl: null,
+        imageUrl: null, priceMin: null, priceMax: null, currency: "USD", variants: [],
+      },
+      "woocommerce_store",
+    );
+    expect(input.externalId).toBe("wc:101");
+  });
+
+  it("maps availableForSale=false → availability='out_of_stock'", () => {
+    const input = toWooCatalogInput(
+      "https://x.test",
+      {
+        id: "1", handle: "x", title: "X", description: null, productType: null,
+        vendor: null, tags: [], availableForSale: false, onlineStoreUrl: null,
+        imageUrl: null, priceMin: null, priceMax: null, currency: "USD", variants: [],
+      },
+      "woocommerce_store",
+    );
+    expect(input.availability).toBe("out_of_stock");
+  });
+});
+
+describe("ingestWooCommerceCatalog", () => {
+  beforeEach(() => {
+    upsertMock.mockReset();
+    upsertMock.mockResolvedValue({});
+  });
+
+  it("walks page-number pagination via X-WP-TotalPages header", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(wooResponse(
+        wooStoreBody({ items: [{ id: 1, slug: "a" }, { id: 2, slug: "b" }] }),
+        2, 3,
+      ))
+      .mockResolvedValueOnce(wooResponse(
+        wooStoreBody({ items: [{ id: 3, slug: "c" }] }),
+        2, 3,
+      ));
+
+    const result = await ingestWooCommerceCatalog(
+      "https://x.test",
+      "https://shop.example",
+      STORE_CREDS,
+      { fetchImpl: fetchMock },
+    );
+
+    expect(result).toMatchObject({
+      ingested: 3, skipped: 0, errored: 0, pagesWalked: 2, endCursor: null,
+    });
+    expect(upsertMock).toHaveBeenCalledTimes(3);
+    upsertMock.mock.calls.forEach((c) => expect(c[0]!.source).toBe("woocommerce_store"));
+    // Each call site URL advanced page param
+    expect(String(fetchMock.mock.calls[0]![0])).toMatch(/page=1/);
+    expect(String(fetchMock.mock.calls[1]![0])).toMatch(/page=2/);
+  });
+
+  it("sends Basic auth when using REST v3 credentials", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(wooResponse(
+      [{ id: 9, name: "x", slug: "x", permalink: "", description: "", type: "simple",
+         status: "publish", price: "9.99", regular_price: "9.99",
+         images: [], tags: [], stock_status: "instock", variations: [] }],
+      1, 1,
+    ));
+
+    const result = await ingestWooCommerceCatalog(
+      "https://x.test", "https://shop.example", REST_CREDS, { fetchImpl: fetchMock },
+    );
+
+    expect(result.ingested).toBe(1);
+    expect(upsertMock.mock.calls[0]![0]!.source).toBe("woocommerce_rest");
+    const headers = fetchMock.mock.calls[0]![1]?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Basic ${Buffer.from("ck_x:cs_x").toString("base64")}`);
+  });
+
+  it("propagates WooCommerceError on auth failure", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("", { status: 401 }));
+    await expect(
+      ingestWooCommerceCatalog("https://x.test", "https://shop.example", REST_CREDS, { fetchImpl: fetchMock }),
+    ).rejects.toMatchObject({ kind: "unauthorized" });
+  });
+
+  it("per-product upsert failure increments `errored` but does not abort", async () => {
+    upsertMock
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("DB blip"))
+      .mockResolvedValueOnce({});
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(wooResponse(
+      wooStoreBody({ items: [{ id: 1, slug: "a" }, { id: 2, slug: "b" }, { id: 3, slug: "c" }] }),
+      1, 3,
+    ));
+    const result = await ingestWooCommerceCatalog(
+      "https://x.test", "https://shop.example", STORE_CREDS, { fetchImpl: fetchMock },
+    );
+    expect(result.ingested).toBe(2);
+    expect(result.errored).toBe(1);
+  });
+
+  it("respects maxProducts cap mid-page", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(wooResponse(
+      wooStoreBody({ items: [{ id: 1, slug: "a" }, { id: 2, slug: "b" }, { id: 3, slug: "c" }] }),
+      5, 50,
+    ));
+    const result = await ingestWooCommerceCatalog(
+      "https://x.test", "https://shop.example", STORE_CREDS,
+      { fetchImpl: fetchMock, maxProducts: 2 },
+    );
+    expect(result.ingested).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // stops before fetching page 2
+  });
+});
