@@ -4,9 +4,19 @@ import { recordInterventionOutcome } from "../intervene/intervene.service.js";
 import { handleVoiceQuery } from "../voice/voice-responder.service.js";
 import { handleAgentWsMessage } from "../api/agent.api.js";
 import {
+  startSttStream,
+  sendSttAudio,
+  endSttStream,
+} from "../voice/streaming-stt.service.js";
+import { cancelTtsStream, isTtsStreamActive } from "../voice/streaming-tts.service.js";
+import {
   WsWidgetMessageSchema,
   WsVoiceQuerySchema,
   WsAgentQuerySchema,
+  WsVoiceStreamStartSchema,
+  WsAudioChunkSchema,
+  WsVoiceStreamEndSchema,
+  WsTtsCancelSchema,
   InterventionOutcomeSchema,
   InterventionFeedbackSchema,
   validatePayload,
@@ -44,11 +54,93 @@ export function handleTrackMessage(ws: WebSocket, data: unknown) {
         return;
       }
 
+      // Phase 2.7 — Streaming STT lifecycle + barge-in. Match these BEFORE
+      // the legacy voice_query path so streaming clients don't fall through.
+      const sttStartResult = validatePayload(WsVoiceStreamStartSchema, raw);
+      if (sttStartResult.success) {
+        const { session_id, page_context } = sttStartResult.data;
+        // Barge-in invariant: if TTS is playing, cancel it before opening STT.
+        // Even when streaming TTS is off, this is a no-op (returns false).
+        const cancelled = cancelTtsStream(session_id);
+        if (cancelled) {
+          log.info({ session_id }, "[Track] barge-in cancelled in-flight TTS");
+        }
+        const r = startSttStream({
+          sessionId: session_id,
+          onFinal: (transcript) => {
+            // Route the final transcript through the same handler that the
+            // REST STT proxy + legacy voice_query path use. Privacy: never
+            // log transcript content — handleVoiceQuery handles redaction.
+            void handleVoiceQuery(ws, session_id, transcript, page_context);
+          },
+        });
+        ws.send(JSON.stringify({
+          type: "voice_stream_ack",
+          session_id,
+          status: r.outcome,
+          barge_in_cancelled: cancelled,
+        }));
+        return;
+      }
+
+      const audioChunkResult = validatePayload(WsAudioChunkSchema, raw);
+      if (audioChunkResult.success) {
+        const { session_id, chunk } = audioChunkResult.data;
+        let buf: Buffer;
+        try { buf = Buffer.from(chunk, "base64"); }
+        catch {
+          ws.send(JSON.stringify({ type: "audio_chunk_error", session_id, error: "decode_failed" }));
+          return;
+        }
+        const accepted = sendSttAudio(session_id, buf);
+        if (!accepted) {
+          ws.send(JSON.stringify({ type: "audio_chunk_error", session_id, error: "no_active_stream" }));
+        }
+        return;
+      }
+
+      const streamEndResult = validatePayload(WsVoiceStreamEndSchema, raw);
+      if (streamEndResult.success) {
+        const { session_id } = streamEndResult.data;
+        void endSttStream(session_id).then((stats) => {
+          log.info(
+            {
+              session_id,
+              outcome: stats.outcome,
+              partials: stats.partials,
+              finals: stats.finals,
+              bytesForwarded: stats.bytesForwarded,
+              durationMs: stats.durationMs,
+            },
+            "[Track] voice_stream_end stats",
+          );
+          ws.send(JSON.stringify({
+            type: "voice_stream_closed",
+            session_id,
+            outcome: stats.outcome,
+          }));
+        });
+        return;
+      }
+
+      const ttsCancelResult = validatePayload(WsTtsCancelSchema, raw);
+      if (ttsCancelResult.success) {
+        const { session_id } = ttsCancelResult.data;
+        const cancelled = cancelTtsStream(session_id);
+        ws.send(JSON.stringify({ type: "tts_cancel_ack", session_id, cancelled }));
+        return;
+      }
+
       // Maybe it's a voice query (Phase 2 ASR)
       const voiceQueryResult = validatePayload(WsVoiceQuerySchema, raw);
       if (voiceQueryResult.success) {
         const { session_id, transcript, page_context } = voiceQueryResult.data;
-        log.info(`[Track] Voice query from session ${session_id}: "${transcript.slice(0, 60)}"`);
+        // Privacy: log the length only. CLAUDE.md hard rule + Codex Phase
+        // 2.0 gate criterion: never log raw transcript fields.
+        log.info(
+          { session_id, transcript: `(${transcript.length} chars)` },
+          "[Track] voice_query received",
+        );
 
         handleVoiceQuery(ws, session_id, transcript, page_context)
           .catch((error) => {

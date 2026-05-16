@@ -1,10 +1,18 @@
 import type { WebSocket } from "ws";
 import Groq from "groq-sdk";
 import { config } from "../config.js";
-import { SessionRepo, EvaluationRepo, InterventionRepo } from "@ava/db";
+import {
+  SessionRepo,
+  EvaluationRepo,
+  InterventionRepo,
+  ConversationStateRepo,
+} from "@ava/db";
 import { broadcastToSession } from "../broadcast/broadcast.service.js";
 import { isShoppingRequest } from "../agent/intent-parser.js";
 import { handleShoppingQuery, broadcastAgentResponse } from "../agent/shopping-agent.service.js";
+import { tierDirective, asMswimTier, type MswimTier } from "./mswim-directives.js";
+import { pickPlaybookForFrictions, selectStep, type PlaybookStep } from "./sales-playbooks.js";
+import { streamTtsToSession, getStreamingTtsConfig } from "./streaming-tts.service.js";
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "voice" });
@@ -13,51 +21,41 @@ const VOICE_WEIGHTS = JSON.stringify({ intent: 0.25, friction: 0.25, clarity: 0.
 
 const groq = new Groq({ apiKey: config.groq.apiKey });
 
-// ── Conversation history ─────────────────────────────────────────────────────
-// Keyed by sessionId. Each entry is the alternating user/assistant turn pairs
-// sent to Groq (excludes the system prompt). Max MAX_TURNS pairs retained.
+// ── Conversation history (Phase 2.1 — persisted via ConversationStateRepo) ──
+//
+// Multi-turn history lives in the DB, not in process memory, so it survives
+// widget reloads + server restarts. Ring-buffer cap (MAX_TURNS pairs) is
+// applied at the repo layer.
 
 const MAX_TURNS = 10; // 10 user turns + 10 assistant turns = 20 messages
 
-interface ConversationTurn {
-  role: "user" | "assistant";
-  content: string;
-}
-
-const conversationHistories = new Map<string, ConversationTurn[]>();
-
-function getHistory(sessionId: string): ConversationTurn[] {
-  if (!conversationHistories.has(sessionId)) {
-    conversationHistories.set(sessionId, []);
-  }
-  return conversationHistories.get(sessionId)!;
-}
-
-function appendToHistory(
-  sessionId: string,
-  userTurn: string,
-  assistantTurn: string,
-): void {
-  const history = getHistory(sessionId);
-  history.push({ role: "user", content: userTurn });
-  history.push({ role: "assistant", content: assistantTurn });
-
-  // Trim to MAX_TURNS pairs (oldest turns evicted first)
-  if (history.length > MAX_TURNS * 2) {
-    history.splice(0, history.length - MAX_TURNS * 2);
-  }
-}
-
 /**
- * Clear the conversation history and agent state for a session.
- * Called externally when a session ends or the widget reloads.
+ * Clear the conversation history AND shopping-agent state for a session.
+ * Called when a session ends or the merchant explicitly wipes state.
+ * Persisted store is the source of truth — clearing it purges both surfaces.
  */
-export function clearConversationHistory(sessionId: string): void {
-  conversationHistories.delete(sessionId);
-  // Also clear shopping agent state (last search results, etc.)
+export async function clearConversationHistory(sessionId: string): Promise<void> {
+  try {
+    await ConversationStateRepo.purgeBySession(sessionId);
+  } catch (err) {
+    log.warn({ err, sessionId }, "[VoiceResponder] purge failed (non-blocking)");
+  }
+  // Also clear the in-process shopping agent caches (it has its own per-process
+  // working state for the current request — Phase 2.1 will migrate that too,
+  // but the call surface stays the same so call-sites don't need to change).
   import("../agent/shopping-agent.service.js")
     .then(({ clearAgentState }) => clearAgentState(sessionId))
     .catch(() => {});
+}
+
+/**
+ * Redact a transcript for log lines: report length only, never content.
+ * Per CLAUDE.md "Never log raw transcript fields" and per Codex's Phase 2.0
+ * gate criterion ("no raw transcript leaked into analytics/logs").
+ */
+function redact(s: string | undefined | null): string {
+  if (s == null) return "(empty)";
+  return `(${s.length} chars)`;
 }
 
 // ── Page context helpers ──────────────────────────────────────────────────────
@@ -67,13 +65,16 @@ interface PageContext {
   page_url?: string;
 }
 
-function buildSystemPrompt(pageCtx?: PageContext): string {
+function buildSystemPrompt(pageCtx?: PageContext, tier?: MswimTier | null): string {
   let prompt =
     "You are AVA, a friendly personal shopping assistant embedded on an e-commerce site. " +
     "Answer the shopper's question in 1-2 concise sentences. " +
     "Be warm, direct, and helpful. Keep your reply under 60 words. " +
     "Do not use markdown, bullet points, or lists — plain prose only. " +
     "You have memory of this conversation — use it to give contextual follow-up answers.";
+
+  // Phase 2.2 — scale assertiveness with MSWIM tier.
+  prompt += "\n\n" + tierDirective(tier);
 
   if (pageCtx?.page_type && pageCtx.page_type !== "other") {
     prompt += ` The shopper is currently on the ${pageCtx.page_type} page.`;
@@ -134,24 +135,67 @@ export async function handleVoiceQuery(
   }
 
   // 2b. Shopping agent dispatch — intercept product searches, comparisons, add-to-cart
+  //
+  // OWNERSHIP: the shopping-agent's processQuery() is the sole persister of
+  // shopping turns (it calls persistSession() at the end of the turn). The
+  // voice responder MUST NOT also call appendTurnPair() here — that would
+  // double-persist and clobber the agent's richer turn (which includes
+  // `products` payload). See Codex Phase 2.1 review (P1).
   if (isShoppingRequest(transcript)) {
     try {
       const agentCtx = { ...pageCtx, siteUrl };
       const agentResponse = await handleShoppingQuery(sessionId, transcript, agentCtx);
       const interventionId = await broadcastAgentResponse(sessionId, agentResponse, voicePlayback);
-      // Add shopping turn to history so follow-up general questions have context
-      appendToHistory(sessionId, transcript, agentResponse.message);
       ws.send(JSON.stringify({ type: "voice_query_ack", intervention_id: interventionId, status: "ok" }));
       return;
     } catch (err) {
-      log.error("[VoiceResponder] Shopping agent error (falling through to LLM):", err);
+      log.error({ err, sessionId }, "[VoiceResponder] Shopping agent error (falling through to LLM)");
       // Fall through to general LLM path on error
     }
   }
 
-  // 3. Build Groq messages with history
-  const history = getHistory(sessionId);
-  const systemPrompt = buildSystemPrompt(pageCtx);
+  // 3. Build Groq messages with persisted history
+  const history = await ConversationStateRepo.getTurnsForLLM(sessionId);
+  // Phase 2.2 — pick up the latest MSWIM tier so the system prompt scales.
+  // Phase 2.3 — also extract `frictionsFound` from the same evaluation so
+  // we can opportunistically run a curated sales playbook (≤80-char voice
+  // chunks emitted with richer `sales_dialog` for the chat bubble).
+  let tier: MswimTier | null = null;
+  let playbookStep: PlaybookStep | null = null;
+  let playbookFrictionId: string | null = null;
+  // Codex Phase 2.3 P1: if the real evaluation reports a friction we don't
+  // have a playbook for, we still want to preserve THAT code in the
+  // intervention metadata — not silently rewrite it to F036.
+  let primaryFrictionId: string | null = null;
+  try {
+    const latest = await EvaluationRepo.getLatestNonVoiceEvaluation(sessionId);
+    tier = asMswimTier(latest?.tier);
+    if (latest?.frictionsFound) {
+      let frictions: string[] = [];
+      try { frictions = JSON.parse(latest.frictionsFound) as string[]; }
+      catch { /* malformed JSON → no playbook */ }
+      // Remember the first real friction code so it survives even when no
+      // playbook is registered.
+      if (frictions.length > 0 && typeof frictions[0] === "string" && frictions[0].length > 0) {
+        primaryFrictionId = frictions[0];
+      }
+      const pb = pickPlaybookForFrictions(frictions);
+      if (pb) {
+        // Step selection uses the persisted turn count from ConversationState
+        // so the same step doesn't repeat across reloads.
+        let turnCount = 0;
+        try {
+          const state = await ConversationStateRepo.getBySession(sessionId);
+          turnCount = state ? Math.floor(state.turnCount / 2) : 0;
+        } catch { /* non-fatal */ }
+        playbookStep = selectStep(pb, turnCount);
+        playbookFrictionId = pb.frictionId;
+      }
+    }
+  } catch (err) {
+    log.warn({ err, sessionId }, "[VoiceResponder] tier/playbook lookup failed; defaulting to PASSIVE");
+  }
+  const systemPrompt = buildSystemPrompt(pageCtx, tier);
 
   // 4. Groq LLM — short spoken reply (with conversation context)
   let answer =
@@ -180,21 +224,48 @@ export async function handleVoiceQuery(
         : firstSentence;
     }
   } catch (err) {
-    log.error("[VoiceResponder] Groq error:", err);
+    log.error({ err, sessionId }, "[VoiceResponder] Groq error");
     // Fall through with the default answer — don't reject the user
   }
 
-  // 5. Persist this turn to conversation history
-  appendToHistory(sessionId, transcript, answer);
+  // 5. Persist this turn to conversation state (DB-backed; survives reload).
+  try {
+    await ConversationStateRepo.appendTurnPair(
+      sessionId,
+      siteUrl,
+      { content: transcript },
+      { content: answer },
+      { maxPairs: MAX_TURNS },
+    );
+  } catch (err) {
+    log.warn({ err, sessionId }, "[VoiceResponder] persist turn failed (non-blocking)");
+  }
 
-  // 6. Persist a minimal evaluation + intervention so outcomes can be recorded
+  // 6. Persist a minimal evaluation + intervention so outcomes can be recorded.
+  //    `narrative` deliberately omits the raw transcript: CLAUDE.md hard rule
+  //    "Never log raw transcript fields" and Codex Phase 2.0 gate criterion.
+  // Phase 2.3 — when a sales playbook matches the active friction, override
+  // the spoken chunk with the curated voice_script and emit a richer
+  // `sales_dialog` field for the chat bubble. Per Codex: voice_script stays
+  // ≤80 chars (asserted at module load), sales_dialog can be richer.
+  const finalVoiceScript = playbookStep?.voice_script ?? voiceScript;
+  // Codex Phase 2.3 P1: preserve the real friction code over the wire even
+  // when no playbook is registered. Only fall back to F036 as a LAST resort
+  // for fully synthetic voice queries with no prior evaluation context.
+  const finalFrictionId = playbookFrictionId ?? primaryFrictionId ?? "F036";
   const payload = {
     type: "active" as const,
     action_code: "VOICE_REPLY",
-    friction_id: "F036", // F036 = help_search — closest semantic match for voice queries
+    friction_id: finalFrictionId,
     message: answer,
     voice_enabled: voicePlayback,
-    voice_script: voicePlayback ? voiceScript : undefined,
+    voice_script: voicePlayback ? finalVoiceScript : undefined,
+    // Optional richer message for the chat bubble. Widget falls back to
+    // `message` when this is absent.
+    ...(playbookStep ? {
+      sales_dialog: playbookStep.sales_dialog,
+      playbook_objective: playbookStep.objective,
+    } : {}),
   };
 
   let interventionId = `vq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -203,8 +274,8 @@ export async function handleVoiceQuery(
     const evaluation = await EvaluationRepo.createEvaluation({
       sessionId,
       eventBatchIds: "[]",
-      narrative: `Voice query: ${transcript.slice(0, 120)}`,
-      frictionsFound: '["F036"]',
+      narrative: `Voice query ${redact(transcript)}`,
+      frictionsFound: JSON.stringify([finalFrictionId]),
       intentScore: 60,
       frictionScore: 50,
       clarityScore: 55,
@@ -222,7 +293,7 @@ export async function handleVoiceQuery(
       evaluationId: evaluation.id,
       type: "active",
       actionCode: "VOICE_REPLY",
-      frictionId: "F036",
+      frictionId: finalFrictionId,
       payload: JSON.stringify(payload),
       mswimScoreAtFire: 58,
       tierAtFire: "NUDGE",
@@ -233,7 +304,7 @@ export async function handleVoiceQuery(
     // Increment voice counter fire-and-forget
     SessionRepo.incrementVoiceInterventionsFired(sessionId).catch(() => {});
   } catch (err) {
-    log.error("[VoiceResponder] DB persist error (non-blocking):", err);
+    log.error({ err, sessionId }, "[VoiceResponder] DB persist error (non-blocking)");
     // Fall through — still broadcast with the synthetic ID
   }
 
@@ -246,10 +317,42 @@ export async function handleVoiceQuery(
     payload: broadcastPayload,
   });
 
-  const turnCount = getHistory(sessionId).length / 2;
+  // Phase 2.4 — when streaming TTS is enabled AND voice playback is active,
+  // open a Deepgram WebSocket and forward audio chunks for sub-1s first
+  // audio. Fire-and-forget — the legacy `voice_script` field in the payload
+  // is the fallback the widget plays via REST when streaming is disabled,
+  // returns disabled/error/timeout, or hasn't been wired into the widget
+  // player yet. Codex Phase 2.4 P1: this wiring is what makes the flag
+  // actually change behavior.
+  if (voicePlayback && getStreamingTtsConfig().enabled) {
+    void streamTtsToSession({
+      sessionId,
+      interventionId,
+      text: finalVoiceScript,
+    }).then((stats) => {
+      log.info(
+        {
+          sessionId,
+          interventionId,
+          firstChunkMs: stats.firstChunkMs,
+          totalMs: stats.totalMs,
+          chunkCount: stats.chunkCount,
+          outcome: stats.outcome,
+        },
+        "[VoiceResponder] streaming TTS finished",
+      );
+    });
+  }
+
+  // Telemetry only — no transcript content. Per CLAUDE.md hard rule.
+  let turnCount = 0;
+  try {
+    const state = await ConversationStateRepo.getBySession(sessionId);
+    turnCount = state ? Math.floor(state.turnCount / 2) : 0;
+  } catch { /* non-fatal */ }
   log.info(
-    `[VoiceResponder] Replied to session ${sessionId} (turn ${turnCount}): "${answer.slice(0, 60)}…"` +
-    ` (voice=${voicePlayback})`,
+    { sessionId, turn: turnCount, answer: redact(answer), voicePlayback },
+    "[VoiceResponder] reply emitted",
   );
 
   // 8. Ack to the widget's WS connection

@@ -51,6 +51,7 @@ docs/*
 !docs/PHASE_1_1_MANUAL_GATE.md
 !docs/PHASE_1_4_MANUAL_GATE.md
 !docs/PHASE_1_5_MANUAL_GATE.md
+!docs/PHASE_2_MANUAL_GATE.md
 
 # SQLite dev database
 *.db
@@ -67,3 +68,7 @@ apps/store/__pycache__/
 apps/store/uploads/
 apps/store/test-output.xlsx
 apps/store/test.csv
+
+# Build outputs
+apps/*/dist/
+packages/*/dist/

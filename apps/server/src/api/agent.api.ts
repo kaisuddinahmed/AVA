@@ -48,8 +48,8 @@ agentRouter.post('/query', async (req: Request, res: Response) => {
 
 // ─── Session cleanup (DELETE /api/agent/session/:sessionId) ──────────────────
 
-agentRouter.delete('/session/:sessionId', (req: Request, res: Response) => {
-  clearAgentState(String(req.params.sessionId));
+agentRouter.delete('/session/:sessionId', async (req: Request, res: Response) => {
+  await clearAgentState(String(req.params.sessionId));
   return res.json({ ok: true });
 });
 

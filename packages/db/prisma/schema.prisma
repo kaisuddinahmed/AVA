@@ -730,8 +730,19 @@ model WebhookDelivery {
 
 // ---------------------------------------------------------------------------
 // VisitorAddress — server-persisted shipping address for repeat-visitor autofill
-// (Story 3). No PII: no name, email, or phone. Scoped to visitorKey + siteUrl.
-// Only written when shopper explicitly confirms. Deleted on "forget" request.
+// (Story 3). No PII beyond the address itself: no name, email, or phone.
+// Scoped to visitorKey + siteUrl.
+//
+// Write triggers (any of these counts as explicit confirmation, locked in
+// Phase 2.8 voice-autofill review):
+//   1. Wizard form submit (typed by the shopper in the address modal).
+//   2. Voice autofill — the shopper's spoken instruction containing a
+//      shipping intent ("ship to 123 Main St…") IS the explicit confirmation.
+//      The voice-autofill extractor only fires after that keyword trigger
+//      and the LLM returns a fully-validated address (partial addresses
+//      are rejected upstream).
+//
+// Deleted on a "forget" / DELETE /api/address request.
 // ---------------------------------------------------------------------------
 model VisitorAddress {
   id           String   @id @default(uuid())

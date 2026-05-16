@@ -90,6 +90,12 @@ export interface InterventionPayload {
   // Voice fields (server sets these; Phase 1 widget plays via Deepgram TTS)
   voice_enabled?: boolean;
   voice_script?: string;
+  // Phase 2.3 — F-code sales playbook fields. `sales_dialog` is the richer
+  // bubble text that the widget should render in preference to `message`
+  // when present. `playbook_objective` is internal telemetry surfaced for
+  // dashboard transparency.
+  sales_dialog?: string;
+  playbook_objective?: string;
 }
 
 export interface WidgetMessage {

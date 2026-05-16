@@ -7,6 +7,10 @@ import {
   buildComparison,
   type ProductSuggestion,
 } from "./product-intelligence.js";
+import {
+  pickPlaybookForFrictions,
+  selectStep,
+} from "../voice/sales-playbooks.js";
 
 interface SessionEvent {
   eventType?: string;
@@ -36,7 +40,21 @@ export async function buildPayload(
   // Voice is enabled for nudge/active/escalate tiers only, when the template
   // has a voice script, and the session budget has not been exhausted/muted.
   const isVoiceTier = type === "nudge" || type === "active" || type === "escalate";
-  const voiceEnabled = isVoiceTier && !!template.voiceScript && !voiceDisabled;
+
+  // Phase 2.6 — F-code sales playbook layering. When the firing friction has
+  // a registered playbook (Phase 2.3 catalog), use its curated voice_script
+  // and sales_dialog in preference to the generic message template. The
+  // playbook's voice_script is asserted ≤80 chars at module load, so this
+  // never busts the TTS budget.
+  //
+  // First step of the playbook is used for the proactive path (this is the
+  // first time the shopper hears AVA about this friction). Reactive voice
+  // queries cycle through steps based on turnCount; see voice-responder.
+  const playbook = pickPlaybookForFrictions([frictionId]);
+  const playbookStep = playbook ? selectStep(playbook, 0) : null;
+
+  const templateVoiceScript = playbookStep?.voice_script ?? template.voiceScript;
+  const voiceEnabled = isVoiceTier && !!templateVoiceScript && !voiceDisabled;
 
   // Keys use snake_case to match widget's InterventionPayload interface
   const base: Record<string, unknown> = {
@@ -47,17 +65,29 @@ export async function buildPayload(
     tier: evaluation.tier,
     timestamp: new Date().toISOString(),
     voice_enabled: voiceEnabled,
-    voice_script: voiceEnabled ? template.voiceScript : undefined,
+    voice_script: voiceEnabled ? templateVoiceScript : undefined,
+    // Phase 2.6 — when a playbook applies, emit richer bubble text and the
+    // step's objective for dashboard transparency. Widget renders
+    // `sales_dialog || message` as the bubble content.
+    ...(playbookStep ? {
+      sales_dialog: playbookStep.sales_dialog,
+      playbook_objective: playbookStep.objective,
+    } : {}),
   };
 
   switch (type) {
     case "passive":
+      // Codex Phase 2.6 P2: passive stays SILENT — strip both audio AND the
+      // proactive salesperson bubble. Visual ui_adjustment is still allowed
+      // (subtle hint), but no curated dialog should pop up in passive mode.
       return {
         ...base,
         ui_adjustment: template.uiAdjustments?.[0] ?? null,
         silent: true,
-        voice_enabled: false,  // passive interventions are always silent
+        voice_enabled: false,
         voice_script: undefined,
+        sales_dialog: undefined,
+        playbook_objective: undefined,
       };
 
     case "nudge":

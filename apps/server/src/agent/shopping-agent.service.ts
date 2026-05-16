@@ -17,7 +17,9 @@ import Groq from 'groq-sdk';
 import { parseIntent } from './intent-parser.js';
 import { searchProducts } from './product-search-adapter.js';
 import { broadcastToSession } from '../broadcast/broadcast.service.js';
-import { InterventionRepo, EvaluationRepo, SessionRepo } from '@ava/db';
+import { InterventionRepo, EvaluationRepo, SessionRepo, ConversationStateRepo } from '@ava/db';
+import { tierDirective, asMswimTier, type MswimTier } from '../voice/mswim-directives.js';
+import { logger } from '../logger.js';
 import type {
   AgentResponse,
   AgentResponseType,
@@ -28,35 +30,81 @@ import type {
   SiteAdapterConfig,
 } from './agent.types.js';
 
-// ─── Session store ────────────────────────────────────────────────────────────
+const log = logger.child({ service: 'shopping-agent' });
+
+// ─── Session store (Phase 2.1 — DB-backed) ──────────────────────────────────
+//
+// Per-request working struct hydrated from ConversationStateRepo at the start
+// of processQuery() and persisted at the end. The DB row is the source of
+// truth; in-process state is just a scratch copy that lives for the duration
+// of one query. Survives widget reloads + server restarts.
 
 const MAX_TURNS = 10;
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 interface SessionContext {
   history: ConversationMessage[];
   lastResults: ProductResult[];       // Products from the most recent search turn
-  lastActivity: number;
   turnIndex: number;
 }
 
-const sessions = new Map<string, SessionContext>();
+/**
+ * Hydrate a per-request SessionContext from the persisted row. Returns a
+ * fresh empty context on first turn or if the row was purged. Never throws —
+ * a DB blip just costs the conversation its memory for this request.
+ */
+async function hydrateSession(sessionId: string): Promise<SessionContext> {
+  try {
+    const row = await ConversationStateRepo.getBySession(sessionId);
+    if (!row) return { history: [], lastResults: [], turnIndex: 0 };
 
-// TTL cleanup — runs every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, ctx] of sessions) {
-    if (now - ctx.lastActivity > SESSION_TTL_MS) sessions.delete(id);
-  }
-}, 5 * 60 * 1000);
+    let history: ConversationMessage[] = [];
+    try {
+      const raw = JSON.parse(row.turns) as Array<{ role: string; content: string; timestamp?: number; products?: ProductResult[] }>;
+      history = raw
+        .filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string')
+        .map((t) => ({ role: t.role as 'user' | 'assistant', content: t.content, timestamp: t.timestamp ?? Date.now(), products: t.products }));
+    } catch { /* fall through with empty history */ }
 
-function getOrCreateSession(sessionId: string): SessionContext {
-  if (!sessions.has(sessionId)) {
-    sessions.set(sessionId, { history: [], lastResults: [], lastActivity: Date.now(), turnIndex: 0 });
+    let lastResults: ProductResult[] = [];
+    if (row.comparisonSet) {
+      try { lastResults = JSON.parse(row.comparisonSet) as ProductResult[]; }
+      catch { /* ignore — empty results is safe */ }
+    }
+    const turnIndex = Math.floor(row.turnCount / 2);
+    return { history, lastResults, turnIndex };
+  } catch (err) {
+    log.warn({ err, sessionId }, '[ShoppingAgent] hydrate failed; starting fresh');
+    return { history: [], lastResults: [], turnIndex: 0 };
   }
-  const ctx = sessions.get(sessionId)!;
-  ctx.lastActivity = Date.now();
-  return ctx;
+}
+
+/**
+ * Persist the working SessionContext back to the DB at the end of a query.
+ * Always best-effort — a failed write doesn't break the response that's
+ * already been generated for the user.
+ */
+async function persistSession(
+  sessionId: string,
+  siteUrl: string,
+  ctx: SessionContext,
+): Promise<void> {
+  try {
+    const capped = ctx.history.slice(-MAX_TURNS * 2).map((t) => ({
+      role: t.role,
+      content: t.content,
+      timestamp: t.timestamp,
+      ...(t.products ? { products: t.products } : {}),
+    }));
+    await ConversationStateRepo.upsert({
+      sessionId,
+      siteUrl,
+      turns: JSON.stringify(capped),
+      turnCount: capped.length,
+      comparisonSet: ctx.lastResults.length > 0 ? JSON.stringify(ctx.lastResults) : null,
+    });
+  } catch (err) {
+    log.warn({ err, sessionId }, '[ShoppingAgent] persist failed (non-blocking)');
+  }
 }
 
 function pushHistory(ctx: SessionContext, role: 'user' | 'assistant', content: string, products?: ProductResult[]): void {
@@ -64,8 +112,17 @@ function pushHistory(ctx: SessionContext, role: 'user' | 'assistant', content: s
   if (ctx.history.length > MAX_TURNS * 2) ctx.history.splice(0, 2); // evict oldest pair
 }
 
-export function clearAgentState(sessionId: string): void {
-  sessions.delete(sessionId);
+/**
+ * Purge the persisted conversation + agent state for a session. Replaces the
+ * old in-memory Map.delete() with a DB purge. Async — callers may
+ * fire-and-forget if they previously used the sync .delete() pattern.
+ */
+export async function clearAgentState(sessionId: string): Promise<void> {
+  try {
+    await ConversationStateRepo.purgeBySession(sessionId);
+  } catch (err) {
+    log.warn({ err, sessionId }, '[ShoppingAgent] clearAgentState purge failed');
+  }
 }
 
 // ─── Groq instance ────────────────────────────────────────────────────────────
@@ -74,7 +131,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
-function buildSystemPrompt(ctx: PageContext): string {
+function buildSystemPrompt(ctx: PageContext, tier?: MswimTier | null): string {
   const cartSummary = ctx.cartContents?.length
     ? `Cart: ${ctx.cartContents.map(c => `${c.quantity}x ${c.title} ($${c.price})`).join(', ')}`
     : 'Cart: empty';
@@ -87,6 +144,8 @@ Your goal is to help shoppers find the right product through natural conversatio
 
 Current page: ${ctx.pageType} — ${ctx.pageUrl}
 ${inViewSummary ? inViewSummary + '\n' : ''}${cartSummary}
+
+${tierDirective(tier)}
 
 Guidelines:
 - Be concise (1-3 sentences). The response will be read aloud via TTS.
@@ -105,13 +164,14 @@ async function generateNarration(
   pageCtx: PageContext,
   intent: ParsedIntent,
   products: ProductResult[],
+  tier: MswimTier | null,
 ): Promise<string> {
   const productContext = products.slice(0, 3).map((p, i) =>
     `${i + 1}. ${p.title} — $${p.price} ${p.matchedAttributes.length ? `(matches: ${p.matchedAttributes.join(', ')})` : ''}`
   ).join('\n');
 
   const messages: Groq.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: buildSystemPrompt(pageCtx) },
+    { role: 'system', content: buildSystemPrompt(pageCtx, tier) },
     ...ctx.history.slice(-8).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     {
       role: 'user',
@@ -132,9 +192,10 @@ async function generateMessage(
   ctx: SessionContext,
   pageCtx: PageContext,
   userMessage: string,
+  tier: MswimTier | null,
 ): Promise<string> {
   const messages: Groq.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: buildSystemPrompt(pageCtx) },
+    { role: 'system', content: buildSystemPrompt(pageCtx, tier) },
     ...ctx.history.slice(-8).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     { role: 'user', content: userMessage },
   ];
@@ -192,8 +253,22 @@ export interface ProcessQueryOptions {
 
 export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResponse> {
   const { sessionId, query, pageContext, siteConfig, addToCartSelector } = opts;
-  const ctx = getOrCreateSession(sessionId);
+  // Phase 2.1: hydrate from persisted state instead of an in-memory Map.
+  // This makes conversation memory survive widget reloads + server restarts.
+  const ctx = await hydrateSession(sessionId);
   const t0 = Date.now();
+
+  // Phase 2.2: scale assertiveness with the shopper's latest MSWIM tier.
+  // Codex P1 fix: exclude this agent's own AGENT_VOICE / VOICE_REPLY
+  // synthetic evals — otherwise the agent self-shadows the real friction
+  // tier (e.g. ESCALATE cart recovery silently downgrades to NUDGE).
+  let tier: MswimTier | null = null;
+  try {
+    const latest = await EvaluationRepo.getLatestNonVoiceEvaluation(sessionId);
+    tier = asMswimTier(latest?.tier);
+  } catch (err) {
+    log.warn({ err, sessionId }, '[ShoppingAgent] tier lookup failed; defaulting to PASSIVE');
+  }
 
   // Parse intent with full conversation history for context
   const intent = await parseIntent(query, ctx.history);
@@ -228,7 +303,7 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
         products = result.products.slice(0, 5);
         ctx.lastResults = products;
         responseType = 'products';
-        message = await generateNarration(ctx, pageContext, intent, products);
+        message = await generateNarration(ctx, pageContext, intent, products, tier);
       }
       await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_SEARCH', intent,
         products?.map(p => p.id) ?? [], ctx.turnIndex, Date.now() - t0);
@@ -344,7 +419,7 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
             ctx.lastResults = products;
             responseType = 'products';
             message = products.length
-              ? await generateNarration(ctx, pageContext, freshIntent, products)
+              ? await generateNarration(ctx, pageContext, freshIntent, products, tier)
               : `I couldn't find any ${fallbackQuery} right now. Could you describe what you're looking for?`;
           }
         } else {
@@ -359,7 +434,7 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
     default: {
       // chitchat / unrecognised
       responseType = 'message';
-      message = await generateMessage(ctx, pageContext, query);
+      message = await generateMessage(ctx, pageContext, query, tier);
       await logAgentAction(sessionId, siteConfig.siteUrl, 'AGENT_FALLBACK', intent,
         [], ctx.turnIndex, Date.now() - t0);
     }
@@ -368,6 +443,11 @@ export async function processQuery(opts: ProcessQueryOptions): Promise<AgentResp
   // Push assistant turn to history
   pushHistory(ctx, 'assistant', message, products);
   const turnIndex = ctx.turnIndex++;
+
+  // Phase 2.1: persist the updated context so the next query (or the next
+  // session after a reload) starts from the same state. Fire-and-forget —
+  // a write failure doesn't poison the response already on its way.
+  void persistSession(sessionId, siteConfig.siteUrl, ctx);
 
   return { sessionId, responseType, message, products, cartTarget, navigateTo, searchQuery, turnIndex };
 }

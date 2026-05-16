@@ -91,6 +91,66 @@ export const WsVoiceQuerySchema = z.object({
   }).optional(),
 });
 
+// ── Phase 2.7 — Streaming STT + barge-in WS frames ──────────────────────────
+
+/** Begin a streaming STT session. Implicitly cancels any in-flight TTS for
+ *  the session (barge-in invariant). */
+export const WsVoiceStreamStartSchema = z.object({
+  type: z.literal("voice_stream_start"),
+  session_id: z.string(),
+  page_context: z.object({
+    page_type: z.string().optional(),
+    page_url: z.string().optional(),
+  }).optional(),
+});
+
+/** Mic-audio chunk forwarded into the active streaming STT session. The
+ *  chunk is base64-encoded so it rides the existing JSON dispatcher.
+ *
+ *  Codex Phase 2.7 P2: validate the base64 shape strictly — `Buffer.from`
+ *  silently truncates malformed input, so the dispatcher's `decode_failed`
+ *  branch was unreachable in practice. We enforce:
+ *    1. The alphabet (only A-Z a-z 0-9 + / =).
+ *    2. Padding at most "==", only as trailing chars.
+ *    3. Length is a multiple of 4 (base64 invariant).
+ *    4. Round-trip decode→encode equals the input (catches any remaining
+ *       padding / canonicalisation drift). */
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+export const WsAudioChunkSchema = z.object({
+  type: z.literal("audio_chunk"),
+  session_id: z.string(),
+  chunk: z
+    .string()
+    .min(1)
+    .max(200_000)
+    .refine((s) => BASE64_RE.test(s), { message: "chunk: invalid base64 alphabet" })
+    .refine((s) => s.length % 4 === 0, { message: "chunk: base64 length must be multiple of 4" })
+    .refine(
+      (s) => {
+        try {
+          return Buffer.from(s, "base64").toString("base64") === s;
+        } catch {
+          return false;
+        }
+      },
+      { message: "chunk: base64 round-trip failed" },
+    ),
+});
+
+/** Finalize the streaming STT session and wait for Deepgram's last
+ *  transcript event. */
+export const WsVoiceStreamEndSchema = z.object({
+  type: z.literal("voice_stream_end"),
+  session_id: z.string(),
+});
+
+/** Explicitly cancel any in-flight streaming TTS. Used by the widget when
+ *  the user dismisses the bubble before AVA finishes speaking. */
+export const WsTtsCancelSchema = z.object({
+  type: z.literal("tts_cancel"),
+  session_id: z.string(),
+});
+
 // ============================================================================
 // WEBSOCKET: AGENT QUERY (from widget — Story 12 shopping agent)
 // ============================================================================

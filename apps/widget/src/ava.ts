@@ -380,7 +380,9 @@ export class AVAWidget {
           this.messages.push({
             id: payload.intervention_id,
             type: "assistant",
-            content: payload.message || "",
+            // Phase 2.3 — prefer the F-code playbook's sales_dialog when
+            // present; fall back to the LLM-generated `message`.
+            content: payload.sales_dialog || payload.message || "",
             payload,
             timestamp: Date.now(),
           });
@@ -399,7 +401,7 @@ export class AVAWidget {
         this.messages.push({
           id: payload.intervention_id,
           type: "system",
-          content: payload.message || "Connecting you with support...",
+          content: payload.sales_dialog || payload.message || "Connecting you with support...",
           payload,
           timestamp: Date.now(),
         });
@@ -494,7 +496,8 @@ export class AVAWidget {
         this.messages.push({
           id: _n.intervention_id,
           type: "assistant",
-          content: _n.message || "",
+          // Phase 2.3 — playbook bubble text takes precedence (face-widget mode).
+          content: _n.sales_dialog || _n.message || "",
           payload: _normPayload,
           timestamp: Date.now(),
         });
@@ -511,7 +514,8 @@ export class AVAWidget {
 
       const nudge = renderNudgeBubble({
         config: this.config,
-        message: payload.message || "",
+        // Phase 2.3 — playbook bubble text takes precedence.
+        message: payload.sales_dialog || payload.message || "",
         frictionId: payload.friction_id,
         ctaLabel: payload.cta_label,
         voiceEnabled: showVoiceMute,
@@ -843,7 +847,8 @@ export class AVAWidget {
         this.messages.push({
           id: n.intervention_id,
           type: "assistant",
-          content: n.message || "",
+          // Phase 2.3 — playbook bubble text takes precedence (toggle-open carry-over).
+          content: n.sales_dialog || n.message || "",
           payload: n,
           timestamp: Date.now(),
         });
@@ -881,7 +886,8 @@ export class AVAWidget {
         this.messages.push({
           id: payload.intervention_id,
           type: "assistant",
-          content: payload.message || "",
+          // Phase 2.3 — playbook bubble text takes precedence.
+          content: payload.sales_dialog || payload.message || "",
           payload,
           timestamp: Date.now(),
         });

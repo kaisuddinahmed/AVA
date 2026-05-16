@@ -6,6 +6,10 @@ import { buildPayload } from "./payload-builder.js";
 import type { SessionContext } from "./message-templates.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
+import {
+  streamTtsToSession,
+  getStreamingTtsConfig,
+} from "../voice/streaming-tts.service.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -112,6 +116,33 @@ export async function handleDecision(
   // Increment voice counter fire-and-forget when voice is actually enabled
   if (payload.voice_enabled === true) {
     SessionRepo.incrementVoiceInterventionsFired(sessionId).catch(() => {});
+
+    // Phase 2.4 — kick off streaming TTS in parallel when the flag is on.
+    // The legacy `voice_script` field on the payload remains the widget's
+    // fallback when streaming returns disabled/error/timeout (Codex P1).
+    if (
+      typeof payload.voice_script === "string" &&
+      payload.voice_script.length > 0 &&
+      getStreamingTtsConfig().enabled
+    ) {
+      void streamTtsToSession({
+        sessionId,
+        interventionId: intervention.id,
+        text: payload.voice_script,
+      }).then((stats) => {
+        log.info(
+          {
+            sessionId,
+            interventionId: intervention.id,
+            firstChunkMs: stats.firstChunkMs,
+            totalMs: stats.totalMs,
+            chunkCount: stats.chunkCount,
+            outcome: stats.outcome,
+          },
+          "[Intervene] streaming TTS finished",
+        );
+      });
+    }
   }
 
   return {

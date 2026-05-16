@@ -70,6 +70,31 @@ export async function getLatestEvaluation(sessionId: string) {
   });
 }
 
+/**
+ * Latest evaluation whose intervention is NOT a synthetic voice-response
+ * row. Used by the voice/agent prompt builders (Phase 2.2) to pick the real
+ * behavioral/MSWIM tier instead of self-shadowing on AVA's own VOICE_REPLY /
+ * AGENT_VOICE rows.
+ *
+ * Codex Phase 2.2 review (P1): `getLatestEvaluation` would return the most
+ * recent eval — including the one this voice path just wrote at hardcoded
+ * NUDGE — so an ESCALATE friction would silently downgrade to NUDGE on the
+ * next turn, breaking cart-recovery posture.
+ */
+export async function getLatestNonVoiceEvaluation(sessionId: string) {
+  return prisma.evaluation.findFirst({
+    where: {
+      sessionId,
+      OR: [
+        { intervention: null },
+        { intervention: { actionCode: { notIn: ["VOICE_REPLY", "AGENT_VOICE"] } } },
+      ],
+    },
+    orderBy: { timestamp: "desc" },
+    include: { intervention: true },
+  });
+}
+
 export async function getEvaluationsByTier(tier: string, limit = 20) {
   return prisma.evaluation.findMany({
     where: { tier },
