@@ -1,5 +1,6 @@
 import { SiteCatalogRepo } from "@ava/db";
 import { type StorefrontProduct } from "./shopify-storefront.client.js";
+import { type AdminProduct } from "./shopify-admin.client.js";
 export interface IngestResult {
     /** Products successfully upserted into SiteCatalog. */
     ingested: number;
@@ -44,5 +45,12 @@ export declare function ingestProducts(siteUrl: string, products: StorefrontProd
  * wizard can surface a useful error to the user.
  */
 export declare function ingestShopifyCatalog(siteUrl: string, shopUrl: string, token: string, opts?: IngestOptions): Promise<IngestResult>;
+export declare function toAdminCatalogInput(siteUrl: string, p: AdminProduct): UpsertInput;
+/**
+ * Ingest a Shopify shop's catalog via the Admin API when the Storefront path
+ * isn't available. Same pagination + bounded-memory shape as
+ * `ingestShopifyCatalog`. Errors bubble up as `ShopifyAdminError`.
+ */
+export declare function ingestShopifyCatalogViaAdmin(siteUrl: string, shopUrl: string, adminToken: string, opts?: IngestOptions): Promise<IngestResult>;
 export {};
 //# sourceMappingURL=catalog-ingest.service.d.ts.map

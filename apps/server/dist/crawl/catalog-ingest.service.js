@@ -12,6 +12,7 @@
 import { SiteCatalogRepo } from "@ava/db";
 import { logger } from "../logger.js";
 import { listProducts, ShopifyStorefrontError } from "./shopify-storefront.client.js";
+import { listProducts as adminListProducts, ShopifyAdminError, } from "./shopify-admin.client.js";
 const log = logger.child({ service: "crawl" });
 /** Derive a single availability string from a product's variant inventory. */
 function deriveAvailability(p) {
@@ -135,6 +136,120 @@ export async function ingestShopifyCatalog(siteUrl, shopUrl, token, opts = {}) {
         if (ingested + skipped >= maxProducts) {
             cursor = page.pageInfo.endCursor;
             log.warn({ siteUrl, maxProducts }, "[Catalog] hit maxProducts cap, stopping");
+            break;
+        }
+        cursor = page.pageInfo.endCursor;
+    }
+    return { ingested, skipped, errored, pagesWalked, endCursor: cursor };
+}
+// ---------------------------------------------------------------------------
+// Admin-API ingest fallback (Phase 1.3 hardening)
+// ---------------------------------------------------------------------------
+//
+// Used when the OAuth callback fails to mint a delegated Storefront token
+// (e.g. the merchant's install didn't grant unauthenticated_read_product_*
+// scopes). The Admin API can satisfy the same upsert contract, just over a
+// different transport. Distinct `source: shopify_admin` so analytics can
+// tell which path produced each row.
+/** Derive availability from AdminProduct's variant inventory + status. */
+function deriveAdminAvailability(p) {
+    if (p.status === "ARCHIVED" || p.status === "DRAFT")
+        return "out_of_stock";
+    if (p.variants.length === 0) {
+        // No variant info — fall back to totalInventory if Shopify tracks it.
+        if (p.totalInventory === null)
+            return "in_stock"; // tracking disabled = treat as available
+        return p.totalInventory > 0 ? "in_stock" : "out_of_stock";
+    }
+    const available = p.variants.filter((v) => (v.inventoryQuantity ?? 0) > 0 || v.inventoryPolicy === "CONTINUE").length;
+    if (available === 0)
+        return "out_of_stock";
+    if (available === p.variants.length)
+        return "in_stock";
+    return "partial";
+}
+export function toAdminCatalogInput(siteUrl, p) {
+    const variants = p.variants.map((v) => ({
+        id: v.id,
+        title: v.title,
+        sku: v.sku,
+        price: v.price,
+        availableForSale: (v.inventoryQuantity ?? 0) > 0 || v.inventoryPolicy === "CONTINUE",
+        quantityAvailable: v.inventoryQuantity,
+        options: v.options,
+    }));
+    return {
+        siteUrl,
+        externalId: p.id,
+        handle: p.handle,
+        title: p.title,
+        description: p.description,
+        vendor: p.vendor,
+        productType: p.productType,
+        tags: JSON.stringify(p.tags),
+        imageUrl: p.imageUrl,
+        url: p.onlineStoreUrl,
+        priceMin: p.priceMin,
+        priceMax: p.priceMax,
+        currency: p.currency || "USD",
+        variants: JSON.stringify(variants),
+        availability: deriveAdminAvailability(p),
+        source: "shopify_admin",
+    };
+}
+function isAdminIngestable(p) {
+    return Boolean(p.id && p.handle && p.title);
+}
+/**
+ * Ingest a Shopify shop's catalog via the Admin API when the Storefront path
+ * isn't available. Same pagination + bounded-memory shape as
+ * `ingestShopifyCatalog`. Errors bubble up as `ShopifyAdminError`.
+ */
+export async function ingestShopifyCatalogViaAdmin(siteUrl, shopUrl, adminToken, opts = {}) {
+    const maxProducts = opts.maxProducts ?? 5000;
+    let cursor = null;
+    let ingested = 0;
+    let skipped = 0;
+    let errored = 0;
+    let pagesWalked = 0;
+    while (true) {
+        let page;
+        try {
+            page = await adminListProducts(shopUrl, adminToken, cursor, {
+                pageSize: opts.pageSize,
+                fetchImpl: opts.fetchImpl,
+            });
+        }
+        catch (err) {
+            if (err instanceof ShopifyAdminError)
+                throw err;
+            throw new ShopifyAdminError("network", `Admin catalog ingest failed: ${err.message}`);
+        }
+        pagesWalked++;
+        const remaining = maxProducts - ingested - skipped;
+        const pageProducts = page.products.slice(0, Math.max(0, remaining));
+        for (const p of pageProducts) {
+            if (!isAdminIngestable(p)) {
+                skipped++;
+                continue;
+            }
+            try {
+                await SiteCatalogRepo.upsertProduct(toAdminCatalogInput(siteUrl, p));
+                ingested++;
+            }
+            catch (err) {
+                errored++;
+                log.warn({ err, siteUrl, externalId: p.id }, "[Catalog/Admin] upsert failed");
+            }
+        }
+        log.info({ siteUrl, page: pagesWalked, cumulativeIngested: ingested, source: "shopify_admin" }, "[Catalog/Admin] page ingested");
+        if (!page.pageInfo.hasNextPage) {
+            cursor = null;
+            break;
+        }
+        if (ingested + skipped >= maxProducts) {
+            cursor = page.pageInfo.endCursor;
+            log.warn({ siteUrl, maxProducts }, "[Catalog/Admin] hit maxProducts cap, stopping");
             break;
         }
         cursor = page.pageInfo.endCursor;

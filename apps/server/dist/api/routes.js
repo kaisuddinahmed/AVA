@@ -129,13 +129,11 @@ apiRouter.delete("/address", addressApi.deleteAddress);
 // Network Flywheel (Cross-merchant behavioral priors)
 apiRouter.get("/network/status", networkApi.getNetworkStatus);
 apiRouter.put("/network/opt-in", networkApi.updateNetworkOptIn);
-// Shopify Native App (OAuth + GDPR)
+// Shopify Native App (OAuth flow only — webhooks live in
+// `shopifyWebhooksRouter`, mounted in index.ts BEFORE express.json() so the
+// raw Buffer body is preserved for HMAC verification.)
 apiRouter.get("/shopify/install", shopifyApi.install);
 apiRouter.get("/shopify/callback", shopifyApi.callback);
-apiRouter.post("/shopify/webhooks/uninstall", raw({ type: "*/*" }), shopifyApi.webhookUninstall);
-apiRouter.post("/shopify/webhooks/gdpr/customers/data_request", raw({ type: "*/*" }), shopifyApi.webhookCustomersDataRequest);
-apiRouter.post("/shopify/webhooks/gdpr/customers/redact", raw({ type: "*/*" }), shopifyApi.webhookCustomersRedact);
-apiRouter.post("/shopify/webhooks/gdpr/shop/redact", raw({ type: "*/*" }), shopifyApi.webhookShopRedact);
 // Rollouts (Gradual Config Changes)
 apiRouter.get("/rollouts", rolloutsApi.list);
 apiRouter.post("/rollouts", rolloutsApi.create);

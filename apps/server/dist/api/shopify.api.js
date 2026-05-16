@@ -21,6 +21,9 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { SiteConfigRepo } from "@ava/db";
 import { logger } from "../logger.js";
 import { seedShopifyMappings } from "./shopify-mapper.service.js";
+import { createDelegatedStorefrontToken, registerProductWebhooks, } from "../crawl/shopify-admin.client.js";
+import { ingestShopifyCatalog, ingestShopifyCatalogViaAdmin, } from "../crawl/catalog-ingest.service.js";
+import { walkPageMap } from "../crawl/page-map-walker.service.js";
 const log = logger.child({ service: "api" });
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,7 +32,14 @@ function getShopifyConfig() {
     return {
         apiKey: process.env.SHOPIFY_API_KEY ?? "",
         apiSecret: process.env.SHOPIFY_API_SECRET ?? "",
-        scopes: process.env.SHOPIFY_SCOPES ?? "read_script_tags,write_script_tags,read_products",
+        // Default scopes:
+        //   - read/write_script_tags     : widget injection
+        //   - read_products              : Admin-side catalog ingest + webhook subs
+        //   - unauthenticated_read_product_listings  : delegated Storefront token
+        //                                              needs this to query products
+        //   - unauthenticated_read_product_inventory : exposes quantityAvailable
+        //                                              for stock-aware nudges
+        scopes: process.env.SHOPIFY_SCOPES ?? "read_script_tags,write_script_tags,read_products,unauthenticated_read_product_listings,unauthenticated_read_product_inventory",
         appUrl: process.env.SHOPIFY_APP_URL ?? "http://localhost:8080",
         widgetSrc: process.env.SHOPIFY_WIDGET_SRC ?? "http://localhost:8080/api/widget.js",
     };
@@ -156,29 +166,86 @@ export async function callback(req, res) {
         return res.status(401).json({ error: "HMAC verification failed" });
     }
     try {
-        // 1. Exchange authorization code for permanent token
+        // 1. Exchange authorization code for permanent Admin token
         const accessToken = await exchangeCodeForToken(shop, code, cfg);
-        // 2. Upsert SiteConfig for this Shopify store
         const siteUrl = `https://${shop}`;
-        await SiteConfigRepo.installShopify({ siteUrl, shop, accessToken });
-        // 3. Inject widget ScriptTag
+        // 2. Phase 1.3.2 — mint a delegated Storefront token via the Admin API so
+        //    catalog ingest + runtime queries can use the public Storefront endpoint
+        //    without the merchant pasting a separate token. Failure here is
+        //    non-fatal — fall back to Admin-API ingest path in step 4.
+        let storefrontToken = null;
+        try {
+            const minted = await createDelegatedStorefrontToken(siteUrl, accessToken, "AVA Storefront (auto)");
+            storefrontToken = minted.accessToken;
+            log.info({ shop, scopes: minted.scopes }, "[Shopify] Delegated Storefront token minted");
+        }
+        catch (err) {
+            log.warn({ shop, err }, "[Shopify] Storefront token mint failed — continuing with Admin-only");
+        }
+        // 3. Persist BOTH credentials. `mapped`, not `limited_active` — wizard
+        //    owns the explicit activation step (per CLAUDE.md activation flow).
+        const siteConfig = await SiteConfigRepo.installShopify({
+            siteUrl,
+            shop,
+            accessToken,
+            storefrontToken,
+            integrationStatus: "mapped",
+        });
+        // 4. Inject widget ScriptTag
         const scriptTagId = await injectScriptTag(shop, accessToken, cfg.widgetSrc);
         if (scriptTagId) {
             await SiteConfigRepo.setShopifyScriptTagId(siteUrl, scriptTagId);
         }
-        // 4. Register mandatory webhooks (fire-and-forget)
-        registerWebhooks(shop, accessToken, cfg.appUrl).catch((err) => log.error("[Shopify] Webhook registration failed:", err));
-        // 5. Seed high-confidence Shopify selector mappings (fire-and-forget).
-        //    Coverage reaches ≥90% immediately via known Shopify theme selectors.
+        // 5. Phase 1.3.3 — run the preview pipeline so the merchant lands on a
+        //    fully-mapped wizard preview, not an empty dashboard. Both legs
+        //    fire-and-forget so the redirect is fast; the wizard polls the API
+        //    for fresh results.
+        //
+        //    Codex Phase 1.3 review: ALWAYS run a catalog ingest. If the
+        //    delegated Storefront token mint failed earlier, fall back to the
+        //    Admin API path so the merchant doesn't see an empty preview.
+        if (storefrontToken) {
+            ingestShopifyCatalog(siteUrl, siteUrl, storefrontToken).catch((err) => log.warn({ shop, err }, "[Shopify] Background catalog ingest failed"));
+        }
+        else {
+            ingestShopifyCatalogViaAdmin(siteUrl, siteUrl, accessToken).catch((err) => log.warn({ shop, err }, "[Shopify] Admin-fallback catalog ingest failed"));
+        }
+        walkPageMap({ siteUrl }).catch((err) => log.warn({ shop, err }, "[Shopify] Background page-map walk failed"));
+        // 6. Register mandatory webhooks (fire-and-forget)
+        registerWebhooks(shop, accessToken, cfg.appUrl).catch((err) => log.error({ err }, "[Shopify] Webhook registration failed"));
+        // 6b. Phase 1.3.5 — subscribe to products/{create,update,delete} via the
+        //     Admin GraphQL API. Idempotent: re-running on reinstall is fine.
+        //     Failure is non-fatal; partial coverage is preferable to abort.
+        registerProductWebhooks(siteUrl, accessToken, cfg.appUrl)
+            .then(async (result) => {
+            if (result.failed.length > 0) {
+                log.warn({ shop, failed: result.failed }, "[Shopify] Some product webhook subscriptions failed");
+            }
+            const persistable = result.registered
+                .filter((r) => r.id.length > 0)
+                .map((r) => ({ topic: r.topic, id: r.id }));
+            if (persistable.length > 0) {
+                await SiteConfigRepo.setShopifyWebhookIds(siteUrl, persistable);
+            }
+            log.info({
+                shop,
+                registered: result.registered.map((r) => ({ topic: r.topic, alreadyExisted: r.alreadyExisted })),
+                failedCount: result.failed.length,
+            }, "[Shopify] Product webhook registration complete");
+        })
+            .catch((err) => log.error({ err, shop }, "[Shopify] Product webhook registration threw"));
+        // 7. Seed high-confidence Shopify selector mappings (fire-and-forget).
         seedShopifyMappings(shop, accessToken).catch((err) => log.error({ shop, err }, "[Shopify] Selector mapping seed failed (non-blocking)"));
-        log.info({ shop, scriptTagId }, "[Shopify] Installed — selector seeding in progress");
-        // 6. Redirect merchant to onboarding wizard
-        const wizardUrl = process.env.SHOPIFY_POST_INSTALL_URL
-            ?? `${cfg.appUrl.replace(":8080", ":4002")}?shop=${encodeURIComponent(shop)}`;
+        log.info({ shop, scriptTagId, siteId: siteConfig.id }, "[Shopify] OAuth install complete");
+        // 8. Redirect merchant to the wizard's Shopify quick-preview screen, which
+        //    will fetch results via /api/onboarding/shopify-quick or polling.
+        const wizardBase = process.env.SHOPIFY_POST_INSTALL_URL
+            ?? cfg.appUrl.replace(":8080", ":4002");
+        const wizardUrl = `${wizardBase}?platform=shopify&siteId=${encodeURIComponent(siteConfig.id)}&shop=${encodeURIComponent(shop)}`;
         return res.redirect(wizardUrl);
     }
     catch (err) {
-        log.error("[Shopify] OAuth callback error:", err);
+        log.error({ err }, "[Shopify] OAuth callback error");
         return res.status(500).json({ error: "Installation failed" });
     }
 }
