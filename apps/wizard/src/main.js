@@ -2,6 +2,7 @@ import "./styles.css";
 import { createIntegrationWizard } from "./components/integration-wizard.js";
 import { createShopifyQuickWizard } from "./components/shopify-quick.js";
 import { createWooQuickWizard } from "./components/woo-quick.js";
+import { createAutoQuickWizard } from "./components/auto-quick.js";
 import { initAppBridge, isShopifyEmbedded, showToast } from "./app-bridge.js";
 
 // Initialise Shopify App Bridge if running inside Shopify Admin.
@@ -32,9 +33,13 @@ if (!isShopifyEmbedded) {
 const wizardRoot = document.getElementById("wizard-root");
 if (!wizardRoot) throw new Error("Missing #wizard-root element");
 
-// Phase 1.1.5 / 1.4.4 — route to a platform-specific quick-onboard flow when
-// `?platform=...` is in the URL. Falls through to the legacy multi-step
-// wizard otherwise.
+// Phase 1.1.5 / 1.4.4 / 1.5.4 — route to a platform-specific quick-onboard
+// flow when `?platform=...` is set; the unified auto-detect flow (1.5.4)
+// when `?platform=auto`; otherwise the legacy multi-step wizard.
+//
+// Most paths in production should use ?platform=auto — the wizard then asks
+// the server to detect the platform via the unified endpoint and renders the
+// appropriate preview, so the user just pastes a URL.
 const params = new URLSearchParams(window.location.search);
 const platform = params.get("platform");
 
@@ -54,6 +59,8 @@ if (platform === "shopify") {
   createShopifyQuickWizard(wizardRoot, opts);
 } else if (platform === "woocommerce") {
   createWooQuickWizard(wizardRoot, opts);
+} else if (platform === "auto") {
+  createAutoQuickWizard(wizardRoot, opts);
 } else {
   createIntegrationWizard(wizardRoot, opts);
 }

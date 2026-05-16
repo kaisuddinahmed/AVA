@@ -555,6 +555,24 @@ button[disabled] {
   color: var(--text);
   font-weight: 500;
 }
+.sq-coverage {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+.sq-source-breakdown {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sq-source-breakdown li strong { color: var(--text); }
 .sq-btn {
   border: none;
   border-radius: 8px;
