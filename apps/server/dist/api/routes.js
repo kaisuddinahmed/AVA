@@ -7,6 +7,7 @@ import * as analyticsApi from "./analytics.api.js";
 import * as onboardingApi from "./onboarding.api.js";
 import * as onboardingShopifyApi from "./onboarding-shopify.api.js";
 import * as onboardingWooApi from "./onboarding-woo.api.js";
+import * as onboardingQuickApi from "./onboarding-quick.api.js";
 import * as integrationApi from "./integration.api.js";
 import * as trainingApi from "./training.api.js";
 import * as shadowApi from "./shadow.api.js";
@@ -60,6 +61,8 @@ apiRouter.get("/onboarding/:runId/results", onboardingApi.getOnboardingResults);
 apiRouter.post("/onboarding/shopify-quick", onboardingShopifyApi.shopifyQuickOnboard);
 // Phase 1.4.3 — wizard paste-URL WooCommerce slice
 apiRouter.post("/onboarding/woocommerce-quick", onboardingWooApi.wooCommerceQuickOnboard);
+// Phase 1.5.3 — unified entrypoint: dispatches to Shopify / Woo / generic
+apiRouter.post("/onboarding/quick", onboardingQuickApi.quickOnboard);
 // Integration
 apiRouter.get("/site/status", integrationApi.getSiteStatus); // widget activation gate
 apiRouter.post("/site/reset", integrationApi.resetSiteStatus); // demo: reset to dormant
@@ -106,6 +109,10 @@ apiRouter.get("/drift/snapshots", driftApi.listSnapshots);
 apiRouter.get("/drift/alerts", driftApi.listAlerts);
 apiRouter.post("/drift/alerts/:id/ack", driftApi.acknowledgeAlert);
 apiRouter.post("/drift/check", driftApi.triggerDriftCheck);
+// Phase 1.5.6 — Selector-drift split-lifecycle endpoints
+apiRouter.get("/drift/selector-status", driftApi.getSelectorDriftStatus);
+apiRouter.post("/drift/selector-baseline", driftApi.promoteSelectorBaseline);
+apiRouter.post("/drift/selector-check", driftApi.triggerSelectorDriftCheck);
 // Experiments (A/B Testing)
 apiRouter.get("/experiments", experimentsApi.list);
 apiRouter.post("/experiments/model-test", experimentsApi.createModelTest);

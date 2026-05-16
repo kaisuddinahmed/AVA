@@ -2,6 +2,8 @@ import { SiteCatalogRepo } from "@ava/db";
 import { type StorefrontProduct } from "./shopify-storefront.client.js";
 import { type AdminProduct } from "./shopify-admin.client.js";
 import { type WooProduct, type WooCredentials } from "./woocommerce.client.js";
+import { type GenericProduct } from "./generic-product.extractor.js";
+import { type LlmClient } from "./llm-product-mapper.service.js";
 export interface IngestResult {
     /** Products successfully upserted into SiteCatalog. */
     ingested: number;
@@ -62,5 +64,46 @@ export declare function toWooCatalogInput(siteUrl: string, p: WooProduct, source
  * messages ("unauthorized" → prompt for new consumer key).
  */
 export declare function ingestWooCommerceCatalog(siteUrl: string, shopUrl: string, credentials: WooCredentials, opts?: IngestOptions): Promise<IngestResult>;
+export interface GenericIngestPage {
+    url: string;
+    html: string;
+    /** Optional pre-classified pageType — saves a re-classify call. */
+    pageType?: string;
+}
+export interface GenericIngestResult extends IngestResult {
+    /** PDP pages we attempted extraction on. */
+    pdpCount: number;
+    /** PDPs that yielded a product (from structured data OR LLM fallback). */
+    extractedCount: number;
+    /** extractedCount / pdpCount — coverage for the wizard preview. */
+    coverage: number;
+    /** Breakdown of which signal layer produced each extracted row. */
+    bySource: {
+        jsonld: number;
+        microdata: number;
+        opengraph: number;
+        llm: number;
+    };
+}
+export interface GenericIngestOptions {
+    maxProducts?: number;
+    /**
+     * Phase 1.5.2 — enable LLM DOM mapper fallback for PDPs without structured
+     * data. Defaults to false; honour the global feature flag unless this is
+     * explicitly set. Pass an `llmClient` to inject a mock in tests.
+     */
+    llmFallback?: boolean;
+    llmClient?: LlmClient;
+}
+export declare function toGenericCatalogInput(siteUrl: string, p: GenericProduct): UpsertInput;
+/**
+ * Ingest a list of crawled pages, treating any classified as PDP as a
+ * product source. Pages where structured-data extraction returns null are
+ * counted in `pdpCount` but not in `extractedCount` — coverage tells the
+ * wizard how much of the site can be served deterministically. Phase 1.5.2
+ * will add an LLM fallback to lift coverage on layouts without structured
+ * data.
+ */
+export declare function ingestGenericCatalog(siteUrl: string, pages: GenericIngestPage[], opts?: GenericIngestOptions): Promise<GenericIngestResult>;
 export {};
 //# sourceMappingURL=catalog-ingest.service.d.ts.map

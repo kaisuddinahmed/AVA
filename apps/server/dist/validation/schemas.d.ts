@@ -688,6 +688,43 @@ export declare const WooCommerceQuickOnboardSchema: z.ZodEffects<z.ZodObject<{
     consumerKey?: string | undefined;
     consumerSecret?: string | undefined;
 }>;
+/**
+ * Phase 1.5.3 — unified onboarding entrypoint. Accepts the union of fields
+ * for all platforms; server detects the platform first and validates the
+ * platform-specific subset itself. Wizard no longer needs to know which
+ * platform's endpoint to call.
+ */
+export declare const QuickOnboardSchema: z.ZodEffects<z.ZodObject<{
+    shopUrl: z.ZodString;
+    storefrontToken: z.ZodOptional<z.ZodString>;
+    consumerKey: z.ZodOptional<z.ZodString>;
+    consumerSecret: z.ZodOptional<z.ZodString>;
+    maxProducts: z.ZodOptional<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    storefrontToken?: string | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    storefrontToken?: string | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}>, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    storefrontToken?: string | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}, {
+    shopUrl: string;
+    maxProducts?: number | undefined;
+    storefrontToken?: string | undefined;
+    consumerKey?: string | undefined;
+    consumerSecret?: string | undefined;
+}>;
 export declare const IntegrationVerifySchema: z.ZodObject<{
     runId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
@@ -713,14 +750,14 @@ export declare const ExperimentCreateSchema: z.ZodObject<{
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "auto" | "llm" | "fast" | undefined;
+        evalEngine?: "llm" | "auto" | "fast" | undefined;
     }, {
         id: string;
         name: string;
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "auto" | "llm" | "fast" | undefined;
+        evalEngine?: "llm" | "auto" | "fast" | undefined;
     }>, "many">;
     primaryMetric: z.ZodDefault<z.ZodOptional<z.ZodEnum<["conversion_rate", "dismissal_rate", "composite_score"]>>>;
     minSampleSize: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
@@ -732,7 +769,7 @@ export declare const ExperimentCreateSchema: z.ZodObject<{
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "auto" | "llm" | "fast" | undefined;
+        evalEngine?: "llm" | "auto" | "fast" | undefined;
     }[];
     trafficPercent: number;
     primaryMetric: "conversion_rate" | "composite_score" | "dismissal_rate";
@@ -747,7 +784,7 @@ export declare const ExperimentCreateSchema: z.ZodObject<{
         weight: number;
         modelId?: string | undefined;
         scoringConfigId?: string | undefined;
-        evalEngine?: "auto" | "llm" | "fast" | undefined;
+        evalEngine?: "llm" | "auto" | "fast" | undefined;
     }[];
     siteUrl?: string | null | undefined;
     description?: string | undefined;
@@ -837,7 +874,7 @@ export declare const RolloutCreateSchema: z.ZodObject<{
     };
     siteUrl?: string | null | undefined;
     newConfigId?: string | undefined;
-    newEvalEngine?: "auto" | "llm" | "fast" | undefined;
+    newEvalEngine?: "llm" | "auto" | "fast" | undefined;
     configPayload?: string | undefined;
 }, {
     name: string;
@@ -860,7 +897,7 @@ export declare const RolloutCreateSchema: z.ZodObject<{
     };
     siteUrl?: string | null | undefined;
     newConfigId?: string | undefined;
-    newEvalEngine?: "auto" | "llm" | "fast" | undefined;
+    newEvalEngine?: "llm" | "auto" | "fast" | undefined;
     configPayload?: string | undefined;
 }>;
 export declare const JobTriggerSchema: z.ZodObject<{

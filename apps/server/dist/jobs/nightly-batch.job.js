@@ -2,7 +2,8 @@
 // Nightly Batch Job — orchestrates daily maintenance + analysis tasks.
 // Each subtask is independent and catches its own errors.
 // ============================================================================
-import { DriftSnapshotRepo, EvaluationRepo, JobRunRepo, SessionRepo } from "@ava/db";
+import { DriftSnapshotRepo, EvaluationRepo, JobRunRepo, SessionRepo, SiteSelectorFingerprintRepo, } from "@ava/db";
+import { checkDriftForSite } from "../crawl/selector-drift.service.js";
 import { generateInsightSnapshot } from "../insights/insights.service.js";
 import { runCROAnalysis } from "../insights/cro-analysis.service.js";
 import { runNetworkFlywheel } from "./network-flywheel.job.js";
@@ -33,6 +34,10 @@ export async function runNightlyBatch() {
     subtasks.push(await runSubtask("drift_snapshots", computeDriftSnapshots));
     // 4. Check drift alerts
     subtasks.push(await runSubtask("drift_alerts", checkDriftAlerts));
+    // 4b. Phase 1.5.6 — Selector drift sweep. Independent of the scoring-drift
+    //     check above. Only runs against sites that have a baseline; others
+    //     are silently skipped (split-lifecycle invariant).
+    subtasks.push(await runSubtask("selector_drift", checkSelectorDrift));
     // 5. Check rollout health and auto-promote/rollback
     subtasks.push(await runSubtask("rollout_health", checkRollouts));
     // 6. Generate daily summary
@@ -161,6 +166,40 @@ async function checkDriftAlerts() {
         isHealthy: result.summary.isHealthy,
         activeAlertCount: result.summary.activeAlertCount,
         criticalAlertCount: result.summary.criticalAlertCount,
+    };
+}
+/**
+ * Phase 1.5.6 — Sweep selector-fingerprint drift across every site that has
+ * a baseline captured. Sites without baselines are skipped — the comparison
+ * is meaningless without a trusted reference (split-lifecycle invariant).
+ */
+async function checkSelectorDrift() {
+    const sites = await SiteSelectorFingerprintRepo.listSitesWithBaselines();
+    let alertsEmitted = 0;
+    let alertsSuppressed = 0;
+    let pageTypesChecked = 0;
+    let sitesChecked = 0;
+    let sitesErrored = 0;
+    for (const siteUrl of sites) {
+        try {
+            const result = await checkDriftForSite(siteUrl);
+            sitesChecked++;
+            pageTypesChecked += result.results.length;
+            alertsEmitted += result.results.filter((r) => r.alertEmitted).length;
+            alertsSuppressed += result.results.filter((r) => r.alertSuppressed).length;
+        }
+        catch (err) {
+            sitesErrored++;
+            log.warn({ err, siteUrl }, "[NightlyBatch] selector-drift check failed");
+        }
+    }
+    return {
+        sitesWithBaselines: sites.length,
+        sitesChecked,
+        sitesErrored,
+        pageTypesChecked,
+        alertsEmitted,
+        alertsSuppressed,
     };
 }
 /**

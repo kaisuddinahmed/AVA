@@ -1,1 +1,1 @@
-{"version":3,"file":"nightly-batch.job.d.ts","sourceRoot":"","sources":["../../src/jobs/nightly-batch.job.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,kBAAkB,EAAiB,MAAM,aAAa,CAAC;AAsBrE;;;GAGG;AACH,wBAAsB,eAAe,IAAI,OAAO,CAAC,kBAAkB,CAAC,CAwDnE"}
+{"version":3,"file":"nightly-batch.job.d.ts","sourceRoot":"","sources":["../../src/jobs/nightly-batch.job.ts"],"names":[],"mappings":"AAaA,OAAO,KAAK,EAAE,kBAAkB,EAAiB,MAAM,aAAa,CAAC;AAsBrE;;;GAGG;AACH,wBAAsB,eAAe,IAAI,OAAO,CAAC,kBAAkB,CAAC,CA6DnE"}
