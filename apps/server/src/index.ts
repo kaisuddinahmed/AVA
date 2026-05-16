@@ -1,31 +1,13 @@
-import express from "express";
-import cors from "cors";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
-import { requestIdMiddleware } from "./middleware/request-id.middleware.js";
-import { httpLoggerMiddleware } from "./middleware/http-logger.middleware.js";
+import { createApp } from "./app.js";
 import { createWSServer } from "./broadcast/ws-server.js";
-import { apiRouter } from "./api/routes.js";
 import { getJobRunner } from "./jobs/job-runner.js";
 import { SiteConfigRepo } from "@ava/db";
 
 const log = logger.child({ service: "server" });
 
-const app = express();
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(requestIdMiddleware);
-app.use(httpLoggerMiddleware);
-
-// Health check
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
-
-// API routes
-app.use("/api", apiRouter);
+const app = createApp();
 
 // Start HTTP server
 app.listen(config.port, () => {
