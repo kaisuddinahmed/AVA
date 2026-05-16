@@ -49,6 +49,7 @@ yarn-error.log*
 # Git can't re-include a file once its parent directory is excluded.
 docs/*
 !docs/PHASE_1_1_MANUAL_GATE.md
+!docs/PHASE_1_4_MANUAL_GATE.md
 
 # SQLite dev database
 *.db

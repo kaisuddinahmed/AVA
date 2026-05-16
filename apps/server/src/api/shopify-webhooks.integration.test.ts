@@ -188,3 +188,120 @@ describe("Shopify webhooks — Express integration (real middleware stack)", () 
     expect(res.status).toBe(401);
   });
 });
+
+// ── WooCommerce — Phase 1.4.5 ───────────────────────────────────────────────
+
+const WOO_SECRET = "wc_test_secret";
+
+function signWoo(raw: string): string {
+  return createHmac("sha256", WOO_SECRET).update(raw).digest("base64");
+}
+
+const WOO_PAYLOAD = {
+  id: 7777,
+  name: "Linen Tee",
+  slug: "linen-tee",
+  permalink: "https://shop.example/product/linen-tee",
+  description: "<p>x</p>",
+  type: "simple",
+  status: "publish",
+  price: "48.00",
+  regular_price: "48.00",
+  images: [{ src: "https://cdn.example/i.jpg" }],
+  tags: [],
+  stock_status: "instock",
+  stock_quantity: 1,
+  variations: [],
+};
+
+describe("WooCommerce webhooks — Express integration (real middleware stack)", () => {
+  beforeEach(() => {
+    upsertMock.mockReset().mockResolvedValue({});
+    getProductMock.mockReset().mockResolvedValue(null);
+    getSiteByUrlMock.mockReset().mockResolvedValue({
+      id: "sc_woo_1",
+      siteUrl: "https://shop.example",
+      wooWebhookSecret: WOO_SECRET,
+    });
+  });
+
+  it("products/update: signed JSON POST is verified and upserts", async () => {
+    const app = createApp();
+    const raw = JSON.stringify(WOO_PAYLOAD);
+
+    const res = await request(app)
+      .post("/api/woocommerce/webhooks/products/update")
+      .set("Content-Type", "application/json")
+      .set("x-wc-webhook-signature", signWoo(raw))
+      .set("x-wc-webhook-source", "https://shop.example")
+      .set("x-wc-webhook-topic", "product.updated")
+      .send(raw);
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+    expect(upsertMock.mock.calls[0]![0]).toMatchObject({
+      externalId: "wc:7777",
+      source: "woocommerce_webhook",
+    });
+  });
+
+  it("products/update: tampered body returns 401", async () => {
+    const app = createApp();
+    const raw = JSON.stringify(WOO_PAYLOAD);
+    const sig = signWoo(raw);
+    const tampered = JSON.stringify({ ...WOO_PAYLOAD, name: "TAMPERED" });
+
+    const res = await request(app)
+      .post("/api/woocommerce/webhooks/products/update")
+      .set("Content-Type", "application/json")
+      .set("x-wc-webhook-signature", sig)
+      .set("x-wc-webhook-source", "https://shop.example")
+      .send(tampered);
+
+    expect(res.status).toBe(401);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("products/update: unknown source returns 401 (NOT 200)", async () => {
+    getSiteByUrlMock.mockResolvedValueOnce(null);
+    const app = createApp();
+    const raw = JSON.stringify(WOO_PAYLOAD);
+
+    const res = await request(app)
+      .post("/api/woocommerce/webhooks/products/update")
+      .set("Content-Type", "application/json")
+      .set("x-wc-webhook-signature", signWoo(raw))
+      .set("x-wc-webhook-source", "https://unknown.example")
+      .send(raw);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("products/delete: marks out_of_stock when row exists", async () => {
+    getProductMock.mockResolvedValueOnce({
+      handle: "linen-tee",
+      title: "Linen Tee",
+      variants: "[]",
+    });
+    const app = createApp();
+    const raw = JSON.stringify({ id: 7777 });
+
+    const res = await request(app)
+      .post("/api/woocommerce/webhooks/products/delete")
+      .set("Content-Type", "application/json")
+      .set("x-wc-webhook-signature", signWoo(raw))
+      .set("x-wc-webhook-source", "https://shop.example")
+      .set("x-wc-webhook-topic", "product.deleted")
+      .send(raw);
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+    expect(upsertMock.mock.calls[0]![0]).toMatchObject({
+      externalId: "wc:7777",
+      availability: "out_of_stock",
+    });
+  });
+});
