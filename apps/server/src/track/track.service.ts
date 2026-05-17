@@ -6,6 +6,8 @@ import { evaluateEventBatch } from "../evaluate/evaluate.service.js";
 import { handleDecision, recordInterventionOutcome } from "../intervene/intervene.service.js";
 import { makeDecision } from "../evaluate/decision-engine.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
+import { forwardToGA4 } from "../exports/ga4-export.service.js";
+import { forwardToMixpanel } from "../exports/mixpanel-export.service.js";
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "track" });
@@ -126,6 +128,14 @@ export async function processTrackEvent(
     siteUrl: sessionData.siteUrl,
   });
 
+  // 3a. Phase 4.3.1 / 4.4.1 — fire-and-forget outbound mirrors.
+  // CLAUDE.md hard rule: analytics side-effects on this hot path must
+  // NEVER `await` and NEVER throw. Both exporter services have their own
+  // internal swallowing, but we wrap in `.catch(() => {})` as belt-and-
+  // suspenders. Empty envs (no GA4_MEASUREMENT_ID / no MIXPANEL_PROJECT_TOKEN)
+  // → both fall through to the console adapter (a no-op log).
+  forwardToAnalytics(visitorKey, sessionId, event.id, normalized, sessionData.siteUrl);
+
   // 4. Analytics side-effects on page_view / page_unload (non-blocking)
   if (normalized.eventType === "page_view") {
     // Increment page view counter
@@ -197,4 +207,52 @@ export async function processTrackEvent(
   buffer.add(sessionId, event.id);
 
   return { sessionId, eventId: event.id };
+}
+
+// ─── Phase 4.3.1 / 4.4.1 — outbound analytics mirrors ─────────────────────────
+
+/**
+ * Fire-and-forget forwarder for GA4 + Mixpanel. Must NEVER await, NEVER
+ * throw. CLAUDE.md: "Analytics side-effects in track.service.ts are always
+ * fire-and-forget — `.catch(() => {})`, never `await`. Blocking them breaks
+ * the event pipeline."
+ *
+ * Both exporters have their own internal failure swallowing; the explicit
+ * `.catch(() => {})` here is belt-and-suspenders against a future
+ * regression in the export layer.
+ */
+function forwardToAnalytics(
+  visitorKey: string,
+  sessionId: string,
+  eventId: string,
+  normalized: NormalizedEvent,
+  siteUrl: string,
+): void {
+  let signals: Record<string, unknown> = {};
+  try {
+    signals = JSON.parse(normalized.rawSignals) as Record<string, unknown>;
+  } catch {
+    // bad rawSignals — skip signal forwarding but still send the event
+  }
+  const avaEvent = {
+    eventType: normalized.eventType,
+    eventId,                          // stable id → Mixpanel $insert_id dedup
+    sessionId,
+    visitorId: visitorKey,
+    siteUrl,
+    pageUrl: normalized.pageUrl,
+    pageType: normalized.pageType,
+    category: normalized.category,
+    frictionId: normalized.frictionId,
+    timestamp: Date.now(),
+    signals,
+  };
+
+  // GA4 — fire-and-forget. forwardToGA4 has its own internal try/catch
+  // but we double-up with .catch() in case a future regression slips.
+  forwardToGA4([avaEvent], { clientId: visitorKey }).catch(() => {});
+
+  // Mixpanel — same fire-and-forget contract.
+  const mixpanelToken = process.env.MIXPANEL_PROJECT_TOKEN ?? "";
+  forwardToMixpanel([avaEvent], { token: mixpanelToken }).catch(() => {});
 }

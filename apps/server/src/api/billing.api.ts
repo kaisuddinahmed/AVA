@@ -21,8 +21,32 @@ const log = logger.child({ service: "billing.api" });
 const StartBodySchema = z.object({
   shopDomain: z.string().min(1, "shopDomain is required"),
   planId: z.enum(["free", "starter", "pro"]),
-  returnUrl: z.string().url("returnUrl must be an absolute URL"),
+  /**
+   * Codex P1 (4.5.1) fix — returnUrl is now OPTIONAL. The server builds the
+   * canonical callback URL from APP_URL env. Dashboard / wizard no longer
+   * compose URLs at the boundary; an override is still accepted for
+   * deploys where the API host differs from APP_URL.
+   */
+  returnUrl: z.string().url("returnUrl must be an absolute URL").optional(),
 });
+
+/**
+ * Build the canonical Shopify billing return URL. Server-side construction
+ * avoids the dev-time `localhost:3000 → :8080` port-swap hack that broke in
+ * any deployment where dashboard and API aren't on the same host.
+ *
+ * Resolution order:
+ *   1. opts.override — passed by callers that need to differ (rare).
+ *   2. APP_URL env   — canonical AVA API origin (e.g. https://api.ava.example).
+ *   3. fallback to http://localhost:PORT  — last-resort for local dev only.
+ */
+function buildReturnUrl(shopDomain: string, override?: string): string {
+  if (override) return override;
+  const appUrl = (process.env.APP_URL ?? "").replace(/\/$/, "");
+  const fallback = `http://localhost:${process.env.PORT ?? "8080"}`;
+  const origin = appUrl || fallback;
+  return `${origin}/api/billing/callback?shop=${encodeURIComponent(shopDomain)}`;
+}
 
 const CallbackQuerySchema = z.object({
   shop: z.string().min(1, "shop is required"),
@@ -48,7 +72,11 @@ export async function start(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
-    const result = await startSubscription(parsed.data.shopDomain, parsed.data.planId, parsed.data.returnUrl);
+    // Codex P1 (4.5.1) — server builds returnUrl from APP_URL env; the
+    // dashboard no longer composes it (was using a fragile :3000→:8080
+    // port swap that only worked in local dev).
+    const returnUrl = buildReturnUrl(parsed.data.shopDomain, parsed.data.returnUrl);
+    const result = await startSubscription(parsed.data.shopDomain, parsed.data.planId, returnUrl);
     res.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

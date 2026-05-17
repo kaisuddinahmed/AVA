@@ -608,7 +608,7 @@ model DriftAlert {
   createdAt      DateTime  @default(now())
   siteUrl        String?   // null = global
   alertType      String    // tier_agreement_drop | decision_agreement_drop | divergence_spike | signal_shift | conversion_drop
-  severity       String    // warning | critical
+  severity       String    // CANONICAL ENUM (Phase 4.2 Codex P2): warning | critical. PD pages only on `critical`.
   windowType     String    // which window triggered it
   metric         String    // e.g. tierAgreementRate
   expected       Float     // baseline/threshold

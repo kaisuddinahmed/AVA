@@ -4,6 +4,13 @@ export type ActivationState = {
   activated: boolean;
   /** ISO timestamp of when the dashboard was activated (for filtering stale data) */
   activatedAt: string | null;
+  /**
+   * Phase 4.5.1 Codex P1 fix — siteUrl from activation/site-config state,
+   * independent of analytics session data. Lets the BillingBadge render
+   * for fresh Shopify merchants who haven't generated their first session.
+   * Null until activation fires.
+   */
+  siteUrl: string | null;
 };
 
 const STORAGE_KEY = "ava:activatedAt";
@@ -36,6 +43,7 @@ export function useActivation(): ActivationState {
   const [state, setState] = useState<ActivationState>({
     activated: false,
     activatedAt: null,
+    siteUrl: null,
   });
 
   const activatedRef = useRef(false);
@@ -45,15 +53,15 @@ export function useActivation(): ActivationState {
     let bc: BroadcastChannel | null = null;
     try { bc = new BroadcastChannel(BC_CHANNEL); } catch { /* Safari < 15.4 */ }
 
-    function activate(activatedAt: string, broadcast: boolean) {
+    function activate(activatedAt: string, siteUrl: string | null, broadcast: boolean) {
       if (activatedRef.current) return;
       activatedRef.current = true;
-      setState({ activated: true, activatedAt });
+      setState({ activated: true, activatedAt, siteUrl });
 
       // Relay to other contexts via both localStorage AND BroadcastChannel
       if (broadcast) {
         try { localStorage.setItem(STORAGE_KEY, activatedAt); } catch { /* ignore */ }
-        try { bc?.postMessage({ activatedAt }); } catch { /* ignore */ }
+        try { bc?.postMessage({ activatedAt, siteUrl }); } catch { /* ignore */ }
       }
     }
 
@@ -70,11 +78,10 @@ export function useActivation(): ActivationState {
         typeof event.data === "object" &&
         event.data.type === "ava:activate"
       ) {
-        // Use the real activation time — analytics components use their own
-        // lookback window via overviewParams. The Live Feed must only show
-        // events from THIS demo run, not the past 24 hours.
         const since = new Date().toISOString();
-        activate(since, true);
+        // Phase 4.5.1 — wizard may now pass siteUrl in the activation event.
+        const siteUrl = typeof event.data.siteUrl === "string" ? event.data.siteUrl : null;
+        activate(since, siteUrl, true);
       }
     }
 
@@ -82,7 +89,8 @@ export function useActivation(): ActivationState {
     if (bc) {
       bc.onmessage = (event: MessageEvent) => {
         if (event.data?.activatedAt) {
-          activate(event.data.activatedAt, false);
+          const siteUrl = typeof event.data.siteUrl === "string" ? event.data.siteUrl : null;
+          activate(event.data.activatedAt, siteUrl, false);
         }
       };
     }
@@ -90,7 +98,10 @@ export function useActivation(): ActivationState {
     // ── Channel 3: storage event (fallback for environments without BC) ──
     function onStorage(event: StorageEvent) {
       if (event.key === STORAGE_KEY && event.newValue) {
-        activate(event.newValue, false);
+        // Storage event doesn't carry structured payloads; siteUrl propagates
+        // via BroadcastChannel/postMessage. This branch (rare — Safari <15.4)
+        // gets null and the BillingBadge falls back to session-derived siteUrl.
+        activate(event.newValue, null, false);
       }
     }
 
@@ -110,7 +121,11 @@ export function useActivation(): ActivationState {
         const data = await res.json();
         if (data?.activated) {
           const since = new Date().toISOString();
-          activate(since, true);
+          // Server response carries siteUrl when present; fall back to the
+          // demo URL we already queried with. BillingBadge needs this to
+          // render for fresh merchants who have no session yet.
+          const siteUrl = typeof data.siteUrl === "string" ? data.siteUrl : DEMO_SITE_URL;
+          activate(since, siteUrl, true);
           if (serverPollTimer) clearInterval(serverPollTimer);
         }
       } catch { /* server not ready yet — harmless */ }

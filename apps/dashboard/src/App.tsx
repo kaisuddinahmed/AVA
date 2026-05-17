@@ -35,7 +35,7 @@ import { InactiveOverlay } from "./components/InactiveOverlay";
 import type { SessionSummary, OverviewAnalytics, FrictionAnalytics, RevenueAttribution, InsightsResponse, CROResponse, WebhookStatsResponse, NetworkStatus, TabId } from "./types";
 
 export function App() {
-  const { activated, activatedAt } = useActivation();
+  const { activated, activatedAt, siteUrl: activationSiteUrl } = useActivation();
   const { state, dispatch, handleWSMessage } = useDashboardStore();
   // Always connect WS — do NOT gate on `activated`.
   // Gating caused a timing gap: widget sends first events immediately on store
@@ -108,8 +108,10 @@ export function App() {
     })();
   }, [activated, sessions, dispatch]);
 
-  // Determine siteUrl from first active session (for analytics queries)
-  const activeSiteUrl = sessions[0]?.siteUrl ?? "";
+  // Determine siteUrl. Phase 4.5.1 Codex P1 fix — prefer activation-state
+  // siteUrl (works for fresh Shopify merchants with no sessions yet); fall
+  // back to first session's siteUrl for analytics-driven flows.
+  const activeSiteUrl = activationSiteUrl ?? sessions[0]?.siteUrl ?? "";
   const analyticsParams = activeSiteUrl
     ? `?siteUrl=${encodeURIComponent(activeSiteUrl)}${sinceQuery ? `&${sinceQuery}` : ""}`
     : "";
@@ -196,7 +198,7 @@ export function App() {
 
   return (
     <div className="dashboard-shell">
-      <Header connected={connected} activated={activated} />
+      <Header connected={connected} activated={activated} activeSiteUrl={activeSiteUrl} />
       {!activated ? (
         <InactiveOverlay />
       ) : (

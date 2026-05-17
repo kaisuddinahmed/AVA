@@ -111,14 +111,17 @@ export async function logShadowComparison(input: ComparisonInput): Promise<void>
         alertType, "session", siteUrl, 6
       );
       if (!alreadyAlerted) {
-        // Phase 4.2 — persist + notify. Shadow-logger uses "high"/"medium"
-        // severity (its own scale); PagerDuty only pages on "critical"
-        // (drift-notifier maps "high" to email-only). That's intentional —
-        // shadow divergence is informational, not a page-the-oncall event.
+        // Phase 4.2 Codex P2 fix — normalize severity to the canonical
+        // enum used by the rest of the system: `warning` | `critical`.
+        // Shadow divergence is informational, NOT a page-the-oncall event
+        // (per Codex 4.2 review), so we never emit `critical` from this
+        // path — every shadow alert is `warning` (email-only, no PD page).
+        // The dashboard can still distinguish the underlying severity via
+        // the `compositeDivergence` value and the alertType.
         await createDriftAlertWithNotify({
           siteUrl,
           alertType,
-          severity: compositeDivergence > 25 || !tierMatch ? "high" : "medium",
+          severity: "warning",
           windowType: "session",
           metric: "composite_divergence",
           expected: prodResult.composite_score,
