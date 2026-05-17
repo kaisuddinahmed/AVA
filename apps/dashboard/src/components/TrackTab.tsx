@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, type ReactNode } from 'react';
+import { Heatmap } from './Heatmap';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,9 @@ interface DeviceBreakdown  { device: string; sessions: number; }
 interface FunnelStep       { name: string; sessionCount: number; dropOff?: number; }
 interface PageFlow         { from: string; to: string; count: number; }
 interface PageStat         { url: string; views: number; avgTime?: number; bounceRate?: number; }
-interface ClickPoint       { x: number; y: number; count: number; pageType?: string; }
+// Server returns raw points: `{ xPct, yPct, pageUrl }` (see EventRepo.getClickCoordinates).
+// Heatmap renderer bins these into a density grid.
+interface ClickPoint       { xPct: number; yPct: number; pageUrl: string; }
 interface FrictionItem     { frictionId: string; category: string; count: number; severity?: string; confidence?: string; }
 interface FrictionAnalytics{ byFriction: FrictionItem[]; }
 interface RevenueAttribution {
@@ -731,19 +734,9 @@ function AudiencePanel({
     social: '#9b59b6', paid: '#e05d5d', email: '#f39c12',
   };
 
-  // Click heatmap summary by page type
-  const clickByPage = useMemo(() => {
-    if (!clickPoints) return [];
-    const acc: Record<string, number> = {};
-    for (const p of clickPoints) {
-      const key = p.pageType ?? 'other';
-      acc[key] = (acc[key] ?? 0) + p.count;
-    }
-    return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  }, [clickPoints]);
-
   return (
-    <div style={{ display: 'flex', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', gap: 24 }}>
       {/* Traffic Sources */}
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>
@@ -810,29 +803,15 @@ function AudiencePanel({
         )}
       </div>
 
-      {/* Click Heatmap Summary */}
-      {clickByPage.length > 0 && (
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>
-            Clicks by Page Type
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {clickByPage.map(([page, count]) => (
-              <div key={page} style={{
-                background: 'rgba(8,26,34,0.6)', borderRadius: 8,
-                padding: '10px 12px', border: '1px solid rgba(255,255,255,0.06)',
-              }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>
-                  {fmt(count)}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, textTransform: 'capitalize' }}>
-                  {page}
-                </div>
-              </div>
-            ))}
-          </div>
+      </div>
+
+      {/* Click Heatmap (Phase 3.8) */}
+      <div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>
+          Click Heatmap
         </div>
-      )}
+        <Heatmap points={clickPoints} />
+      </div>
     </div>
   );
 }

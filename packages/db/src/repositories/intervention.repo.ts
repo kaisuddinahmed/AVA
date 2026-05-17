@@ -241,3 +241,44 @@ export async function listConvertedWithCartValue(
     },
   });
 }
+
+/**
+ * Aggregate intervention outcomes grouped by frictionId for a site within
+ * a time window. Used by the recommendation engine (Phase 3.1) to rank
+ * underperforming F-codes.
+ */
+export async function countOutcomesByFriction(
+  siteUrl: string,
+  since: Date,
+): Promise<Array<{
+  frictionId: string;
+  total: number;
+  converted: number;
+  dismissed: number;
+  ignored: number;
+}>> {
+  const rows = await prisma.intervention.groupBy({
+    by: ["frictionId", "status"],
+    where: {
+      session: { siteUrl },
+      timestamp: { gte: since },
+      status: { in: ["converted", "dismissed", "ignored", "delivered"] },
+    },
+    _count: { id: true },
+  });
+  const byFriction = new Map<string, { total: number; converted: number; dismissed: number; ignored: number }>();
+  for (const r of rows as Array<{ frictionId: string; status: string; _count: { id: number } }>) {
+    const fid = r.frictionId;
+    let entry = byFriction.get(fid);
+    if (!entry) {
+      entry = { total: 0, converted: 0, dismissed: 0, ignored: 0 };
+      byFriction.set(fid, entry);
+    }
+    entry.total += r._count.id;
+    if (r.status === "converted") entry.converted += r._count.id;
+    else if (r.status === "dismissed") entry.dismissed += r._count.id;
+    else if (r.status === "ignored") entry.ignored += r._count.id;
+    // `delivered` counts toward total but not any specific outcome bucket.
+  }
+  return Array.from(byFriction.entries()).map(([frictionId, v]) => ({ frictionId, ...v }));
+}

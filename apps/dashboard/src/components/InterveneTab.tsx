@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, type CSSProperties } from 'react';
+import { useState, useMemo, useCallback, useEffect, type CSSProperties } from 'react';
 import { useApi, apiFetch } from '../hooks/use-api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,6 +48,65 @@ interface InterveneTabProps {
   overview: OverviewData | null; sessions: Session[];
   analyticsParams: string; webhookStats: WebhookStats | null;
   networkStatus: NetworkStatus | null;
+  /** Phase 3.3 — site URL used by ApprovalsPanel for the recommendations API. */
+  activeSiteUrl?: string;
+}
+
+// ─── Recommendation (Phase 3.2/3.3) ───────────────────────────────────────────
+
+interface Recommendation {
+  id: string;
+  siteUrl: string;
+  frictionId: string;
+  interventionType: string;
+  actionCode: string;
+  payloadTemplate: string;
+  rationale: string;
+  expectedLiftPct: number;
+  confidence: number;
+  sampleSizeBasis: number;
+  status: 'pending' | 'approved' | 'active' | 'rejected' | 'archived';
+  approvedExperimentId?: string | null;
+  createdAt?: string;
+}
+interface RecommendationsResponse { recommendations: Recommendation[]; count: number; }
+
+interface RecommendationOutcomeSnapshot {
+  id: string;
+  recommendationId: string;
+  experimentId: string;
+  windowStart: string;
+  windowEnd: string;
+  variantSessions: number;
+  controlSessions: number;
+  variantConversions: number;
+  controlConversions: number;
+  conversionDeltaPct: number;
+  attributedRevenue: number;
+  pValue?: number | null;
+  decision?: 'ship' | 'rollback' | 'extend' | 'inconclusive' | null;
+  decidedAt?: string | null;
+  createdAt: string;
+}
+type LiveResultRow = Recommendation & { latestOutcome: RecommendationOutcomeSnapshot | null };
+interface OutcomeSummaryResponse { recommendations: LiveResultRow[]; count: number; }
+
+// Phase 3.6 — Weekly Digest preview shape (mirrors weekly-digest.service.ts).
+interface DigestFrictionRow {
+  frictionId: string; total: number; converted: number; dismissed: number; ignored: number;
+  conversionRate: number; dismissalRate: number;
+}
+interface WeeklyDigestData {
+  siteUrl: string;
+  period: { start: string; end: string; days: number };
+  traffic: { sessions: number; sessionsPrior: number; wowDeltaPct: number | null };
+  recommendations: { approvedThisWeek: number; rejectedThisWeek: number; pendingNow: number; activeNow: number };
+  outcomes: {
+    snapshotsThisWeek: number;
+    decisions: { ship: number; rollback: number; extend: number; inconclusive: number; total: number };
+    attributedRevenue: number;
+  };
+  topFrictions: DigestFrictionRow[];
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -496,7 +555,454 @@ function NetworkPanel({ networkStatus }: { networkStatus: NetworkStatus | null }
   );
 }
 
+// ─── Freshness badge (Phase 3.5) ──────────────────────────────────────────────
+
+function UpdatedAgo({ ts }: { ts: number | null }) {
+  // Tick once a second so the relative label stays current.
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!ts) return;
+    const id = setInterval(() => force(n => (n + 1) % 1_000_000), 1000);
+    return () => clearInterval(id);
+  }, [ts]);
+  if (!ts) return null;
+  const ageS = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  const label = ageS < 5 ? 'just now' : ageS < 60 ? `${ageS}s ago` : `${Math.floor(ageS / 60)}m ago`;
+  return (
+    <span style={{
+      fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--muted)',
+      padding: '2px 7px', border: '1px solid var(--line)', borderRadius: 3,
+      textTransform: 'uppercase', letterSpacing: '0.05em',
+    }}>
+      ↻ {label}
+    </span>
+  );
+}
+
+// ─── Approvals Panel (Phase 3.3 — INTERVENE control-room cards) ──────────────
+
+function ApprovalCard({
+  rec,
+  loading,
+  onApprove,
+  onReject,
+}: {
+  rec: Recommendation;
+  loading: string | null;
+  onApprove: (id: string) => void;
+  onReject: (id: string, reason: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [reason, setReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+
+  const liftColor = rec.expectedLiftPct >= 40 ? 'var(--accent)' : 'var(--info)';
+  const confColor = rec.confidence >= 0.7 ? 'var(--accent)' : rec.confidence >= 0.4 ? 'var(--info)' : 'var(--muted)';
+  const isLoading = loading === `approve_${rec.id}` || loading === `reject_${rec.id}`;
+
+  return (
+    <div style={{
+      padding: '14px 16px',
+      borderBottom: '1px solid rgba(26,61,74,0.4)',
+      borderLeft: `3px solid ${liftColor}`,
+      background: expanded ? 'rgba(53,211,161,0.03)' : 'transparent',
+      transition: 'background 0.15s',
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span className="friction-tag">{rec.frictionId}</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', fontWeight: 600 }}>
+          {rec.actionCode}
+        </span>
+        <span style={{
+          fontSize: 9, padding: '2px 7px', borderRadius: 3,
+          background: `${typeColor(rec.interventionType)}22`,
+          color: typeColor(rec.interventionType),
+          border: `1px solid ${typeColor(rec.interventionType)}44`,
+          textTransform: 'uppercase', fontFamily: 'var(--font-mono)',
+        }}>{rec.interventionType}</span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: liftColor, fontWeight: 700 }}>
+          +{rec.expectedLiftPct.toFixed(0)}% lift
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: confColor }}>
+          {(rec.confidence * 100).toFixed(0)}% conf
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+          n={rec.sampleSizeBasis}
+        </span>
+      </div>
+
+      {/* Rationale */}
+      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.55, marginBottom: 8 }}>
+        {rec.rationale}
+      </div>
+
+      {/* Action row */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {!rejecting ? (
+          <>
+            <button
+              onClick={() => onApprove(rec.id)}
+              disabled={isLoading}
+              style={actionBtn('var(--accent)')}
+            >
+              {loading === `approve_${rec.id}` ? '…' : '✓ Approve & launch'}
+            </button>
+            <button
+              onClick={() => setRejecting(true)}
+              disabled={isLoading}
+              style={actionBtn('var(--warn)')}
+            >
+              ✕ Reject
+            </button>
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{ ...actionBtn('var(--muted)'), marginLeft: 'auto' }}
+            >
+              {expanded ? '— payload' : '+ payload'}
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              autoFocus
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Why not? (logged for tuning)"
+              style={{
+                flex: 1, fontSize: 11, padding: '4px 8px',
+                background: 'rgba(8,26,34,0.6)', border: '1px solid var(--line)',
+                borderRadius: 3, color: 'var(--text)', fontFamily: 'var(--font-mono)',
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && reason.trim()) {
+                  onReject(rec.id, reason.trim());
+                  setRejecting(false); setReason('');
+                } else if (e.key === 'Escape') {
+                  setRejecting(false); setReason('');
+                }
+              }}
+            />
+            <button
+              onClick={() => { if (reason.trim()) { onReject(rec.id, reason.trim()); setRejecting(false); setReason(''); } }}
+              disabled={!reason.trim() || isLoading}
+              style={actionBtn('var(--warn)')}
+            >
+              {loading === `reject_${rec.id}` ? '…' : 'Confirm'}
+            </button>
+            <button
+              onClick={() => { setRejecting(false); setReason(''); }}
+              style={actionBtn('var(--muted)')}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Payload preview */}
+      {expanded && (
+        <pre style={{
+          marginTop: 8, padding: '8px 10px',
+          background: 'rgba(6,20,30,0.7)', border: '1px solid rgba(26,61,74,0.4)',
+          borderRadius: 3, fontSize: 10, color: 'var(--muted)',
+          fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          maxHeight: 200, overflowY: 'auto',
+        }}>{(() => {
+          try { return JSON.stringify(JSON.parse(rec.payloadTemplate), null, 2); }
+          catch { return rec.payloadTemplate; }
+        })()}</pre>
+      )}
+    </div>
+  );
+}
+
+function ApprovalsPanel({
+  siteUrl,
+  recommendations,
+  loading,
+  lastUpdatedAt,
+  onApprove,
+  onReject,
+  onRegenerate,
+}: {
+  siteUrl: string | undefined;
+  recommendations: Recommendation[] | null;
+  loading: string | null;
+  lastUpdatedAt: number | null;
+  onApprove: (id: string) => void;
+  onReject: (id: string, reason: string) => void;
+  onRegenerate: () => void;
+}) {
+  if (!siteUrl) return <EmptySlate icon="⚡" message="Activate a site to see recommendations" />;
+  const recs = recommendations ?? [];
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div style={{ flex: 1, fontSize: 11, color: 'var(--muted)' }}>
+          AVA noticed these frictions and is recommending actions.
+          Approve to launch an experiment; reject to retrain the engine.
+        </div>
+        <UpdatedAgo ts={lastUpdatedAt} />
+        <button
+          onClick={onRegenerate}
+          disabled={loading === 'regenerate'}
+          style={actionBtn('var(--info)')}
+        >
+          {loading === 'regenerate' ? '…' : '↻ Regenerate'}
+        </button>
+      </div>
+      {recs.length === 0 ? (
+        <EmptySlate icon="✓" message="Inbox zero — no pending recommendations" />
+      ) : (
+        <div className="scroll-list" style={{ maxHeight: 600 }}>
+          {recs.map(r => (
+            <ApprovalCard
+              key={r.id}
+              rec={r}
+              loading={loading}
+              onApprove={onApprove}
+              onReject={onReject}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Live Results Panel (Phase 3.4 — revenue attribution + decision pills) ──
+
+function decisionPillStyle(decision: string | null | undefined): CSSProperties {
+  const map: Record<string, { fg: string; bg: string }> = {
+    ship:         { fg: 'var(--accent)',        bg: 'rgba(53,211,161,0.18)' },
+    rollback:     { fg: 'var(--tier-escalate)', bg: 'rgba(228,87,87,0.18)' },
+    extend:       { fg: 'var(--info)',          bg: 'rgba(89,184,230,0.18)' },
+    inconclusive: { fg: 'var(--muted)',         bg: 'rgba(255,255,255,0.06)' },
+  };
+  const c = map[decision ?? 'inconclusive'] ?? map.inconclusive!;
+  return {
+    fontSize: 9, padding: '2px 7px', borderRadius: 3,
+    background: c.bg, color: c.fg,
+    textTransform: 'uppercase', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em',
+    fontWeight: 700,
+  };
+}
+
+function LiveResultRow({ row, loading, onRecompute }: { row: LiveResultRow; loading: string | null; onRecompute: (id: string) => void }) {
+  const out = row.latestOutcome;
+  const recomputing = loading === `compute_${row.id}`;
+  return (
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(26,61,74,0.4)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span className="friction-tag">{row.frictionId}</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)', fontWeight: 600 }}>
+          {row.actionCode}
+        </span>
+        <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'var(--muted)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+          {row.status}
+        </span>
+        {out?.decision && <span style={decisionPillStyle(out.decision)}>{out.decision}</span>}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => onRecompute(row.id)} disabled={recomputing} style={actionBtn('var(--info)')}>
+          {recomputing ? '…' : '↻ Recompute'}
+        </button>
+      </div>
+      {out ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, fontSize: 11 }}>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Attributed revenue</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>
+              ${out.attributedRevenue.toFixed(2)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CR delta</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: out.conversionDeltaPct > 0 ? 'var(--accent)' : 'var(--tier-escalate)', fontWeight: 700 }}>
+              {out.conversionDeltaPct > 0 ? '+' : ''}{out.conversionDeltaPct.toFixed(1)}%
+            </div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Treatment / control</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text)' }}>
+              {out.variantConversions}/{out.variantSessions} · {out.controlConversions}/{out.controlSessions}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--muted)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>p-value</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text)' }}>
+              {out.pValue != null ? out.pValue.toFixed(4) : '—'}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+          No outcome computed yet — click Recompute to snapshot now.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiveResultsPanel({
+  siteUrl,
+  rows,
+  loading,
+  lastUpdatedAt,
+  onRecompute,
+}: {
+  siteUrl: string | undefined;
+  rows: LiveResultRow[] | null;
+  loading: string | null;
+  lastUpdatedAt: number | null;
+  onRecompute: (id: string) => void;
+}) {
+  if (!siteUrl) return null;
+  const list = rows ?? [];
+  // Total attributed revenue across all approved/active recs with outcomes.
+  const totalRevenue = list.reduce((sum, r) => sum + (r.latestOutcome?.attributedRevenue ?? 0), 0);
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 16px', borderBottom: '1px solid var(--line)', background: 'rgba(8,26,34,0.4)' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text)' }}>
+          Live results
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--muted)' }}>{list.length} approved · ${totalRevenue.toFixed(2)} attributed</span>
+        <div style={{ flex: 1 }} />
+        <UpdatedAgo ts={lastUpdatedAt} />
+      </div>
+      {list.length === 0 ? (
+        <EmptySlate icon="📊" message="Approve a recommendation to see live results here" />
+      ) : (
+        <div className="scroll-list" style={{ maxHeight: 400 }}>
+          {list.map(r => <LiveResultRow key={r.id} row={r} loading={loading} onRecompute={onRecompute} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Weekly Digest panel (Phase 3.6) ──────────────────────────────────────────
+
+function DigestPanel({
+  siteUrl,
+  digest,
+  lastUpdatedAt,
+}: {
+  siteUrl: string | undefined;
+  digest: WeeklyDigestData | null;
+  lastUpdatedAt: number | null;
+}) {
+  if (!siteUrl) return <EmptySlate icon="📰" message="Activate a site to see the weekly digest" />;
+  if (!digest) return <EmptySlate icon="📰" message="Building digest…" />;
+
+  const wow = digest.traffic.wowDeltaPct;
+  const wowColor = wow === null ? 'var(--muted)' : wow >= 0 ? 'var(--accent)' : 'var(--tier-escalate)';
+  const wowLabel = wow === null ? '—' : `${wow >= 0 ? '+' : ''}${wow.toFixed(1)}%`;
+  const periodStart = new Date(digest.period.start);
+  const periodEnd = new Date(digest.period.end);
+  const fmtDate = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+
+  return (
+    <>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Weekly digest · {fmtDate(periodStart)} → {fmtDate(periodEnd)} ({digest.period.days}d)
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 4 }}>
+            ${digest.outcomes.attributedRevenue.toFixed(2)} attributed · {digest.outcomes.decisions.ship} shipped wins · {digest.recommendations.pendingNow} awaiting your review
+          </div>
+        </div>
+        <UpdatedAgo ts={lastUpdatedAt} />
+      </div>
+
+      {/* Traffic + revenue */}
+      <div className="grid-4" style={{ marginBottom: 16 }}>
+        <div className="metric-box">
+          <div className="label">Sessions</div>
+          <div className="value">{fmt(digest.traffic.sessions)}</div>
+          <div className="sub">vs {fmt(digest.traffic.sessionsPrior)} prior</div>
+        </div>
+        <div className="metric-box">
+          <div className="label">WoW change</div>
+          <div className="value" style={{ color: wowColor }}>{wowLabel}</div>
+          <div className="sub">prior 7d baseline</div>
+        </div>
+        <div className="metric-box">
+          <div className="label">Attributed revenue</div>
+          <div className="value accent">${digest.outcomes.attributedRevenue.toFixed(2)}</div>
+          <div className="sub">from {digest.outcomes.snapshotsThisWeek} outcome snapshots</div>
+        </div>
+        <div className="metric-box">
+          <div className="label">Pending review</div>
+          <div className="value" style={{ color: digest.recommendations.pendingNow > 0 ? 'var(--warn)' : 'var(--accent)' }}>
+            {digest.recommendations.pendingNow}
+          </div>
+          <div className="sub">approve in queue above</div>
+        </div>
+      </div>
+
+      {/* Decision tally */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+          Outcomes this week
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span style={decisionPillStyle('ship')}>{digest.outcomes.decisions.ship} ship</span>
+          <span style={decisionPillStyle('rollback')}>{digest.outcomes.decisions.rollback} rollback</span>
+          <span style={decisionPillStyle('extend')}>{digest.outcomes.decisions.extend} extend</span>
+          <span style={decisionPillStyle('inconclusive')}>{digest.outcomes.decisions.inconclusive} inconclusive</span>
+        </div>
+      </div>
+
+      {/* Recommendations status */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+          Recommendations
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text)', display: 'flex', gap: 18, fontFamily: 'var(--font-mono)' }}>
+          <span>✓ {digest.recommendations.approvedThisWeek} approved</span>
+          <span style={{ color: 'var(--warn)' }}>✕ {digest.recommendations.rejectedThisWeek} rejected</span>
+          <span style={{ color: 'var(--info)' }}>↻ {digest.recommendations.activeNow} active</span>
+          <span style={{ color: 'var(--muted)' }}>{digest.recommendations.pendingNow} pending</span>
+        </div>
+      </div>
+
+      {/* Top frictions */}
+      <div>
+        <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+          Top frictions by firings
+        </div>
+        {digest.topFrictions.length === 0 ? (
+          <EmptySlate icon="🎯" message="No intervention firings in this window" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {digest.topFrictions.map(f => (
+              <div key={f.frictionId} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 70px 70px 70px', gap: 10, alignItems: 'center', fontSize: 12, padding: '4px 0', borderBottom: '1px solid rgba(26,61,74,0.3)' }}>
+                <span className="friction-tag">{f.frictionId}</span>
+                <div style={{ height: 6, background: 'rgba(8,26,34,0.6)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, (f.total / Math.max(1, digest.topFrictions[0]!.total)) * 100)}%`, height: '100%', background: 'var(--info)' }} />
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>n={f.total}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent)' }}>{pct(f.conversionRate)}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--warn)' }}>{pct(f.dismissalRate)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 const INTERVENE_TABS = [
+  { id: 'approvals',    label: 'Approvals' },
+  { id: 'digest',       label: 'Weekly Digest' },
   { id: 'analytics',    label: 'Intervention Analytics' },
   { id: 'voice',        label: 'Voice' },
   { id: 'webhooks',     label: 'Webhook Deliveries' },
@@ -514,9 +1020,28 @@ type InterveneAnalyticsTab = typeof INTERVENE_TABS[number]['id'];
 export function InterveneTab({
   interventions, selectedSession, overview,
   sessions, analyticsParams, webhookStats, networkStatus,
+  activeSiteUrl,
 }: InterveneTabProps) {
   const [loading, setLoading] = useState<string | null>(null);
-  const [analyticsTab, setAnalyticsTab] = useState<InterveneAnalyticsTab>('analytics');
+  const [analyticsTab, setAnalyticsTab] = useState<InterveneAnalyticsTab>('approvals');
+
+  // Recommendations queue (Phase 3.3) — pending only, polled every 15s
+  const recsPath = activeSiteUrl
+    ? `/recommendations?siteUrl=${encodeURIComponent(activeSiteUrl)}&status=pending`
+    : null;
+  const { data: recommendationsData, reload: reloadRecs, lastUpdatedAt: recsUpdatedAt } = useApi<RecommendationsResponse>(recsPath, { pollMs: 15_000 });
+
+  // Live results — approved/active recs with their latest outcome.
+  const outcomesSummaryPath = activeSiteUrl
+    ? `/recommendations/outcomes/summary?siteUrl=${encodeURIComponent(activeSiteUrl)}`
+    : null;
+  const { data: outcomeSummary, reload: reloadOutcomes, lastUpdatedAt: outcomesUpdatedAt } = useApi<OutcomeSummaryResponse>(outcomesSummaryPath, { pollMs: 20_000 });
+
+  // Phase 3.6 — weekly digest preview (composed server-side from real data).
+  const digestPath = activeSiteUrl
+    ? `/insights/digest?siteUrl=${encodeURIComponent(activeSiteUrl)}`
+    : null;
+  const { data: digest, lastUpdatedAt: digestUpdatedAt } = useApi<WeeklyDigestData>(digestPath, { pollMs: 60_000 });
 
   const { data: voiceData }                        = useApi<VoiceData>(`/analytics/voice${analyticsParams}`, { pollMs: 20_000 });
   const { data: trainingStats }                    = useApi<TrainingStats>('/training/stats', { pollMs: 30_000 });
@@ -577,6 +1102,43 @@ export function InterveneTab({
     try { await apiFetch(`/experiments/${id}/${action}`, { method: 'POST' }); reloadExps(); }
     finally { setLoading(null); }
   }, [reloadExps]);
+
+  // Approving / rejecting changes BOTH the pending queue AND the live-results
+  // summary (the newly-approved rec appears there). Cross-link the reloads so
+  // the UI stays consistent without waiting for the next poll tick.
+  const approveRec = useCallback(async (id: string) => {
+    setLoading(`approve_${id}`);
+    try {
+      await apiFetch(`/recommendations/${id}/approve`, { method: 'POST', body: JSON.stringify({}), headers: { 'Content-Type': 'application/json' } });
+      reloadRecs();
+      reloadOutcomes();
+    }
+    finally { setLoading(null); }
+  }, [reloadRecs, reloadOutcomes]);
+
+  const rejectRec = useCallback(async (id: string, reason: string) => {
+    setLoading(`reject_${id}`);
+    try { await apiFetch(`/recommendations/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }), headers: { 'Content-Type': 'application/json' } }); reloadRecs(); }
+    finally { setLoading(null); }
+  }, [reloadRecs]);
+
+  const regenerateRecs = useCallback(async () => {
+    if (!activeSiteUrl) return;
+    setLoading('regenerate');
+    try { await apiFetch('/recommendations/regenerate', { method: 'POST', body: JSON.stringify({ siteUrl: activeSiteUrl }), headers: { 'Content-Type': 'application/json' } }); reloadRecs(); }
+    finally { setLoading(null); }
+  }, [activeSiteUrl, reloadRecs]);
+
+  const recomputeOutcome = useCallback(async (id: string) => {
+    setLoading(`compute_${id}`);
+    try {
+      // Recompute can flip a rec to ship/rollback decision; reload both panels.
+      await apiFetch(`/recommendations/${id}/compute-outcome`, { method: 'POST', body: JSON.stringify({}), headers: { 'Content-Type': 'application/json' } });
+      reloadOutcomes();
+      reloadRecs();
+    }
+    finally { setLoading(null); }
+  }, [reloadOutcomes, reloadRecs]);
 
   const rolloutAction = useCallback(async (id: string, action: string) => {
     setLoading(`rollout_${id}_${action}`);
@@ -654,6 +1216,29 @@ export function InterveneTab({
 
           {/* Panel */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px 20px' }}>
+            {analyticsTab === 'approvals' && (
+              <>
+                <ApprovalsPanel
+                  siteUrl={activeSiteUrl}
+                  recommendations={recommendationsData?.recommendations ?? null}
+                  loading={loading}
+                  lastUpdatedAt={recsUpdatedAt}
+                  onApprove={approveRec}
+                  onReject={rejectRec}
+                  onRegenerate={regenerateRecs}
+                />
+                <LiveResultsPanel
+                  siteUrl={activeSiteUrl}
+                  rows={outcomeSummary?.recommendations ?? null}
+                  loading={loading}
+                  lastUpdatedAt={outcomesUpdatedAt}
+                  onRecompute={recomputeOutcome}
+                />
+              </>
+            )}
+            {analyticsTab === 'digest' && (
+              <DigestPanel siteUrl={activeSiteUrl} digest={digest ?? null} lastUpdatedAt={digestUpdatedAt} />
+            )}
             {analyticsTab === 'analytics' && (
               <InterventionAnalyticsPanel fired={fired} converted={converted} dismissed={outcomes.dismissed} estRevenue={estRevenue} convRate={convRate} dismissRate={dismissRate} outcomes={outcomes} />
             )}

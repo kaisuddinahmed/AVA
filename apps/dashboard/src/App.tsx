@@ -249,6 +249,7 @@ export function App() {
               analyticsParams={analyticsParams}
               webhookStats={webhookStats as any ?? null}
               networkStatus={networkStatus as any ?? null}
+              activeSiteUrl={activeSiteUrl}
             /></TabErrorBoundary>
           )}
         </>

@@ -14,6 +14,7 @@ import * as shadowApi from "./shadow.api.js";
 import * as jobsApi from "./jobs.api.js";
 import * as driftApi from "./drift.api.js";
 import * as experimentsApi from "./experiments.api.js";
+import * as recommendationsApi from "./recommendations.api.js";
 import * as rolloutsApi from "./rollouts.api.js";
 import * as voiceProxyApi from "../voice/voice-proxy.api.js";
 import * as insightsApi from "./insights.api.js";
@@ -146,6 +147,20 @@ apiRouter.post("/voice/sst", raw({ type: "*/*", limit: "10mb" }), voiceProxyApi.
 // Insights (Weekly digest + CRO recommendations)
 apiRouter.get("/insights/latest", insightsApi.getLatestInsights);
 apiRouter.get("/insights/cro", insightsApi.getCROFindings);
+// Phase 3.6 — on-demand weekly digest preview (no persistence)
+apiRouter.get("/insights/digest", insightsApi.getWeeklyDigest);
+// Phase 3.7 — email delivery (Resend/console)
+apiRouter.post("/insights/digest/send", insightsApi.sendDigest);
+
+// Recommendations (Phase 3.2 — INTERVENE approval queue, Phase 3.4 — outcomes)
+apiRouter.get("/recommendations", recommendationsApi.list);
+apiRouter.post("/recommendations/regenerate", recommendationsApi.regenerate);
+apiRouter.get("/recommendations/outcomes/summary", recommendationsApi.outcomesSummary);
+apiRouter.get("/recommendations/:id", recommendationsApi.get);
+apiRouter.post("/recommendations/:id/approve", recommendationsApi.approve);
+apiRouter.post("/recommendations/:id/reject", recommendationsApi.reject);
+apiRouter.get("/recommendations/:id/outcomes", recommendationsApi.getOutcomes);
+apiRouter.post("/recommendations/:id/compute-outcome", recommendationsApi.computeOutcome);
 
 // Webhooks (Session-exit behavioral triggers)
 apiRouter.get("/webhooks/stats", webhooksApi.getWebhookStats);

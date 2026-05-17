@@ -3,7 +3,10 @@
 // ============================================================================
 
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { InsightSnapshotRepo } from "@ava/db";
+import { buildWeeklyDigest } from "../insights/weekly-digest.service.js";
+import { sendDigestEmail } from "../insights/digest-email.service.js";
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "api" });
@@ -86,5 +89,76 @@ export async function getCROFindings(req: Request, res: Response): Promise<void>
   } catch (err) {
     log.error("[InsightsAPI] getCROFindings error:", err);
     res.status(500).json({ error: "Failed to fetch CRO findings" });
+  }
+}
+
+// ── Phase 3.6 — Weekly digest preview ───────────────────────────────────────
+
+const DigestQuerySchema = z.object({
+  siteUrl: z.string().min(1, "siteUrl is required"),
+  windowDays: z.coerce.number().int().positive().max(90).optional(),
+});
+
+/**
+ * GET /api/insights/digest?siteUrl=…&windowDays=…
+ *
+ * On-demand compose of the Phase 3 weekly digest. Pure read; no persistence
+ * (Phase 3.7 will own snapshotting + email delivery). The dashboard's Digest
+ * preview panel calls this; the future digest email reuses the same shape.
+ */
+export async function getWeeklyDigest(req: Request, res: Response): Promise<void> {
+  const parsed = DigestQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const digest = await buildWeeklyDigest(parsed.data.siteUrl, {
+      windowDays: parsed.data.windowDays,
+    });
+    res.json(digest);
+  } catch (err) {
+    log.error({ err: String(err) }, "[InsightsAPI] getWeeklyDigest error");
+    res.status(500).json({ error: "Failed to build digest" });
+  }
+}
+
+// ── Phase 3.7 — email delivery ──────────────────────────────────────────────
+
+const SendDigestBodySchema = z.object({
+  siteUrl: z.string().min(1, "siteUrl is required"),
+  recipient: z.string().email("recipient must be a valid email").optional(),
+  windowDays: z.number().int().positive().max(90).optional(),
+});
+
+/**
+ * POST /api/insights/digest/send
+ * Body: { siteUrl, recipient?, windowDays? }
+ *
+ * Builds the weekly digest, renders the email, and dispatches via the
+ * configured provider (EMAIL_PROVIDER env). Returns the rendered subject +
+ * delivery metadata. Email body is not echoed in the response.
+ */
+export async function sendDigest(req: Request, res: Response): Promise<void> {
+  const parsed = SendDigestBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const { digest, rendered, delivery } = await sendDigestEmail(parsed.data.siteUrl, {
+      recipient: parsed.data.recipient,
+      windowDays: parsed.data.windowDays,
+    });
+    res.json({
+      delivery,
+      subject: rendered.subject,
+      period: digest.period,
+      attributedRevenue: digest.outcomes.attributedRevenue,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.error({ err: msg }, "[InsightsAPI] sendDigest error");
+    res.status(400).json({ error: msg });
   }
 }

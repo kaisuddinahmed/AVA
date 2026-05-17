@@ -52,6 +52,7 @@ docs/*
 !docs/PHASE_1_4_MANUAL_GATE.md
 !docs/PHASE_1_5_MANUAL_GATE.md
 !docs/PHASE_2_MANUAL_GATE.md
+!docs/PHASE_3_MANUAL_GATE.md
 
 # SQLite dev database
 *.db

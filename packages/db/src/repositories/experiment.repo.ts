@@ -195,3 +195,92 @@ export async function getVariantOutcomes(experimentId: string) {
 
   return results;
 }
+
+/**
+ * Per-variant outcomes WITH revenue attribution. Used by the Phase 3.4
+ * recommendation-outcome service to attribute cart value to each arm of
+ * an experiment. Revenue is `cartValueAtConversion` (falls back to
+ * `cartValueAtFire`) summed across converted interventions for sessions
+ * assigned to each variant.
+ *
+ * SCOPING — Codex P1 fix: revenue/conversion math must reflect ONLY
+ * interventions caused by this experiment's action within its window.
+ *   - `windowStart` / `windowEnd` clamp the intervention timestamp
+ *   - `frictionId` filters to the F-code this recommendation targets,
+ *     so unrelated friction firings in the same session don't bleed
+ *     into attribution
+ * All three are optional to keep the function usable from other call
+ * sites; the recommendation-outcome service always passes them.
+ */
+export async function getVariantOutcomesWithRevenue(
+  experimentId: string,
+  opts: {
+    windowStart?: Date;
+    windowEnd?: Date;
+    frictionId?: string;
+  } = {},
+): Promise<Array<{
+  variantId: string;
+  sessions: number;
+  total: number;          // interventions fired
+  converted: number;
+  dismissed: number;
+  ignored: number;
+  revenue: number;        // sum of cart values on converted
+}>> {
+  const assignments = await prisma.experimentAssignment.findMany({
+    where: { experimentId },
+    select: { sessionId: true, variantId: true },
+  });
+  if (assignments.length === 0) return [];
+
+  const variantSessions = new Map<string, string[]>();
+  for (const a of assignments) {
+    const arr = variantSessions.get(a.variantId) ?? [];
+    arr.push(a.sessionId);
+    variantSessions.set(a.variantId, arr);
+  }
+
+  const out: Array<{
+    variantId: string; sessions: number; total: number; converted: number;
+    dismissed: number; ignored: number; revenue: number;
+  }> = [];
+
+  const timestampFilter: Record<string, Date> = {};
+  if (opts.windowStart) timestampFilter.gte = opts.windowStart;
+  if (opts.windowEnd)   timestampFilter.lte = opts.windowEnd;
+
+  for (const [variantId, sessionIds] of variantSessions) {
+    const interventions = await prisma.intervention.findMany({
+      where: {
+        sessionId: { in: sessionIds },
+        ...(opts.frictionId ? { frictionId: opts.frictionId } : {}),
+        ...(opts.windowStart || opts.windowEnd ? { timestamp: timestampFilter } : {}),
+      },
+      select: {
+        status: true,
+        cartValueAtFire: true,
+        cartValueAtConversion: true,
+      },
+    });
+    const total = interventions.length;
+    let converted = 0, dismissed = 0, ignored = 0, revenue = 0;
+    for (const iv of interventions) {
+      if (iv.status === "converted") {
+        converted++;
+        revenue += iv.cartValueAtConversion ?? iv.cartValueAtFire ?? 0;
+      } else if (iv.status === "dismissed") dismissed++;
+      else if (iv.status === "ignored") ignored++;
+    }
+    out.push({
+      variantId,
+      sessions: sessionIds.length,
+      total,
+      converted,
+      dismissed,
+      ignored,
+      revenue,
+    });
+  }
+  return out;
+}

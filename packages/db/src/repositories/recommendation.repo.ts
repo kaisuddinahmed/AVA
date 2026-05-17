@@ -32,15 +32,28 @@ export async function getRecommendation(id: string) {
   });
 }
 
-/** List recommendations for a site filtered by status. */
+/**
+ * List recommendations for a site filtered by status.
+ *
+ * Codex P2 #3 — supports a `statuses` array so callers can scope to multiple
+ * statuses (e.g. ["approved", "active"] for the live-results summary).
+ * Without this, the latest-50-by-createdAt window would drop older approved
+ * rows whenever a flood of newer pending/rejected rows existed.
+ */
 export async function listBySite(siteUrl: string, options?: {
   status?: string;
+  statuses?: string[];
   limit?: number;
 }) {
+  const statusFilter = options?.statuses && options.statuses.length > 0
+    ? { status: { in: options.statuses } }
+    : options?.status
+    ? { status: options.status }
+    : {};
   return prisma.recommendation.findMany({
     where: {
       siteUrl,
-      ...(options?.status ? { status: options.status } : {}),
+      ...statusFilter,
     },
     orderBy: { createdAt: "desc" },
     take: options?.limit ?? 50,
@@ -60,6 +73,24 @@ export async function listPending(options?: { limit?: number }) {
 export async function approve(id: string, experimentId: string) {
   return prisma.recommendation.update({
     where: { id },
+    data: {
+      status: "approved",
+      approvedExperimentId: experimentId,
+      approvedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Atomic approve — Codex P1 #2. Conditional update guarded by `status=pending`.
+ * Returns `{ count: 0 | 1 }`: 1 means this caller won the claim, 0 means
+ * another caller already moved the row out of `pending` (race condition).
+ * The service layer uses count===0 to detect duplicate-approve races and
+ * clean up the orphaned experiment it just created.
+ */
+export async function approveIfPending(id: string, experimentId: string) {
+  return prisma.recommendation.updateMany({
+    where: { id, status: "pending" },
     data: {
       status: "approved",
       approvedExperimentId: experimentId,
