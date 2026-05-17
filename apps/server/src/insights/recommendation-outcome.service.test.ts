@@ -175,8 +175,9 @@ describe("persistence", () => {
 // ── Error paths ────────────────────────────────────────────────────────────
 
 describe("scoping (Codex P1)", () => {
-  it("forwards windowStart + windowEnd + frictionId to the repo query", async () => {
+  it("forwards windowStart + windowEnd + frictionId + recommendationId to the repo query", async () => {
     getRec.mockResolvedValue(approvedRec({
+      id: "rec_1",
       frictionId: "F042",
       approvedAt: new Date("2026-05-10T00:00:00Z"),
     }));
@@ -189,6 +190,8 @@ describe("scoping (Codex P1)", () => {
     expect(scope).toMatchObject({
       frictionId: "F042",
       windowEnd: now,
+      // Phase 4.1 — direct attribution key prefers the FK over the heuristic.
+      recommendationId: "rec_1",
     });
     expect((scope as { windowStart: Date }).windowStart.toISOString()).toBe("2026-05-10T00:00:00.000Z");
   });

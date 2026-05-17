@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { SiteSelectorFingerprintRepo, DriftAlertRepo } from "@ava/db";
+import { createDriftAlertWithNotify } from "../drift/drift-create.service.js";
 import { logger } from "../logger.js";
 
 const log = logger.child({ service: "selector-drift" });
@@ -215,7 +216,8 @@ export async function checkDriftForSite(
       if (recent) {
         alertSuppressed = true;
       } else {
-        await DriftAlertRepo.createAlert({
+        // Phase 4.2 — persist + notify (email + critical-only PagerDuty).
+        await createDriftAlertWithNotify({
           siteUrl,
           alertType: "selector_drift",
           severity,

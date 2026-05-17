@@ -42,3 +42,10 @@ jobs:
         run: npm run test
         env:
           DATABASE_URL: file:./ci.db
+
+      # Phase 4.7 — enforces CLAUDE.md "60%+ on engine paths" gate.
+      # Per-path thresholds live in apps/server/vitest.config.ts.
+      - name: Coverage (engine-path gate)
+        run: npm run test:coverage --workspace=apps/server
+        env:
+          DATABASE_URL: file:./ci.db

@@ -15,6 +15,7 @@ import * as jobsApi from "./jobs.api.js";
 import * as driftApi from "./drift.api.js";
 import * as experimentsApi from "./experiments.api.js";
 import * as recommendationsApi from "./recommendations.api.js";
+import * as billingApi from "./billing.api.js";
 import * as rolloutsApi from "./rollouts.api.js";
 import * as voiceProxyApi from "../voice/voice-proxy.api.js";
 import * as insightsApi from "./insights.api.js";
@@ -151,6 +152,12 @@ apiRouter.get("/insights/cro", insightsApi.getCROFindings);
 apiRouter.get("/insights/digest", insightsApi.getWeeklyDigest);
 // Phase 3.7 — email delivery (Resend/console)
 apiRouter.post("/insights/digest/send", insightsApi.sendDigest);
+
+// Billing (Phase 4.5 — Shopify Billing API)
+apiRouter.get("/billing/plans", billingApi.plans);
+apiRouter.post("/billing/start", billingApi.start);
+apiRouter.get("/billing/callback", billingApi.callback);
+apiRouter.get("/billing/status", billingApi.status);
 
 // Recommendations (Phase 3.2 — INTERVENE approval queue, Phase 3.4 — outcomes)
 apiRouter.get("/recommendations", recommendationsApi.list);

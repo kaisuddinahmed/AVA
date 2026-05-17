@@ -182,9 +182,24 @@ model Intervention {
   turnIndex        Int?
   latencyMs        Int?
 
+  // Phase 4.1 — direct attribution keys.
+  // Stamped ONLY when ALL hold:
+  //   - session is assigned to a recommendation-backed experiment
+  //   - assigned variant === "treatment" (control arm never stamped)
+  //   - fired frictionId === recommendation.frictionId
+  //   - fired actionCode === recommendation.actionCode
+  // Nullable to preserve legacy rows; revenue/outcome queries prefer the
+  // direct key when present and fall back to the heuristic when null.
+  recommendationId String?
+  recommendation   Recommendation? @relation(fields: [recommendationId], references: [id])
+  experimentId     String?
+  experiment       Experiment?     @relation("InterventionExperiment", fields: [experimentId], references: [id])
+
   @@index([sessionId, timestamp])
   @@index([status])
   @@index([type, status])
+  @@index([recommendationId])
+  @@index([experimentId])
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +269,21 @@ model SiteConfig {
   shopifyStorefrontToken String?               // Delegated Storefront token minted via Admin (Phase 1.3.2)
   shopifyScriptTagId  Int?                     // ScriptTag resource ID for uninstall cleanup
   shopifyWebhookIds   String?                  // JSON: [{topic, id}] subscription GIDs (Phase 1.3.5)
+  // Phase 4.5 — Shopify Billing API state.
+  //   - shopifyAppSubscriptionId : Shopify gid for the live AppSubscription
+  //   - shopifyUsageLineItemId   : gid of the AppUsagePricing line item
+  //     (REQUIRED for appUsageRecordCreate — distinct from subscription id
+  //      per Codex billing review)
+  //   - shopifyAppPlan           : "free" | "starter" | "pro" (free skips Shopify)
+  //   - shopifyAppSubscriptionStatus : ACTIVE | PENDING | DECLINED | EXPIRED |
+  //                                    CANCELLED | FROZEN
+  //   - shopifyAppSubscriptionTest   : true → sandbox-only charge (no real money)
+  shopifyAppSubscriptionId       String?
+  shopifyUsageLineItemId         String?
+  shopifyAppPlan                 String?
+  shopifyAppSubscriptionStatus   String?
+  shopifyAppSubscriptionExpiresAt DateTime?
+  shopifyAppSubscriptionTest     Boolean?
   // WooCommerce integration (Phase 1.4)
   wooConsumerKey      String?                  // REST v3 consumer key (ck_…) — null when using public Store API
   wooConsumerSecret   String?                  // REST v3 consumer secret (cs_…) — null when using public Store API
@@ -618,6 +648,8 @@ model Experiment {
 
   assignments ExperimentAssignment[]
   rollout     Rollout?
+  // Phase 4.1 — direct attribution back-relation
+  interventions Intervention[] @relation("InterventionExperiment")
 
   @@index([status])
   @@index([siteUrl, status])
@@ -983,6 +1015,8 @@ model Recommendation {
   updatedAt           DateTime @updatedAt
 
   outcomes RecommendationOutcome[]
+  // Phase 4.1 — direct attribution back-relation
+  interventions Intervention[]
 
   @@index([siteUrl, status])
   @@index([siteUrl, frictionId])

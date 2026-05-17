@@ -9,6 +9,7 @@ import { DriftAlertRepo, ShadowComparisonRepo } from "@ava/db";
 import type { MSWIMResult } from "@ava/shared";
 import { tierToString } from "./mswim/tier-resolver.js";
 import type { LLMOutput } from "./mswim/mswim.engine.js";
+import { createDriftAlertWithNotify } from "../drift/drift-create.service.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -110,7 +111,11 @@ export async function logShadowComparison(input: ComparisonInput): Promise<void>
         alertType, "session", siteUrl, 6
       );
       if (!alreadyAlerted) {
-        await DriftAlertRepo.createAlert({
+        // Phase 4.2 — persist + notify. Shadow-logger uses "high"/"medium"
+        // severity (its own scale); PagerDuty only pages on "critical"
+        // (drift-notifier maps "high" to email-only). That's intentional —
+        // shadow divergence is informational, not a page-the-oncall event.
+        await createDriftAlertWithNotify({
           siteUrl,
           alertType,
           severity: compositeDivergence > 25 || !tierMatch ? "high" : "medium",

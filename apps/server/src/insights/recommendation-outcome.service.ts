@@ -133,6 +133,10 @@ export async function computeOutcomeForRecommendation(
     windowStart,
     windowEnd,
     frictionId: rec.frictionId,
+    // Phase 4.1 — direct attribution key. The repo prefers this when set;
+    // window+frictionId stay as defense-in-depth for legacy rows whose
+    // recommendationId is null.
+    recommendationId: rec.id,
   });
 
   // We expect the 2-variant {control, treatment} layout that approveRecommendation

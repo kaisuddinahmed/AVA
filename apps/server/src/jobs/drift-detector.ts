@@ -10,6 +10,7 @@ import {
   InterventionRepo,
   EvaluationRepo,
 } from "@ava/db";
+import { createDriftAlertWithNotify } from "../drift/drift-create.service.js";
 import { config } from "../config.js";
 import type {
   DriftThresholds,
@@ -165,7 +166,9 @@ export async function runDriftCheck(
             6,
           );
           if (!hasRecent) {
-            await DriftAlertRepo.createAlert(alert);
+            // Phase 4.2 — persist + notify (email + critical-only PagerDuty).
+            // Notifier failures never throw; the alert always lands.
+            await createDriftAlertWithNotify(alert);
             alerts.push(alert);
           }
         }

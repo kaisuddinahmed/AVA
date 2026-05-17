@@ -125,6 +125,33 @@ export async function getSessionAssignment(
   });
 }
 
+/**
+ * Phase 4.1 — find the active experiment assignment for a session within a
+ * site, without requiring the caller to know `experimentId` up front.
+ * Returns `{ experimentId, variantId }` or null. Used by the attribution
+ * resolver at intervention fire time.
+ *
+ * Assumes the project's "no multiple active experiments per site" rule
+ * (enforced at the service layer); if multiple are running, the first
+ * matching assignment wins.
+ */
+export async function getActiveAssignmentForSession(
+  siteUrl: string,
+  sessionId: string,
+): Promise<{ experimentId: string; variantId: string } | null> {
+  const active = await prisma.experiment.findFirst({
+    where: { siteUrl, status: "running" },
+    select: { id: true },
+  });
+  if (!active) return null;
+  const assignment = await prisma.experimentAssignment.findUnique({
+    where: { experimentId_sessionId: { experimentId: active.id, sessionId } },
+    select: { variantId: true },
+  });
+  if (!assignment) return null;
+  return { experimentId: active.id, variantId: assignment.variantId };
+}
+
 // ---------------------------------------------------------------------------
 // Metrics aggregation
 // ---------------------------------------------------------------------------
@@ -209,8 +236,11 @@ export async function getVariantOutcomes(experimentId: string) {
  *   - `frictionId` filters to the F-code this recommendation targets,
  *     so unrelated friction firings in the same session don't bleed
  *     into attribution
- * All three are optional to keep the function usable from other call
- * sites; the recommendation-outcome service always passes them.
+ *
+ * Phase 4.1 — when `recommendationId` is provided, the query joins
+ * directly via `intervention.recommendationId` and the F-code/window
+ * heuristic is unnecessary. The heuristic path is kept as a fallback
+ * for legacy rows (pre-4.1 interventions where recommendationId is null).
  */
 export async function getVariantOutcomesWithRevenue(
   experimentId: string,
@@ -218,6 +248,8 @@ export async function getVariantOutcomesWithRevenue(
     windowStart?: Date;
     windowEnd?: Date;
     frictionId?: string;
+    /** Phase 4.1 — when set, query directly by Intervention.recommendationId. */
+    recommendationId?: string;
   } = {},
 ): Promise<Array<{
   variantId: string;
@@ -251,9 +283,13 @@ export async function getVariantOutcomesWithRevenue(
   if (opts.windowEnd)   timestampFilter.lte = opts.windowEnd;
 
   for (const [variantId, sessionIds] of variantSessions) {
+    // Phase 4.1 — prefer the direct attribution key when present. The
+    // F-code/window filters are still applied as defense-in-depth; the
+    // direct key is the authoritative filter.
     const interventions = await prisma.intervention.findMany({
       where: {
         sessionId: { in: sessionIds },
+        ...(opts.recommendationId ? { recommendationId: opts.recommendationId } : {}),
         ...(opts.frictionId ? { frictionId: opts.frictionId } : {}),
         ...(opts.windowStart || opts.windowEnd ? { timestamp: timestampFilter } : {}),
       },

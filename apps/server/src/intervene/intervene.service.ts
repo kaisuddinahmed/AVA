@@ -1,4 +1,11 @@
-import { EventRepo, InterventionRepo, SessionRepo, SiteConfigRepo } from "@ava/db";
+import {
+  EventRepo,
+  ExperimentRepo,
+  InterventionRepo,
+  RecommendationRepo,
+  SessionRepo,
+  SiteConfigRepo,
+} from "@ava/db";
 import type { DecisionOutput } from "../evaluate/decision-engine.js";
 import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
@@ -10,8 +17,26 @@ import {
   streamTtsToSession,
   getStreamingTtsConfig,
 } from "../voice/streaming-tts.service.js";
+import { resolveAttribution } from "./attribution-resolver.js";
+import { createRecommendationCache } from "./experiment-recommendation-cache.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
+
+// Phase 4.1 — module-scoped TTL cache wrapping the experiment→recommendation
+// lookup. Lives for the process lifetime; clear() is exposed for tests.
+const recCache = createRecommendationCache({
+  ttlMs: 60_000,
+  fetch: async (experimentId: string) => {
+    const rec = await RecommendationRepo.findByApprovedExperimentId(experimentId);
+    if (!rec) return null;
+    return { id: rec.id, frictionId: rec.frictionId, actionCode: rec.actionCode };
+  },
+});
+
+/** Test hook — clear the experiment→recommendation cache between tests. */
+export function __resetAttributionCache(): void {
+  recCache.clear();
+}
 
 const log = logger.child({ service: "intervene" });
 
@@ -97,6 +122,35 @@ export async function handleDecision(
     sessionCtx
   );
 
+  // Phase 4.1 — resolve direct attribution. Stamps recommendationId +
+  // experimentId ONLY when (a) the session is in a recommendation-backed
+  // experiment, (b) it's the treatment variant, and (c) the firing
+  // friction+action match the recommendation. Failures are swallowed: the
+  // intervention must still fire even if the attribution path errors,
+  // and revenue queries can fall back to the heuristic for unstamped rows.
+  let attribution: { recommendationId: string; experimentId: string } | null = null;
+  if (session?.siteUrl) {
+    try {
+      attribution = await resolveAttribution(
+        {
+          sessionId,
+          frictionId: effectiveDecision.frictionId,
+          actionCode: effectiveDecision.actionCode,
+        },
+        {
+          getAssignmentForSession: (sid) =>
+            ExperimentRepo.getActiveAssignmentForSession(session.siteUrl, sid),
+          getRecommendationForExperiment: (expId) => recCache.get(expId),
+        },
+      );
+    } catch (err) {
+      log.warn(
+        { sessionId, err: err instanceof Error ? err.message : String(err) },
+        "[Intervene] attribution resolution failed — firing without stamp",
+      );
+    }
+  }
+
   // Persist intervention (capture cart value for revenue attribution)
   const intervention = await InterventionRepo.createIntervention({
     sessionId,
@@ -108,6 +162,8 @@ export async function handleDecision(
     mswimScoreAtFire: evaluation.compositeScore,
     tierAtFire: evaluation.tier,
     cartValueAtFire: session?.cartValue ?? 0,
+    recommendationId: attribution?.recommendationId ?? null,
+    experimentId: attribution?.experimentId ?? null,
   });
 
   // Update session counters

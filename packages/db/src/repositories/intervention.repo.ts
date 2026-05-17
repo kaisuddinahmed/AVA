@@ -15,6 +15,12 @@ export type CreateInterventionInput = {
   tierAtFire: string;
   /** Cart value at the moment the intervention was fired — used for revenue attribution */
   cartValueAtFire?: number;
+  /** Phase 4.1 — direct attribution keys. Stamped only when ALL four
+   *  resolver conditions hold (see attribution-resolver.ts). Null on legacy /
+   *  non-attributable interventions; revenue queries fall back to the
+   *  experiment-assignment + frictionId + time-window heuristic. */
+  recommendationId?: string | null;
+  experimentId?: string | null;
 };
 
 export type InterventionOutcomeInput = {

@@ -53,6 +53,9 @@ docs/*
 !docs/PHASE_1_5_MANUAL_GATE.md
 !docs/PHASE_2_MANUAL_GATE.md
 !docs/PHASE_3_MANUAL_GATE.md
+!docs/SHOPIFY_APP_STORE_LISTING.md
+!docs/PRIVACY_POLICY.md
+!docs/TERMS_OF_SERVICE.md
 
 # SQLite dev database
 *.db

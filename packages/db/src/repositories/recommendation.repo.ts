@@ -33,6 +33,19 @@ export async function getRecommendation(id: string) {
 }
 
 /**
+ * Phase 4.1 — look up the Recommendation linked to an Experiment.
+ * `approvedExperimentId` is @unique, so this is at most a single row.
+ * Used by the attribution resolver to check "is this experiment backed
+ * by a recommendation?" without scanning all recommendations.
+ */
+export async function findByApprovedExperimentId(experimentId: string) {
+  return prisma.recommendation.findUnique({
+    where: { approvedExperimentId: experimentId },
+    select: { id: true, frictionId: true, actionCode: true, status: true },
+  });
+}
+
+/**
  * List recommendations for a site filtered by status.
  *
  * Codex P2 #3 — supports a `statuses` array so callers can scope to multiple

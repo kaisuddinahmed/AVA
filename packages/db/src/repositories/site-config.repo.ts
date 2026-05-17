@@ -64,6 +64,13 @@ export async function updateSiteConfig(
     trackingConfig: string;
     integrationStatus: string;
     activeAnalyzerRunId: string | null;
+    // Phase 4.5 — Shopify Billing fields
+    shopifyAppPlan: string | null;
+    shopifyAppSubscriptionId: string | null;
+    shopifyUsageLineItemId: string | null;
+    shopifyAppSubscriptionStatus: string | null;
+    shopifyAppSubscriptionExpiresAt: Date | null;
+    shopifyAppSubscriptionTest: boolean | null;
   }>,
 ) {
   return prisma.siteConfig.update({ where: { id }, data: data as any });
@@ -332,6 +339,15 @@ export async function getTrackingConfig(
 /** Get site config by siteKey (avak_<hex>). */
 export async function getSiteConfigBySiteKey(siteKey: string) {
   return prisma.siteConfig.findUnique({ where: { siteKey } });
+}
+
+/**
+ * Phase 4.5 — find SiteConfig by Shopify shop domain. Used by billing
+ * endpoints hit on Shopify return URLs where we have the shop, not the
+ * site URL.
+ */
+export async function getSiteConfigByShopifyShop(shopDomain: string) {
+  return prisma.siteConfig.findFirst({ where: { shopifyShop: shopDomain } });
 }
 
 /**
