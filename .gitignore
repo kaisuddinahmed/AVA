@@ -56,6 +56,8 @@ docs/*
 !docs/SHOPIFY_APP_STORE_LISTING.md
 !docs/PRIVACY_POLICY.md
 !docs/TERMS_OF_SERVICE.md
+!docs/KILL_CRITERIA.md
+!docs/PLAYBOOK_CONTENT_SPEC.md
 
 # SQLite dev database
 *.db

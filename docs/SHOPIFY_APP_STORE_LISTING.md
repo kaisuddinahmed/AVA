@@ -39,9 +39,21 @@ Tests live at `apps/server/src/api/shopify-gdpr-webhooks.test.ts`.
 
 - [ ] **Primary language** — English
 - [ ] **App name** — `AVA — AI Shopping Assistant`
-- [ ] **Tagline** (≤30 chars) — TODO: e.g. `Cart recovery & friction insights`
-- [ ] **Short description** (≤500 chars) — TODO
-- [ ] **Long description** (≤3000 chars) — TODO; cover six core capabilities from CLAUDE.md
+- [ ] **Tagline** (≤30 chars) — `Voice salesperson for Shopify`
+- [ ] **Short description** (≤500 chars) — Shopify-first framing. AVA's
+      headline value is the voice salesperson + cart recovery loop, not
+      "works on any site". Sample draft:
+      > AVA is the AI voice salesperson for your Shopify store. It detects
+      > shopping friction in real time, talks shoppers through hesitation,
+      > and recovers carts that would have been abandoned. Built natively
+      > on Shopify (OAuth, Storefront API, Billing API). WooCommerce
+      > coming next; custom-platform deploys available on request.
+- [ ] **Long description** (≤3000 chars) — TODO. Order: (1) voice-led
+      cart recovery, (2) live friction detection on PDP/cart/checkout,
+      (3) revenue attribution merchants can trust, (4) weekly insight
+      digest. **Do NOT claim "works with any website"** — the locked
+      product plan (CLAUDE.md) ships Shopify excellence first, WooCommerce
+      after, generic later. Marketing copy must match the build order.
 - [ ] **Categories** — primary `Conversion` + secondary `Analytics`
 - [ ] **Screenshots** (1600×900, 5 minimum) — TODO; capture from `apps/dashboard`:
   - Approvals queue (Phase 3.3)

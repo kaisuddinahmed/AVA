@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, type CSSProperties } from 'react';
 import { useApi, apiFetch } from '../hooks/use-api';
+import { classifyConfidence, type ConfidenceTier } from '../lib/confidence-tier';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -579,6 +580,57 @@ function UpdatedAgo({ ts }: { ts: number | null }) {
   );
 }
 
+// ─── Confidence chip (Codex review — rules-based vs learned) ─────────────────
+// Helper extracted to apps/dashboard/src/lib/confidence-tier.ts so the
+// classification logic is unit-testable without React/DOM.
+
+function ConfidenceChip({ tier }: { tier: ConfidenceTier }) {
+  const palette: Record<ConfidenceTier, { fg: string; bg: string; label: string; icon: string; title: string }> = {
+    rules: {
+      fg: "var(--warn)",
+      bg: "rgba(230,184,0,0.14)",
+      label: "rules-based",
+      icon: "🧪",
+      title: "Low-sample fallback. Generated from the F-code playbook lookup rather than learned outcomes. Confidence will rise as more sessions accrue.",
+    },
+    learning: {
+      fg: "var(--info)",
+      bg: "rgba(89,184,230,0.14)",
+      label: "learning",
+      icon: "📊",
+      title: "Mid-sample. The engine has enough signal to rank but not enough for statistical significance yet. Keep the experiment running.",
+    },
+    learned: {
+      fg: "var(--accent)",
+      bg: "rgba(53,211,161,0.18)",
+      label: "learned",
+      icon: "✓",
+      title: "High-sample, statistically significant outcome. The engine learned this from real conversions on your store.",
+    },
+  };
+  const p = palette[tier];
+  return (
+    <span
+      title={p.title}
+      style={{
+        fontSize: 9,
+        padding: "2px 7px",
+        borderRadius: 3,
+        background: p.bg,
+        color: p.fg,
+        border: `1px solid ${p.fg}33`,
+        textTransform: "uppercase",
+        fontFamily: "var(--font-mono)",
+        letterSpacing: "0.05em",
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {p.icon} {p.label}
+    </span>
+  );
+}
+
 // ─── Approvals Panel (Phase 3.3 — INTERVENE control-room cards) ──────────────
 
 function ApprovalCard({
@@ -621,6 +673,7 @@ function ApprovalCard({
           border: `1px solid ${typeColor(rec.interventionType)}44`,
           textTransform: 'uppercase', fontFamily: 'var(--font-mono)',
         }}>{rec.interventionType}</span>
+        <ConfidenceChip tier={classifyConfidence(rec)} />
         <div style={{ flex: 1 }} />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: liftColor, fontWeight: 700 }}>
           +{rec.expectedLiftPct.toFixed(0)}% lift
@@ -804,6 +857,18 @@ function LiveResultRow({ row, loading, onRecompute }: { row: LiveResultRow; load
         <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'var(--muted)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
           {row.status}
         </span>
+        <ConfidenceChip
+          tier={classifyConfidence(
+            { confidence: row.confidence, sampleSizeBasis: row.sampleSizeBasis },
+            out
+              ? {
+                  significant: (out.pValue != null && out.pValue < 0.05) ? true : false,
+                  variantSessions: out.variantSessions,
+                  controlSessions: out.controlSessions,
+                }
+              : null,
+          )}
+        />
         {out?.decision && <span style={decisionPillStyle(out.decision)}>{out.decision}</span>}
         <div style={{ flex: 1 }} />
         <button onClick={() => onRecompute(row.id)} disabled={recomputing} style={actionBtn('var(--info)')}>
