@@ -11,6 +11,9 @@ import { runFastEvaluation, shouldEscalateToLLM, inferFrictionFromContext } from
 import { resolveExperimentOverrides } from "../experiment/experiment-resolver.js";
 import type { ExperimentOverrides } from "@ava/shared";
 import { detectBehaviorPatterns, extractActiveGroups, type DetectedBehaviorPattern } from "./behavior-pattern-matcher.js";
+import { resolvePendingForSession } from "../think/index.js";
+import { updateVisitorMindFromEvaluation } from "./visitor-mind-updater.js";
+import { EventRepo } from "@ava/db";
 
 export interface EvaluationResult {
   evaluationId: string;
@@ -26,6 +29,16 @@ export interface EvaluationResult {
   engine: "llm" | "fast";
   gateOverride?: string | null;
   abandonmentScore?: number;
+}
+
+/** Defensive JSON parse for TrackEvent.rawSignals. */
+function safeParseSignals(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 // ── Tier helpers ──────────────────────────────────────────────────────────────
@@ -110,16 +123,55 @@ export async function evaluateEventBatch(
 
   log.info(`[Evaluate] Starting evaluation for session ${sessionId}, engine=${engine}, events=${eventIds.length}`);
   try {
+    let result: EvaluationResult | null;
     if (engine === "fast") {
-      return await evaluateFast(sessionId, eventIds);
+      result = await evaluateFast(sessionId, eventIds);
+    } else if (engine === "auto") {
+      result = await evaluateAuto(sessionId, eventIds);
+    } else {
+      result = await evaluateLLM(sessionId, eventIds);
     }
 
-    if (engine === "auto") {
-      return await evaluateAuto(sessionId, eventIds);
+    // Thinking Layer step 7 (2026-05-19) — resolve the previous pending
+    // MoveOutcome against the freshly-observed evaluation. Fire-and-forget
+    // per the analytics-side-effect convention; failures must never affect
+    // the evaluation result returned to the caller.
+    //
+    // Step 1 P1.2 fix (Codex 2026-05-19): write the derived VisitorMind so
+    // think/ has live state to read on the next evaluation cycle. Order
+    // matters — update mind FIRST so resolvePending sees the new mood.
+    if (result && siteUrl) {
+      void (async () => {
+        try {
+          const recent = await EventRepo.getEventsBySession(sessionId, { limit: 20 });
+          const events = recent.map((e) => ({
+            eventType: e.eventType,
+            frictionId: e.frictionId,
+            rawSignals: safeParseSignals(e.rawSignals),
+          }));
+          await updateVisitorMindFromEvaluation({
+            sessionId,
+            siteUrl,
+            result,
+            events,
+          });
+        } catch {
+          // best-effort: never block evaluate
+        }
+        // After the mind update, resolve any pending prediction.
+        await resolvePendingForSession({
+          sessionId,
+          actualTier: result.tier,
+        });
+      })();
+    } else if (result) {
+      void resolvePendingForSession({
+        sessionId,
+        actualTier: result.tier,
+      });
     }
 
-    // Default: "llm"
-    return await evaluateLLM(sessionId, eventIds);
+    return result;
   } catch (err) {
     log.error(`[Evaluate] ❌ Engine error (${engine}) for session ${sessionId}:`, err);
     throw err;

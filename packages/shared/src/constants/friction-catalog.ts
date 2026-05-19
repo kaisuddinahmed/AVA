@@ -475,6 +475,23 @@ export const FRICTION_CATALOG: Map<string, FrictionScenario> = new Map([
   ["F323", { id: "F323", category: FrictionCategory.SEASONAL, scenario: "Back-to-school items not grouped for easy shopping", detection_signal: "seasonal_context == back_to_school AND category_browse_high", ai_action: "Create curated seasonal landing page" }],
   ["F324", { id: "F324", category: FrictionCategory.SEASONAL, scenario: "Weather-triggered product need not served", detection_signal: "weather_api == extreme_cold/heat AND relevant_products_not_promoted", ai_action: "Dynamic merchandising based on local weather" }],
   ["F325", { id: "F325", category: FrictionCategory.SEASONAL, scenario: "Post-holiday return surge overwhelming support", detection_signal: "support_ticket_volume > 200% baseline AND response_time > 48h", ai_action: "Scale support; add self-service return portal" }],
+
+  // =======================================================================
+  // THINKING LAYER ADDITIONS (F326 – F335) — added 2026-05-19.
+  // Salesperson-loop instrumentation gaps surfaced by the audit. Each pairs
+  // with a playbook in apps/server/src/voice/sales-playbooks.ts and a widget
+  // observer in apps/widget/src/tracker/observers/.
+  // =======================================================================
+  ["F326", { id: "F326", category: FrictionCategory.PRODUCT, scenario: "Variant indecision — changed colour/size 3+ times without ATC", detection_signal: "variant_change_count >= 3 AND atc_event == false within 60s", ai_action: 'Simplify: "Most people your size pick the [X]"; offer to lock it in.' }],
+  ["F327", { id: "F327", category: FrictionCategory.PRODUCT, scenario: "Deep review reading — visitor lingers on reviews 30s+", detection_signal: "review_section_dwell_ms >= 30000 OR review_filter_clicks >= 2", ai_action: "Offer to address the specific concern they're researching." }],
+  ["F328", { id: "F328", category: FrictionCategory.PRODUCT, scenario: "Size chart dwell — fit anxiety signal", detection_signal: "size_chart_open AND dwell_ms >= 10000", ai_action: "Reassure on fit: free exchanges + size recommender." }],
+  ["F329", { id: "F329", category: FrictionCategory.CHECKOUT, scenario: "Shipping step abandon — visitor left at the shipping step of checkout", detection_signal: "checkout_step == shipping AND step_exit == true within 90s", ai_action: "Recover: offer free-shipping filler item or alternative carrier." }],
+  ["F330", { id: "F330", category: FrictionCategory.CHECKOUT, scenario: "Payment step abandon — visitor left at the payment step of checkout", detection_signal: "checkout_step == payment AND step_exit == true within 120s", ai_action: "Offer alternative payment (Apple Pay, PayPal, Klarna)." }],
+  ["F331", { id: "F331", category: FrictionCategory.DECISION, scenario: "Suspected competing-tab comparison shopping", detection_signal: "tab_away_count >= 2 AND tab_away_duration_total >= 20s AND distinct_pdps_viewed >= 2", ai_action: "Differentiate: surface bundled-value advantages over competitors." }],
+  ["F332", { id: "F332", category: FrictionCategory.RE_ENGAGEMENT, scenario: "Returning visitor with no prior purchase — decision aid", detection_signal: "isReturningVisitor == true AND total_conversions == 0 AND prior_pdp_view exists", ai_action: "Welcome back; offer to resume the last viewed item." }],
+  ["F333", { id: "F333", category: FrictionCategory.PRODUCT, scenario: "Out-of-stock variant exposure — visitor clicked an OOS option", detection_signal: "variant_click AND variant_stock == 0", ai_action: "Offer back-in-stock notify + show closest available variant." }],
+  ["F334", { id: "F334", category: FrictionCategory.DECISION, scenario: "Multi-item view, no choice — viewed 4+ PDPs in 60s with no ATC", detection_signal: "distinct_pdp_views >= 4 within 60s AND atc_event == false", ai_action: "Suggest a bundle or curated pick to break the comparison stall." }],
+  ["F335", { id: "F335", category: FrictionCategory.LANDING, scenario: "Landing greet trigger — dwell on landing without action", detection_signal: "landing_dwell_ms >= 8000 AND pages_viewed == 1 AND no_interaction", ai_action: "Proactive greet — open with a one-line offer to help." }],
 ]);
 
 // ---------------------------------------------------------------------------

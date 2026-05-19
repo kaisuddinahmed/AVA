@@ -16,7 +16,9 @@ import {
   BEHAVIOR_GROUP_DEFINITIONS,
   BEHAVIOR_GROUP_PRIORITY,
   PATTERN_TO_GROUP,
+  behaviorStatus,
   type BehaviorGroup,
+  type BehaviorStatus,
 } from "@ava/shared";
 
 import { logger } from "../logger.js";
@@ -37,6 +39,18 @@ export interface DetectedBehaviorPattern {
   group: BehaviorGroup;
   confidence: number;         // 0.0–1.0 from BehaviorPatternMapping record
   evidence: string[];         // event types that triggered group detection
+  /**
+   * Thinking Layer step 8 (2026-05-19) — every detected pattern is now
+   * tagged with its runtime status.
+   *
+   * - "active"  → in the curated ACTIVE_BEHAVIOR_IDS subset; reported live.
+   * - "roadmap" → in the catalog but not yet driving any salesperson
+   *                move; surface only in roadmap dashboards.
+   *
+   * Defaults to "active" for backward compatibility — callers that
+   * filter on status are explicit about it.
+   */
+  status: BehaviorStatus;
 }
 
 // ── Group detection rules ─────────────────────────────────────────────────────
@@ -212,6 +226,7 @@ async function resolvePatterns(
           group,
           confidence: mapping.confidence,
           evidence,
+          status: behaviorStatus(mapping.patternId),
         });
       }
     } else {
@@ -225,6 +240,7 @@ async function resolvePatterns(
           group,
           confidence: 0.60,
           evidence,
+          status: behaviorStatus(patternId),
         });
       }
     }

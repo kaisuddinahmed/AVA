@@ -1052,3 +1052,146 @@ model RecommendationOutcome {
   @@index([decision])
   @@index([createdAt])
 }
+
+// ---------------------------------------------------------------------------
+// VisitorMind — persistent mental model of the visitor (Thinking Layer, 2026-05-19).
+//
+// The salesperson's understanding of who is in front of her. Updated every
+// evaluate cycle from MSWIM history, events, and (for voice sessions) STT.
+// Read by apps/server/src/think/ when deciding the next SalespersonMove.
+//
+// Replaces the flat counters on Session for behavioral interpretation —
+// Session keeps transactional facts (cart, page), VisitorMind keeps inferences
+// (mood, objections, persona).
+//
+// PRIVACY: inferred_objections + evidence may contain user utterances
+// (from STT). Treat as session-bounded; purge on session.status=ended.
+// ---------------------------------------------------------------------------
+model VisitorMind {
+  id                    String   @id @default(uuid())
+  sessionId             String   @unique
+  siteUrl               String
+
+  // Current mood — trajectory-aware over moodHistory.
+  // unknown | confident | hesitant | frustrated | leaving | engaged
+  mood                  String   @default("unknown")
+  moodHistory           String   @default("[]") // JSON [{mood, ts, evidence}], ring-capped
+
+  // Engagement score per SKU. JSON {sku: 0-100}.
+  interestPerProduct    String   @default("{}")
+
+  // Inferred objections raised by behavior or STT.
+  // JSON [{type, confidence, evidence[], ts}], capped at 10.
+  inferredObjections    String   @default("[]")
+
+  // 0-100 — how close the visitor is to a decision (computed from MSWIM + events).
+  decisionPressure      Float    @default(0)
+
+  // SKUs the visitor has cross-viewed (deduped). JSON string[].
+  comparisonSet         String   @default("[]")
+
+  // 0-100 — derived from price re-reads, coupon attempts, exit-on-price-reveal.
+  priceSensitivity      Float    @default(50)
+
+  // deal_hunter | researcher | impulse | gift_buyer | returning_loyal
+  personaHint           String?
+
+  // 0-100 — overall confidence in the read. Drives whether think/ trusts
+  // the rule-based playbook vs. escalates to LLM.
+  confidence            Float    @default(0)
+
+  // Last Evaluation this mind was updated from (for idempotency / debugging).
+  lastEvaluationId      String?
+  evaluationsConsidered Int      @default(0)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([siteUrl])
+  @@index([updatedAt])
+}
+
+// ---------------------------------------------------------------------------
+// MoveOutcome — predict → measure → feedback (Thinking Layer step 7).
+//
+// Every SalespersonMove that ships carries an `expected_visitor_response`
+// and a `next_state_hypothesis`. Each fire creates an unresolved
+// MoveOutcome row. On the next evaluation, the resolver compares the
+// predicted mood / tier to the observed mood / tier and marks the row
+// resolved with an `accuracy` score.
+//
+// Aggregated per `tacticId` (e.g. "F042_step1"), this is what feeds the
+// recommendation engine: "Tactic T's predictions were right N% of the
+// time — rank confidence higher / lower accordingly."
+// ---------------------------------------------------------------------------
+model MoveOutcome {
+  id                  String    @id @default(uuid())
+  sessionId           String
+  interventionId      String?
+  tacticId            String    // e.g. "F042_step1" or "LLM_GEN"
+  frictionId          String
+  attributionTag      String    // SalespersonMove.attribution_tag
+
+  // Prediction at fire time.
+  predictedMood       String?   // engaged | hesitant | leaving | ...
+  predictedTier       String?   // MSWIM tier hypothesis
+  predictedResponse   String?   // click_cta | ask_followup | ignore | leave
+
+  // Resolution — populated by resolveMoveOutcomes on next evaluation.
+  actualMood          String?
+  actualTier          String?
+  actualResponse      String?
+  // 0..1 — how close the prediction was. Definition is intentionally
+  // simple: exact-match mood = 1.0, "right direction" = 0.5, opposite = 0.0.
+  accuracy            Float?
+
+  status              String    @default("pending") // pending | resolved | abandoned
+  firedAt             DateTime  @default(now())
+  resolvedAt          DateTime?
+
+  @@index([sessionId, status])
+  @@index([tacticId, status])
+  @@index([firedAt])
+}
+
+// ---------------------------------------------------------------------------
+// MerchantCoaching — per-site coaching for the virtual salesperson.
+// Thinking Layer step 9 (2026-05-19).
+//
+// Read by apps/server/src/think/ on every move. Sets the tone, forbidden
+// claims (legal), priority objections, and incentive guardrails so the
+// same AVA "voice" feels merchant-specific. This is the moat — every
+// merchant coaches their salesperson over time and the experience drifts
+// toward what works for their brand.
+// ---------------------------------------------------------------------------
+model MerchantCoaching {
+  id                  String   @id @default(uuid())
+  siteUrl             String   @unique
+
+  // luxury | playful | no_nonsense | warm | technical | unspecified
+  tone                String   @default("unspecified")
+
+  // What to always try to upsell. JSON string[] of free-form labels.
+  // e.g. ["warranty", "gift wrap", "expedited shipping"]
+  alwaysUpsell        String   @default("[]")
+
+  // Never offer a discount below this floor percent. 0 = no floor.
+  neverDiscountBelowPct Int    @default(0)
+
+  // Phrases the salesperson must never claim. JSON string[].
+  // e.g. ["lowest price", "fastest shipping"] — legal hedge.
+  forbiddenClaims     String   @default("[]")
+
+  // The three objections this merchant hears most from real customers.
+  // JSON string[] mapping to ObjectionType where possible.
+  priorityObjections  String   @default("[]")
+
+  // Free-form additional notes the merchant wants the salesperson to
+  // remember (rendered verbatim into the LLM prompt).
+  freeformNotes       String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([siteUrl])
+}

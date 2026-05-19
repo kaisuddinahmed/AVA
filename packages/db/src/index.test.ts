@@ -51,6 +51,10 @@ describe("@ava/db exports (smoke)", () => {
     "ConversationStateRepo",
     "RecommendationRepo",
     "RecommendationOutcomeRepo",
+    // Thinking Layer 2026-05-19
+    "VisitorMindRepo",
+    "MoveOutcomeRepo",
+    "MerchantCoachingRepo",
   ];
 
   it("exports every required repository namespace", () => {

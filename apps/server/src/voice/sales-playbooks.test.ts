@@ -81,15 +81,25 @@ describe("selectStep — turn-count cycling", () => {
   });
 
   it("turn N modulo step count cycles through steps", () => {
-    const pb = getPlaybook("F042")!;
-    // F042 has 2 steps. Turn 2 wraps to step 0 again.
-    expect(selectStep(pb, 1)).toBe(pb.steps[1]);
-    expect(selectStep(pb, 2)).toBe(pb.steps[0]);
-    expect(selectStep(pb, 3)).toBe(pb.steps[1]);
+    // Use any multi-step playbook — modulo cycling is the contract.
+    const pb =
+      ALL_PLAYBOOKS.find((p) => p.steps.length >= 2) ??
+      (() => {
+        throw new Error("expected at least one multi-step playbook");
+      })();
+    const n = pb.steps.length;
+    expect(selectStep(pb, 0)).toBe(pb.steps[0]);
+    expect(selectStep(pb, 1)).toBe(pb.steps[1 % n]);
+    expect(selectStep(pb, n)).toBe(pb.steps[0]); // wraps
+    expect(selectStep(pb, n + 1)).toBe(pb.steps[1 % n]);
   });
 
   it("single-step playbook always returns its sole step", () => {
-    const pb = getPlaybook("F036")!;
+    const pb =
+      ALL_PLAYBOOKS.find((p) => p.steps.length === 1) ??
+      (() => {
+        throw new Error("expected at least one single-step playbook");
+      })();
     expect(pb.steps.length).toBe(1);
     expect(selectStep(pb, 0)).toBe(pb.steps[0]);
     expect(selectStep(pb, 99)).toBe(pb.steps[0]);

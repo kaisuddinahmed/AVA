@@ -41,6 +41,7 @@
 import {
   InterventionRepo,
   RecommendationRepo,
+  MoveOutcomeRepo,
 } from "@ava/db";
 import { getPlaybook } from "../voice/sales-playbooks.js";
 import { logger } from "../logger.js";
@@ -118,6 +119,45 @@ function softerTier(current: string | null | undefined): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// MoveOutcome → rank multiplier (Thinking Layer P1/P2.3 — Codex 2026-05-19).
+// ---------------------------------------------------------------------------
+
+/** Best-effort load of per-tactic accuracy. Returns empty map on failure. */
+async function loadTacticAccuracy(
+  since: Date,
+): Promise<Map<string, number>> {
+  try {
+    const rows = await MoveOutcomeRepo.aggregateByTactic({ since });
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      if (typeof r.avgAccuracy === "number") map.set(r.tacticId, r.avgAccuracy);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Multiplier in [0.5, 1.0] applied to rankScore.
+ *
+ *   - No data for this tactic → 1.0 (neutral, don't punish new tactics).
+ *   - Perfect accuracy (1.0)  → 1.0.
+ *   - Zero accuracy (0.0)     → 0.5 (damped, not killed — sample may be small).
+ *
+ * Formula: 0.5 + 0.5 × accuracy. Easy to reason about; easy to tune.
+ */
+export function computeAccuracyMultiplier(
+  tacticAccuracy: Map<string, number>,
+  tacticId: string,
+): number {
+  const acc = tacticAccuracy.get(tacticId);
+  if (acc == null) return 1.0;
+  const clamped = Math.max(0, Math.min(1, acc));
+  return 0.5 + 0.5 * clamped;
+}
+
+// ---------------------------------------------------------------------------
 // Engine
 // ---------------------------------------------------------------------------
 
@@ -135,6 +175,12 @@ export async function generateRecommendations(
 
   // 1. Load real outcomes per frictionId.
   const perFriction = await InterventionRepo.countOutcomesByFriction(opts.siteUrl, since);
+
+  // Thinking Layer P1/P2.3 fix (Codex 2026-05-19) — pull MoveOutcome
+  // aggregates per tactic so the predict→measure→learn loop actually
+  // weights ranking. Maps tacticId (e.g. "F042_step0") to avgAccuracy.
+  // Defensive: any failure → empty map (no weighting applied).
+  const tacticAccuracy = await loadTacticAccuracy(since);
 
   // 2. De-dupe against pending/approved/active recommendations so we don't
   //    spam the merchant with the same suggestion twice.
@@ -165,6 +211,13 @@ export async function generateRecommendations(
       const step = playbook.steps[0];
       const expectedLiftPct = 50; // hand-tuned playbook → +50% relative.
       const confidence = confidenceFromSample(row.total);
+      // Accuracy-weighted rank — tactics that historically predict the
+      // visitor's next state well rank higher; tactics that miss get
+      // damped. Step-0 tactic id matches the playbook opener.
+      const accuracyMultiplier = computeAccuracyMultiplier(
+        tacticAccuracy,
+        `${row.frictionId}_step0`,
+      );
       candidates.push({
         siteUrl: opts.siteUrl,
         frictionId: row.frictionId,
@@ -183,7 +236,7 @@ export async function generateRecommendations(
         expectedLiftPct,
         confidence,
         sampleSizeBasis: row.total,
-        rankScore: expectedLiftPct * confidence,
+        rankScore: expectedLiftPct * confidence * accuracyMultiplier,
       });
       continue;
     }
@@ -197,6 +250,8 @@ export async function generateRecommendations(
       const proposedTier = softerTier("active") ?? "nudge";
       const expectedLiftPct = 20; // conservative — fewer signals than Rule A.
       const confidence = confidenceFromSample(row.total) * 0.7; // discount for the heuristic
+      // No playbook → no tactic-level accuracy signal available; rule B
+      // uses the unmultiplied score.
       candidates.push({
         siteUrl: opts.siteUrl,
         frictionId: row.frictionId,

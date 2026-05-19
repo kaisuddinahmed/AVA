@@ -24,6 +24,7 @@ import * as networkApi from "./network.api.js";
 import * as shopifyApi from "./shopify.api.js";
 import * as addressApi from "./address.api.js";
 import * as modelsApi from "./models.api.js";
+import * as merchantCoachingApi from "./merchant-coaching.api.js";
 
 import { agentRouter } from './agent.api.js';
 export const apiRouter = Router();
@@ -38,6 +39,10 @@ apiRouter.get("/sessions/:sessionId/events", eventsApi.getEvents);
 
 // Config
 apiRouter.get("/config", configApi.getConfig);
+
+// Thinking Layer step 9 (2026-05-19) — merchant coaching for the salesperson.
+apiRouter.get("/merchant-coaching", merchantCoachingApi.getCoaching);
+apiRouter.put("/merchant-coaching", merchantCoachingApi.putCoaching);
 
 // Scoring Config (MSWIM weight profiles)
 apiRouter.get("/scoring-configs", scoringConfigApi.listConfigs);

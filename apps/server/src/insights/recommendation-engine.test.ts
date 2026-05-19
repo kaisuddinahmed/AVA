@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const countOutcomes = vi.fn();
 const listBySite = vi.fn();
 const createRec = vi.fn();
+const aggregateByTactic = vi.fn();
 
 vi.mock("@ava/db", () => ({
   InterventionRepo: {
@@ -21,18 +22,23 @@ vi.mock("@ava/db", () => ({
     listBySite: (...args: unknown[]) => listBySite(...args),
     createRecommendation: (...args: unknown[]) => createRec(...args),
   },
+  MoveOutcomeRepo: {
+    aggregateByTactic: (...args: unknown[]) => aggregateByTactic(...args),
+  },
 }));
 
 import {
   generateRecommendations,
   generateAndPersist,
   confidenceFromSample,
+  computeAccuracyMultiplier,
 } from "./recommendation-engine.js";
 
 beforeEach(() => {
   countOutcomes.mockReset();
   listBySite.mockReset().mockResolvedValue([]);
   createRec.mockReset().mockImplementation(async (data: unknown) => ({ id: "rec_x", ...(data as object) }));
+  aggregateByTactic.mockReset().mockResolvedValue([]); // default: no accuracy signal
 });
 
 // ── Confidence helper ──────────────────────────────────────────────────────
@@ -226,5 +232,78 @@ describe("window control", () => {
     expect(args[0]).toBe("https://x");
     // since = now - 7 days = 2026-05-09
     expect((args[1] as Date).toISOString().slice(0, 10)).toBe("2026-05-09");
+  });
+});
+
+// ── Codex 2026-05-19 — accuracy multiplier (closing the learning loop) ─────
+
+describe("computeAccuracyMultiplier", () => {
+  it("returns 1.0 (neutral) when no signal exists for the tactic", () => {
+    const map = new Map<string, number>();
+    expect(computeAccuracyMultiplier(map, "F042_step0")).toBe(1.0);
+  });
+
+  it("returns 1.0 at perfect accuracy", () => {
+    const map = new Map([["F042_step0", 1.0]]);
+    expect(computeAccuracyMultiplier(map, "F042_step0")).toBe(1.0);
+  });
+
+  it("returns 0.5 at zero accuracy (damped, not killed)", () => {
+    const map = new Map([["F042_step0", 0.0]]);
+    expect(computeAccuracyMultiplier(map, "F042_step0")).toBe(0.5);
+  });
+
+  it("scales linearly between 0.5 and 1.0", () => {
+    const map = new Map([
+      ["a", 0.6],
+      ["b", 0.2],
+    ]);
+    expect(computeAccuracyMultiplier(map, "a")).toBeCloseTo(0.8, 5);
+    expect(computeAccuracyMultiplier(map, "b")).toBeCloseTo(0.6, 5);
+  });
+
+  it("clamps out-of-range inputs", () => {
+    const map = new Map([
+      ["high", 1.5],
+      ["low", -0.5],
+    ]);
+    expect(computeAccuracyMultiplier(map, "high")).toBe(1.0);
+    expect(computeAccuracyMultiplier(map, "low")).toBe(0.5);
+  });
+});
+
+describe("rule A — accuracy weighting in rankScore", () => {
+  it("damps rankScore for low-accuracy tactics relative to no-signal baseline", async () => {
+    // Both rows fire 150 times with 1% conversion, but only F042 has an
+    // accuracy signal in MoveOutcome. F042_step0 has 0.0 accuracy → 0.5x;
+    // F100 has no signal → 1.0x. F100 should therefore outrank F042.
+    countOutcomes.mockResolvedValue([
+      { frictionId: "F042", total: 150, converted: 1, dismissed: 30, ignored: 0, delivered: 0, sent: 0 },
+      { frictionId: "F100", total: 150, converted: 1, dismissed: 30, ignored: 0, delivered: 0, sent: 0 },
+    ]);
+    aggregateByTactic.mockResolvedValue([
+      { tacticId: "F042_step0", fires: 150, avgAccuracy: 0.0 },
+      // No row for F100_step0.
+    ]);
+    const recs = await generateRecommendations({ siteUrl: "https://x" });
+    const f042 = recs.find((r) => r.frictionId === "F042");
+    const f100 = recs.find((r) => r.frictionId === "F100");
+    expect(f042).toBeTruthy();
+    expect(f100).toBeTruthy();
+    expect(f100!.rankScore).toBeGreaterThan(f042!.rankScore);
+    // Same sample size + lift + confidence; only multiplier differs.
+    expect(f100!.rankScore / f042!.rankScore).toBeCloseTo(2.0, 5);
+  });
+
+  it("survives MoveOutcome aggregate fetch failure (neutral ranking)", async () => {
+    countOutcomes.mockResolvedValue([
+      { frictionId: "F042", total: 150, converted: 1, dismissed: 30, ignored: 0, delivered: 0, sent: 0 },
+    ]);
+    aggregateByTactic.mockRejectedValue(new Error("DB down"));
+    const recs = await generateRecommendations({ siteUrl: "https://x" });
+    expect(recs).toHaveLength(1);
+    // With no accuracy signal the multiplier is 1.0 → rankScore =
+    // expectedLift × confidence = 50 × confidenceFromSample(150) = 50 × 0.7
+    expect(recs[0].rankScore).toBeCloseTo(50 * 0.7, 5);
   });
 });

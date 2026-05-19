@@ -9,8 +9,9 @@ import {
 import type { DecisionOutput } from "../evaluate/decision-engine.js";
 import type { EvaluationResult } from "../evaluate/evaluate.service.js";
 import { getAction } from "./action-registry.js";
-import { buildPayload } from "./payload-builder.js";
+import { buildPayloadAndMove } from "./payload-builder.js";
 import type { SessionContext } from "./message-templates.js";
+import { loadThinkContext, recordMovePrediction } from "../think/index.js";
 import { captureTrainingDatapoint } from "../training/training-collector.service.js";
 import { broadcastToChannel } from "../broadcast/broadcast.service.js";
 import {
@@ -111,15 +112,28 @@ export async function handleDecision(
       }
     : undefined;
 
-  // Build the intervention payload (async: may derive product suggestions)
-  const payload = await buildPayload(
+  // Thinking Layer step 4 (2026-05-19) + step 9 — load live objections +
+  // turnIndex from VisitorMind / ConversationState and the merchant
+  // coaching config keyed by siteUrl. Defensive: errors fall back to an
+  // empty context (parity with step 2 / pre-coaching behavior).
+  const thinkCtx = await loadThinkContext(sessionId, {
+    siteUrl: session?.siteUrl,
+  }).catch(() => undefined);
+
+  // Build the intervention payload + return the SalespersonMove that
+  // produced it (step 7 — we need the move shape to stamp the prediction
+  // on a MoveOutcome row after the intervention persists). Step 9 — pass
+  // sessionId so the LLM-augmented path can construct visitor context.
+  const { payload, move } = await buildPayloadAndMove(
     effectiveDecision.type ?? "passive",
     effectiveDecision.actionCode,
     effectiveDecision.frictionId,
     evaluation,
     sessionEvents,
     voiceDisabled,
-    sessionCtx
+    sessionCtx,
+    thinkCtx,
+    sessionId,
   );
 
   // Phase 4.1 — resolve direct attribution. Stamps recommendationId +
@@ -168,6 +182,17 @@ export async function handleDecision(
 
   // Update session counters
   await SessionRepo.incrementInterventionsFired(sessionId);
+
+  // Thinking Layer step 7 (2026-05-19) — stamp the prediction. Fire-and-
+  // forget per CLAUDE.md guidance: never block the intervene path on
+  // analytics-style side effects. The resolver runs at the start of the
+  // next evaluate cycle.
+  void recordMovePrediction({
+    sessionId,
+    interventionId: intervention.id,
+    tier: evaluation.tier,
+    move,
+  });
 
   // Increment voice counter fire-and-forget when voice is actually enabled
   if (payload.voice_enabled === true) {

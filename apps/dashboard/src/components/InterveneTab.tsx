@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, type CSSProperties } from 'react';
 import { useApi, apiFetch } from '../hooks/use-api';
 import { classifyConfidence, type ConfidenceTier } from '../lib/confidence-tier';
+import { CoachingConfigPanel } from './CoachingConfigPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1067,6 +1068,7 @@ function DigestPanel({
 
 const INTERVENE_TABS = [
   { id: 'approvals',    label: 'Approvals' },
+  { id: 'coaching',     label: 'Coaching' }, // Thinking Layer step 9 (2026-05-19)
   { id: 'digest',       label: 'Weekly Digest' },
   { id: 'analytics',    label: 'Intervention Analytics' },
   { id: 'voice',        label: 'Voice' },
@@ -1300,6 +1302,9 @@ export function InterveneTab({
                   onRecompute={recomputeOutcome}
                 />
               </>
+            )}
+            {analyticsTab === 'coaching' && (
+              <CoachingConfigPanel siteUrl={activeSiteUrl ?? null} />
             )}
             {analyticsTab === 'digest' && (
               <DigestPanel siteUrl={activeSiteUrl} digest={digest ?? null} lastUpdatedAt={digestUpdatedAt} />

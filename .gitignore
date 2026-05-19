@@ -78,3 +78,8 @@ apps/store/test.csv
 # Build outputs
 apps/*/dist/
 packages/*/dist/
+
+# Vite dev/build transient configs — auto-regenerated, must not be tracked.
+# (Codex 2026-05-19 P3 cleanup.)
+apps/*/vite.config.ts.timestamp-*
+apps/*/vite.config.js.timestamp-*

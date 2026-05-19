@@ -41,3 +41,12 @@ export * as SiteSelectorFingerprintRepo from "./repositories/site-selector-finge
 export * as ConversationStateRepo from "./repositories/conversation-state.repo.js";
 export * as RecommendationRepo from "./repositories/recommendation.repo.js";
 export * as RecommendationOutcomeRepo from "./repositories/recommendation-outcome.repo.js";
+
+// Thinking Layer (2026-05-19) — step 1: persistent mental model of the visitor.
+export * as VisitorMindRepo from "./repositories/visitor-mind.repo.js";
+
+// Thinking Layer (2026-05-19) — step 7: predict → measure → feedback.
+export * as MoveOutcomeRepo from "./repositories/move-outcome.repo.js";
+
+// Thinking Layer (2026-05-19) — step 9: per-site coaching for the salesperson.
+export * as MerchantCoachingRepo from "./repositories/merchant-coaching.repo.js";
