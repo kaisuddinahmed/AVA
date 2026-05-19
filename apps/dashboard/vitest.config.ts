@@ -3,18 +3,18 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     globals: false,
-    // Node env is fine for pure utilities; switch to "jsdom" + @testing-library
-    // when adding React component tests.
-    environment: "node",
+    // jsdom env so React component tests with @testing-library/react work.
+    // Pure-node tests (lib/, hooks/poll-controller) run unchanged — jsdom
+    // is a strict superset of node for our purposes.
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
       reportsDirectory: "./coverage",
-      // Most of the dashboard is React components; pure utilities under
-      // src/lib + src/hooks are the testable engine surface. Component
-      // coverage is best-effort until @testing-library is added.
-      include: ["src/lib/**/*.ts", "src/hooks/**/*.ts"],
+      // Component coverage now in scope alongside pure utilities.
+      include: ["src/lib/**/*.ts", "src/hooks/**/*.ts", "src/components/**/*.tsx"],
       exclude: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     },
   },
